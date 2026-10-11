@@ -58,6 +58,8 @@ export type ClaudeCodeRuntimeProvisionerConfig = {
   kubeContext?: string
   /** Where runtime pods are allowed to land, and how much CPU they may burn. */
   scheduling: RuntimeScheduling
+  /** Set to host new runtimes on boat.dev sandboxes instead of pods. */
+  boatApiKey?: string
 }
 
 function keyValuePairs(entries: string[]): [string, string][] {
@@ -114,5 +116,6 @@ export function claudeCodeRuntimeProvisionerConfig(): ClaudeCodeRuntimeProvision
     kubectl: process.env.NODE_ENV !== 'production' && bool('CLAUDE_CODE_RUNTIME_KUBECTL', false),
     kubeContext: optional('CLAUDE_CODE_RUNTIME_KUBE_CONTEXT'),
     scheduling: runtimeSchedulingConfig(),
+    boatApiKey: optional('BOAT_API_KEY'),
   }
 }

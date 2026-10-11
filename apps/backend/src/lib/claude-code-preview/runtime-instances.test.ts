@@ -226,3 +226,49 @@ test('a managed agent can be added by type alone and gets a name unique in its t
   expect(await add()).toMatchObject({ label: 'Codex', kind: 'managed' })
   expect((await add()).label).toBe('Codex 2')
 })
+
+test('with a boat key, a new agent runs on a sandbox and is deleted along with it', async () => {
+  const realFetch = globalThis.fetch
+  const previous = [config.claudeCodeRuntimeProvisioner.boatApiKey, config.agent.publicBackendUrl]
+  const requests: string[] = []
+
+  config.claudeCodeRuntimeProvisioner.boatApiKey = 'boat_test'
+  config.agent.publicBackendUrl = 'https://api.nuphos.example'
+  globalThis.fetch = ((url: string, init: RequestInit) => {
+    if (!String(url).startsWith('https://boat.dev/')) return realFetch(url, init)
+    requests.push(`${String(init.method)} ${url}`)
+
+    return Promise.resolve(
+      Response.json(
+        { sandbox: { id: 'bx_23456789', state: 'ready', subdomain: 'a-b-c', error: null } },
+        { status: 202 },
+      ),
+    )
+  }) as unknown as typeof fetch
+  try {
+    const created = await add(app(), 'Boat')
+    const row = runtimeRows().find((doc) => doc._id === created.id)!
+
+    expect(created.kind).toBe('external')
+    expect(row).toMatchObject({
+      url: 'wss://a-b-c-8080.on.boat.dev/acp',
+      boatSandboxId: 'bx_23456789',
+    })
+    expect(row.hostedBy).toBeUndefined()
+    expect((await resolveTeamRuntimeEndpoints('one', undefined, 'codex'))[0]).toMatchObject({
+      runtimeId: created.id,
+      external: true,
+    })
+    const removed = await app().request(`/agent-runtimes/${created.id}`, { method: 'DELETE' })
+
+    expect(removed.status).toBe(204)
+    expect(requests).toEqual([
+      'POST https://boat.dev/api/v1/sandboxes',
+      'DELETE https://boat.dev/api/v1/sandboxes/bx_23456789',
+    ])
+    expect(runtimeRows()).toEqual([])
+  } finally {
+    globalThis.fetch = realFetch
+    ;[config.claudeCodeRuntimeProvisioner.boatApiKey, config.agent.publicBackendUrl] = previous
+  }
+})

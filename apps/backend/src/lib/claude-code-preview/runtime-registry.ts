@@ -7,6 +7,7 @@ import { logError } from '@/lib/observability'
 
 import { isValidOpenAbTransportKey } from './gate'
 import { isAllowedRemoteOpenAbUrl, isInternalRuntimeUrl } from './runtime-backend-url'
+import { deleteBoatSandbox } from './runtime-boat'
 import { placementNamespace } from './runtime-controllers'
 import { deleteRuntimeAuthSecret } from './runtime-credential-secret'
 import { revokePairedBinding } from './runtime-pairing-client'
@@ -40,6 +41,8 @@ export type ClaudeCodeRuntimeDoc = {
   requestedRuntimeVersion?: string
   runtimeUpdateError?: string
   hostedBy?: 'nuphos'
+  /** The boat.dev sandbox this runtime runs on, deleted along with the row. */
+  boatSandboxId?: string
   /** A row of the retired provisioner model, which nothing resolves any more. */
   managedBy?: 'provisioner'
   /** Envelope-encrypted ACP transport key. Mongo owns it; the Kubernetes
@@ -118,6 +121,7 @@ export async function registerTeamRuntime(args: {
   label?: string
   hostedBy?: 'nuphos'
   deploymentImage?: string
+  boatSandboxId?: string
   pairing?: RuntimePairing
   kube?: KubeClient
 }): Promise<ClaudeCodeRuntime> {
@@ -142,6 +146,7 @@ export async function registerTeamRuntime(args: {
     ...(args.label?.trim() ? { label: args.label.trim() } : {}),
     ...(args.hostedBy ? { hostedBy: args.hostedBy } : {}),
     ...(args.deploymentImage ? { deploymentImage: args.deploymentImage } : {}),
+    ...(args.boatSandboxId ? { boatSandboxId: args.boatSandboxId } : {}),
     ...(args.pairing ? { pairing: args.pairing } : {}),
     status: 'active',
     authKeyEnvelope: sealRuntimeAuthKey(authKey),
@@ -179,6 +184,8 @@ export async function removeTeamRuntime(
   const doc = await runtimes().findOne({ _id: id, teamId })
 
   if (!doc) return false
+  // First, so a failure keeps the row and a billed sandbox is never orphaned.
+  if (doc.boatSandboxId) await deleteBoatSandbox(doc.boatSandboxId)
 
   const result = await runtimes().deleteOne({ _id: id, teamId })
 

@@ -5,6 +5,8 @@ import { AppError } from '@/lib/errors'
 import { logError } from '@/lib/observability'
 
 import { provisionerKubeClient } from './provisioner-kube'
+import { requirePublicBackendUrl } from './runtime-backend-url'
+import { boatApiKey, createBoatRuntime, deleteBoatSandbox } from './runtime-boat'
 import { managedRuntimeImage } from './runtime-image'
 import { hostedRuntimeName, hostedRuntimeUrl } from './runtime-objects'
 import { runtimeProvider } from './runtime-provider'
@@ -53,6 +55,35 @@ export async function createManagedRuntimeInstance(args: {
       'No published runtime image is available.',
     )
   const id = randomUUID()
+
+  if (boatApiKey()) {
+    requirePublicBackendUrl()
+    const authKey = randomBytes(32).toString('hex')
+    const { sandboxId, url } = await createBoatRuntime({ runtimeId: id, image, authKey })
+    const runtime = await registerTeamRuntime({
+      id,
+      teamId: args.teamId,
+      userId: args.userId,
+      url,
+      provider: args.provider,
+      authKey,
+      label: args.label,
+      boatSandboxId: sandboxId,
+    }).catch(async (error: unknown) => {
+      await deleteBoatSandbox(sandboxId).catch(() => undefined)
+      throw error
+    })
+
+    return {
+      id: runtime.id,
+      provider: args.provider,
+      label: args.label,
+      status: runtime.status,
+      kind: 'external',
+      connection: 'password',
+      createdAt: runtime.createdAt,
+    }
+  }
   const name = hostedRuntimeName(args.teamId, args.provider, id)
   const runtime = await registerTeamRuntime({
     id,
