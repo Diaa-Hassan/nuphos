@@ -5,10 +5,12 @@
 
 import { config } from '@/config'
 import { AppError } from '@/lib/errors'
+import { logError } from '@/lib/observability'
 
 const API = 'https://boat.dev/api/v1'
 const POLL_MS = 2_000
 const POLL_ATTEMPTS = 30
+const CALL_TIMEOUT_MS = 15_000
 
 type Sandbox = { id: string; state: string; subdomain: string | null; error: string | null }
 
@@ -25,24 +27,21 @@ const defaults: BoatDeps = {
 
 export const boatApiKey = () => config.claudeCodeRuntimeProvisioner.boatApiKey
 
-async function call(
-  deps: BoatDeps,
-  method: string,
-  path: string,
-  headers: Record<string, string> = {},
-  body?: unknown,
-) {
+type CallOptions = { headers?: Record<string, string>; body?: unknown; missingOk?: boolean }
+
+async function call(deps: BoatDeps, method: string, path: string, options: CallOptions = {}) {
   const response = await deps.fetch(`${API}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${boatApiKey() ?? ''}`,
       'Content-Type': 'application/json',
-      ...headers,
+      ...options.headers,
     },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+    ...(options.body === undefined ? {} : { body: JSON.stringify(options.body) }),
+    signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   })
 
-  if (!response.ok && response.status !== 404)
+  if (!response.ok && !(options.missingOk && response.status === 404))
     throw new AppError(
       503,
       'runtime_host_unavailable',
@@ -70,41 +69,47 @@ export async function createBoatRuntime(
   args: { runtimeId: string; image: string; authKey: string },
   deps: BoatDeps = defaults,
 ): Promise<{ sandboxId: string; url: string }> {
-  const created = await call(
-    deps,
-    'POST',
-    '/sandboxes',
-    { 'Idempotency-Key': args.runtimeId },
-    {
+  const created = await call(deps, 'POST', '/sandboxes', {
+    headers: { 'Idempotency-Key': args.runtimeId },
+    body: {
       // A runtime is long-lived; nothing resumes one that auto-stopped.
       ttlSeconds: null,
       env: { OPENAB_ACP_AUTH_KEY: args.authKey },
       setupScript: setupScript(args.image),
     },
-  )
-  let { sandbox } = (await created.json()) as { sandbox: Sandbox }
+  })
+  const read = async (response: Response) =>
+    ((await response.json()) as { sandbox: Sandbox }).sandbox
+  let sandbox = await read(created)
+  const sandboxId = sandbox.id
 
-  for (let attempt = 0; !sandbox.subdomain && attempt < POLL_ATTEMPTS; attempt++) {
-    if (sandbox.state === 'error' || sandbox.state === 'cancelled') break
-    await deps.sleep(POLL_MS)
-    const polled = await call(deps, 'GET', `/sandboxes/${sandbox.id}`)
-
-    if (polled.status === 404) break
-    sandbox = ((await polled.json()) as { sandbox: Sandbox }).sandbox
+  // Nothing else references the sandbox yet, so any failure from here removes it.
+  try {
+    for (let attempt = 0; !sandbox.subdomain && attempt < POLL_ATTEMPTS; attempt++) {
+      if (sandbox.state === 'error' || sandbox.state === 'cancelled') break
+      await deps.sleep(POLL_MS)
+      sandbox = await read(await call(deps, 'GET', `/sandboxes/${sandboxId}`))
+    }
+    if (!sandbox.subdomain)
+      throw new AppError(
+        503,
+        'runtime_host_unavailable',
+        'The agent host did not become ready. Try again shortly.',
+      )
+  } catch (error) {
+    await deleteBoatSandbox(sandboxId, deps).catch((cleanupError: unknown) => {
+      logError('openab.boat.orphaned_sandbox', cleanupError, { sandbox_id: sandboxId })
+    })
+    throw error
   }
-  if (!sandbox.subdomain) {
-    await deleteBoatSandbox(sandbox.id, deps).catch(() => undefined)
-    throw new AppError(
-      503,
-      'runtime_host_unavailable',
-      'The agent host did not become ready. Try again shortly.',
-    )
-  }
 
-  return { sandboxId: sandbox.id, url: `wss://${sandbox.subdomain}-8080.on.boat.dev/acp` }
+  return { sandboxId, url: `wss://${sandbox.subdomain}-8080.on.boat.dev/acp` }
 }
 
 /** Irreversible: removes the machine and its snapshots. An unknown sandbox is already gone. */
 export async function deleteBoatSandbox(sandboxId: string, deps: BoatDeps = defaults) {
-  await call(deps, 'DELETE', `/sandboxes/${sandboxId}`, { 'X-Ascii-Confirm-Delete': sandboxId })
+  await call(deps, 'DELETE', `/sandboxes/${sandboxId}`, {
+    headers: { 'X-Ascii-Confirm-Delete': sandboxId },
+    missingOk: true,
+  })
 }

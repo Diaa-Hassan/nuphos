@@ -70,7 +70,9 @@ export async function createManagedRuntimeInstance(args: {
       label: args.label,
       boatSandboxId: sandboxId,
     }).catch(async (error: unknown) => {
-      await deleteBoatSandbox(sandboxId).catch(() => undefined)
+      await deleteBoatSandbox(sandboxId).catch((cleanupError: unknown) => {
+        logError('openab.boat.orphaned_sandbox', cleanupError, { sandbox_id: sandboxId })
+      })
       throw error
     })
 

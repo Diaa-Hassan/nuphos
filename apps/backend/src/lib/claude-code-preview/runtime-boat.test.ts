@@ -88,6 +88,23 @@ test('a sandbox that never gets an address is deleted rather than left running',
   })
 })
 
+test('a poll the host refuses deletes the sandbox instead of orphaning it', async () => {
+  replies = [{ status: 202, body: sandbox(null) }, { status: 500 }, { status: 202 }]
+
+  await expect(createBoatRuntime(args, deps)).rejects.toMatchObject({
+    code: 'runtime_host_unavailable',
+  })
+  expect(calls.map((call) => call.method)).toEqual(['POST', 'GET', 'DELETE'])
+})
+
+test('a create the host answers with 404 is refused, not read as a sandbox', async () => {
+  replies = [{ status: 404 }]
+
+  await expect(createBoatRuntime(args, deps)).rejects.toMatchObject({
+    code: 'runtime_host_unavailable',
+  })
+})
+
 test('deleting an unknown sandbox succeeds; any other refusal is surfaced', async () => {
   replies = [{ status: 404 }, { status: 409 }]
 
