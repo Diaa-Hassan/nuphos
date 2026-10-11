@@ -7,8 +7,9 @@ callers cannot supply a display URL or substitute another session. Re-linking th
 same resource is idempotent. Only owners and managers can change bindings.
 
 Each sidebar session shows compact resource identifiers below its title; both
-lines select the session through one shared hover surface. At most two resource
-identifiers are shown there, without an overflow count. The session titlebar shows
+lines select the session through one shared hover surface. The identifiers stay
+on one line: a Slack or Discord thread comes first and truncates, and anything
+past the sidebar's width is clipped rather than wrapped. The session titlebar shows
 resource tags: the identifier opens the resource in a workspace browser tab, and
 the separate, always-visible unlink button removes only the binding. Provider
 colors, hover feedback, and reduced-motion-aware transitions support both themes.
@@ -20,6 +21,16 @@ On macOS, Cmd+D splits the workspace; Ctrl+D remains available to the terminal.
 
 Linear issues are navigation links in this first version; their state is captured
 when linked. This does not replace the Linear issue's `Nuphos session` attachment.
+
+A session's Slack or Discord thread appears as a tag too. It is not stored on the
+conversation: the thread routing rows (`slack_agent_threads`,
+`discord_agent_threads`) already are the binding, so resource reads derive the
+tag from them. That covers threads started in Slack or Discord, `slack_post`
+notification threads, and Slack pickups. The tag shows the thread's first words: the Slack
+root message while the rolling window still holds it, otherwise the message that
+started the session (which is also what Nuphos names a Discord thread after). Thread tags open in the system's Slack
+or Discord app and have no unlink button, since unlinking would cut the thread off
+from the session.
 
 ## GitHub wakeups
 

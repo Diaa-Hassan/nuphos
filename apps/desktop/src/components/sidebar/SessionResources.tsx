@@ -1,4 +1,6 @@
-import { GitMerge, GitPullRequest, GitPullRequestClosed, Link2, Terminal, X } from 'lucide-react'
+import { faDiscord } from '@fortawesome/free-brands-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { GitMerge, GitPullRequest, GitPullRequestClosed, Terminal, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { agentApi } from '../../api/agent-api'
@@ -6,6 +8,36 @@ import { useSessionTerminalProcesses } from '../../lib/sessionTerminalProcesses'
 import { toast } from '../ui/toast'
 
 import type { SessionResource } from '../../api/session-resource-types'
+import type { ReactNode } from 'react'
+
+const iconClass = 'size-3 shrink-0'
+
+function resourceStyle(resource: SessionResource): { icon: ReactNode; color: string } {
+  if (resource.provider === 'linear')
+    return {
+      icon: <img src="/linear.svg" alt="Linear" className={iconClass} />,
+      color: 'session-resource-linear',
+    }
+  if (resource.provider === 'slack')
+    return {
+      icon: <img src="/slack.svg" alt="Slack" className={iconClass} />,
+      color: 'text-secondary',
+    }
+  if (resource.provider === 'discord')
+    return {
+      icon: <FontAwesomeIcon icon={faDiscord} className={`${iconClass} text-[#5865f2]`} />,
+      color: 'text-secondary',
+    }
+  if (resource.state === 'merged')
+    return { icon: <GitMerge className={iconClass} />, color: 'session-resource-merged' }
+  if (resource.state === 'closed')
+    return {
+      icon: <GitPullRequestClosed className={iconClass} />,
+      color: 'session-resource-closed',
+    }
+
+  return { icon: <GitPullRequest className={iconClass} />, color: 'session-resource-open' }
+}
 
 /** Resource links belong to their session, including sessions that are not open. */
 export function SessionResources({
@@ -61,41 +93,28 @@ export function SessionResources({
 
   if (!resources.length && !processes.length) return null
   const linked = resources.filter((resource) => !removed.includes(resource.id))
-  const visible = titlebar ? linked : linked.slice(0, 2)
 
   return (
     <div
       className={
         titlebar
           ? 't-session-heading titlebar-no-drag flex min-w-0 items-center gap-1 overflow-hidden text-[11px] text-tertiary'
-          : 'flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-2 pb-2 pl-8 text-[11px] text-tertiary'
+          : 'flex min-w-0 items-center gap-2 overflow-hidden px-2 pb-2 pl-8 text-[11px] text-tertiary'
       }
       aria-label="Linked resources"
     >
-      {visible.map((resource) => {
-        let Icon = Link2
-        let color = 'session-resource-linear'
+      {linked.map((resource) => {
+        const thread = resource.provider === 'slack' || resource.provider === 'discord'
+        const { icon, color } = resourceStyle(resource)
+        let label = resource.title.split(/\s+/, 1)[0]
 
-        if (resource.provider === 'github') {
-          Icon = GitPullRequest
-          color = 'session-resource-open'
-          if (resource.state === 'merged') {
-            Icon = GitMerge
-            color = 'session-resource-merged'
-          } else if (resource.state === 'closed') {
-            Icon = GitPullRequestClosed
-            color = 'session-resource-closed'
-          }
-        }
-        const label =
-          resource.provider === 'github'
-            ? `#${String(resource.number)}`
-            : resource.title.split(/\s+/, 1)[0]
+        if (resource.provider === 'github') label = `#${String(resource.number)}`
+        else if (thread) label = resource.title
 
         return (
           <span
             key={resource.id}
-            className={`inline-flex shrink-0 items-center ${titlebar ? 'session-resource-tag rounded border' : ''} ${color}`}
+            className={`inline-flex items-center ${titlebar ? 'session-resource-tag shrink-0 rounded border' : thread ? 'min-w-0' : 'shrink-0'} ${color}`}
           >
             <ResourceLabel
               onPointerDown={(event) => {
@@ -104,7 +123,7 @@ export function SessionResources({
               onClick={(event) => {
                 if (!titlebar) return
                 event.stopPropagation()
-                onOpen?.(resource.url, event.metaKey)
+                onOpen?.(resource.url, thread || event.metaKey)
               }}
               key={resource.id}
               className={
@@ -115,16 +134,10 @@ export function SessionResources({
               title={`${resource.repository ?? ''} ${resource.title} · ${resource.state}`}
               aria-label={`${label} · ${resource.state}`}
             >
-              <span className="inline-flex shrink-0">
-                {resource.provider === 'linear' ? (
-                  <img src="/linear.svg" alt="Linear" className="size-3 shrink-0" />
-                ) : (
-                  <Icon className="size-3 shrink-0" />
-                )}
-              </span>
+              <span className="inline-flex shrink-0">{icon}</span>
               <span className="truncate">{label}</span>
             </ResourceLabel>
-            {titlebar && canManage && (
+            {titlebar && canManage && !thread && (
               <button
                 type="button"
                 aria-label={`Unlink ${label}`}
