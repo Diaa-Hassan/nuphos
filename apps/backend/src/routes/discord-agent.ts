@@ -162,6 +162,15 @@ discordAgentRoutes.get('/members', async (c) => {
   })
 })
 
+// The bot speaks for the agent, so only an agent conversation may make it:
+// a member's own session has no business posting under the bot's name.
+discordAgentRoutes.on(['POST', 'PUT'], '/channels/*', async (c, next) => {
+  if (!c.get('conversationAgent')) {
+    throw new AppError(403, 'forbidden', 'Only an agent conversation may post to Discord')
+  }
+  await next()
+})
+
 discordAgentRoutes.post('/channels/:channelId/messages', async (c) => {
   const teamId = c.get('teamId')
   const { channel } = await resolveDiscordChannel(teamId, c.req.param('channelId'))
