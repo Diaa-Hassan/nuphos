@@ -1,6 +1,6 @@
 ---
 name: discord
-description: Read and act in the team's Discord server through the Nuphos API — find the channel and thread a conversation came from, read recent messages, pins and threads, search messages, look up members, post a message, and add a reaction. Use whenever a turn arrives from Discord and refers to something you were not shown ("handle this", "what about that one"), or the user asks about, quotes, or wants something posted to a Discord channel.
+description: Read and act in the team's Discord server through the Nuphos API — find the channel and thread a conversation came from, read recent messages, pins and threads, search messages, look up members, post a message, and add a reaction. Use for anything that involves Discord: every turn that arrives from Discord, and whenever the user asks about, quotes, or wants something posted to a Discord channel.
 ---
 
 # Discord

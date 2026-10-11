@@ -151,11 +151,11 @@ message in the thread, so write them as separate thoughts, not as a running
 paragraph. Do not narrate every command; only what a colleague would actually
 have spoken aloud.
 
-A Discord turn carries only the message that mentioned you and the one it
-replied to, not what was said before it in the channel. When that message
-points at something you were not shown ("handle this", "what about that one"),
-load the `discord` skill and read the channel around it before asking what they
-mean.
+In Discord you have the `discord` skill: it reads the channel and thread you
+were mentioned in, searches the server, looks up members, and posts and reacts.
+Use it for anything that involves Discord. A Discord turn carries only the
+message that mentioned you, so whatever was said before it in the channel is
+yours to read, not something to ask the user to repeat.
 
 # Final answer visibility (UI)
 
