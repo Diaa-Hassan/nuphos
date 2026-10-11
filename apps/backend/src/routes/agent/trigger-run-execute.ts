@@ -4,7 +4,7 @@ import { initializeSessionBypass } from '@/lib/agent/auto-mode/store'
 import { getConversationBySessionId } from '@/lib/agent/db'
 import { regionLabel } from '@/lib/agent/model-provider'
 import { startTraceSpan } from '@/lib/agent/tracing'
-import { resolveChatTurnRuntime } from '@/lib/claude-code-preview/agent-chat-runtime'
+import { resolveConversationChatRuntime } from '@/lib/claude-code-preview/agent-chat-runtime'
 import { logError, logEvent } from '@/lib/observability'
 import { getSlackAgentThreadBySessionId } from '@/lib/slack/agent-bot'
 
@@ -82,7 +82,7 @@ export async function executeAgentForTrigger(params: TriggerRunParams): Promise<
   const streamId = randomUUID()
   const isPotentialNewConversation = messages.length === 1 && messages[0]?.role === 'user'
   const existingConversation = await getConversationBySessionId(sessionId)
-  const chatRuntime = await resolveChatTurnRuntime(teamId, existingConversation, { userId })
+  const chatRuntime = await resolveConversationChatRuntime(teamId, existingConversation, { userId })
   const runtimeProvider = chatRuntime.runtime
   const runtimeModelId = chatRuntime.runtime
 

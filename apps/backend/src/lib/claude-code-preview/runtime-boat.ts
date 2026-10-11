@@ -128,15 +128,15 @@ export async function stopBoatSandbox(sandboxId: string, deps: BoatDeps = defaul
 
 /**
  * Resumes a stopped sandbox and returns once the runtime answers on its route.
- * A resume that finds the sandbox already running is refused with 409, which
- * is what a second waker should see.
+ * A sandbox that is still running refuses the resume with 409; the answer is
+ * whether this call is the one that resumed it.
  */
 export async function resumeBoatRuntime(
   sandboxId: string,
   runtimeUrl: string,
   deps: BoatDeps = defaults,
-) {
-  await call(deps, 'POST', `/sandboxes/${sandboxId}/resume`, {
+): Promise<boolean> {
+  const resumed = await call(deps, 'POST', `/sandboxes/${sandboxId}/resume`, {
     body: { ttlSeconds: null },
     allow: [409],
   })
@@ -147,7 +147,7 @@ export async function resumeBoatRuntime(
       .fetch(health, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
       .catch(() => null)
 
-    if (answer?.ok) return
+    if (answer?.ok) return resumed.status !== 409
     await deps.sleep(POLL_MS)
   }
   throw new AppError(

@@ -9,6 +9,8 @@ import { hasActiveRuntimeTurn } from './runtime-rollout'
 
 const IDLE_MS = 15 * 60_000
 const SWEEP_MS = 60_000
+// How long after a stop is claimed its call to boat can still be on the way.
+const CLAIM_MS = 2 * 60_000
 
 type Deps = {
   resume: typeof resume
@@ -17,13 +19,25 @@ type Deps = {
 }
 const defaults: Deps = { resume, stop, hasActiveTurn: hasActiveRuntimeTurn }
 
+/** Whether the runtime's sandbox is stopped for being idle, so only a turn can reach it. */
+export async function boatRuntimeAsleep(
+  teamId: string | undefined,
+  runtimeId: string | undefined,
+): Promise<boolean> {
+  if (!teamId || !runtimeId || !boatApiKey()) return false
+
+  return Boolean(
+    await runtimes().findOne({ _id: runtimeId, teamId, boatStoppedAt: { $exists: true } }),
+  )
+}
+
 /** Called as a turn starts: records the use, and resumes a sandbox stopped for being idle. */
 export async function wakeBoatRuntime(
-  teamId: string | undefined,
+  teamId: string,
   runtimeId: string | undefined,
   deps: Deps = defaults,
 ): Promise<void> {
-  if (!teamId || !runtimeId || !boatApiKey()) return
+  if (!runtimeId || !boatApiKey()) return
   const filter = { _id: runtimeId, teamId, boatSandboxId: { $exists: true } }
   // One write that both records the use and reads the stop flag: a sweep either
   // claimed the row before it, and is seen here, or loses its claim to it.
@@ -34,7 +48,12 @@ export async function wakeBoatRuntime(
   )
 
   if (!runtime?.boatSandboxId || !runtime.boatStoppedAt) return
-  await deps.resume(runtime.boatSandboxId, runtime.url)
+  const resumed = await deps.resume(runtime.boatSandboxId, runtime.url)
+
+  // A sandbox that was still running had its stop claimed but not issued yet:
+  // the stop is about to land, so the flag stays for the next turn. Past
+  // `CLAIM_MS` no stop is coming and the flag is a leftover.
+  if (!resumed && Date.now() - runtime.boatStoppedAt.getTime() < CLAIM_MS) return
   await runtimes().updateOne(filter, {
     $set: { boatUsedAt: new Date() },
     $unset: { boatStoppedAt: '' },
@@ -72,9 +91,6 @@ export async function stopIdleBoatRuntimes(deps: Deps = defaults, now = new Date
         await runtimes().updateOne({ _id, teamId }, { $unset: { boatStoppedAt: '' } })
         throw error
       })
-      // A turn that woke the runtime between the claim and the stop cleared the
-      // flag for a sandbox that is now stopping; the next turn must resume it.
-      await runtimes().updateOne({ _id, teamId }, { $set: { boatStoppedAt: now } })
     } catch (error) {
       logError('openab.boat.idle_stop_failed', error, { team_id: teamId, runtime_id: _id })
     }

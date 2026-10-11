@@ -120,7 +120,9 @@ test('deleting an unknown sandbox succeeds; any other refusal is surfaced', asyn
 test('resume keeps the sandbox always-on and waits until the runtime answers', async () => {
   replies = [{ status: 202 }, { status: 502 }, { status: 200 }]
 
-  await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)
+  expect(await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)).toBe(
+    true,
+  )
   expect(calls[0]).toMatchObject({
     method: 'POST',
     path: '/sandboxes/bx_23456789/resume',
@@ -132,10 +134,12 @@ test('resume keeps the sandbox always-on and waits until the runtime answers', a
   ])
 })
 
-test('a sandbox another waker already resumed is waited for, not an error', async () => {
+test('a sandbox that is still running is waited for and reported as not resumed', async () => {
   replies = [{ status: 409 }, { status: 200 }]
 
-  await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)
+  expect(await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)).toBe(
+    false,
+  )
   expect(calls).toHaveLength(2)
 })
 

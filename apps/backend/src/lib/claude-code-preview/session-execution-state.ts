@@ -4,6 +4,7 @@ import { reachableRuntimeEndpoint } from './dev-runtime-forward'
 import { OpenAbAcpClient } from './openab-acp-client'
 import { OpenAbRpcError } from './openab-acp-errors'
 import { materializeRuntimeAttachments, runtimeAttachments } from './runtime-attachments'
+import { boatRuntimeAsleep } from './runtime-boat-idle'
 import { parseSessionExecutionState } from './runtime-execution-snapshot'
 
 import type { SessionExecutionState } from './runtime-execution-snapshot'
@@ -39,6 +40,14 @@ export async function conversationExecutionState(
       state: 'dormant',
       schemaVersion: 2,
       label: 'Ready — your next message starts the agent',
+      actions: { send: true, cancel: false, steer: false, reply: false },
+    }
+  // A sandbox stopped for being idle cannot answer the probe, and only a prompt resumes it.
+  if (await boatRuntimeAsleep(conversation.teamId, conversation.runtimeId))
+    return {
+      state: 'dormant',
+      schemaVersion: 2,
+      label: 'Asleep — your next message wakes the agent',
       actions: { send: true, cancel: false, steer: false, reply: false },
     }
   let client: OpenAbAcpClient | undefined

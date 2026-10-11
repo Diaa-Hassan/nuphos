@@ -4,7 +4,7 @@ import { isAutoModeApprovalEnabled as isAutoModeEnabled } from '@/lib/agent/auto
 import { initializeSessionBypass as initializeAutoModeSessionBypass } from '@/lib/agent/auto-mode/store'
 import { regionLabel } from '@/lib/agent/model-provider'
 import { startTraceSpan } from '@/lib/agent/tracing'
-import { resolveChatTurnRuntime } from '@/lib/claude-code-preview/agent-chat-runtime'
+import { resolveConversationChatRuntime } from '@/lib/claude-code-preview/agent-chat-runtime'
 import { conversationExecutionState } from '@/lib/claude-code-preview/session-execution-state'
 import { AppError } from '@/lib/errors'
 import { logEvent } from '@/lib/observability'
@@ -119,7 +119,7 @@ agent.post('/chat', async (c) => {
     if (attached) return attached
   }
   if (body.resume) return await resumeFromRedisOrThrow(resumeParams)
-  const chatRuntime = await resolveChatTurnRuntime(teamId, conversationForResume, {
+  const chatRuntime = await resolveConversationChatRuntime(teamId, conversationForResume, {
     userId,
     ...(body.agentRuntime ? { runtime: body.agentRuntime } : {}),
     ...(body.runtimeId ? { runtimeId: body.runtimeId } : {}),
