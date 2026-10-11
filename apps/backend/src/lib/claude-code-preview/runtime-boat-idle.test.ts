@@ -103,3 +103,19 @@ test('a turn on a stopped runtime resumes it first; on a running one it only rec
   await wakeBoatRuntime('one', undefined, deps)
   expect(calls).toHaveLength(1)
 })
+
+test('a turn that wakes the runtime while it is being stopped still finds it marked stopped', async () => {
+  const idle = row()
+  const racing = {
+    ...deps,
+    stop: async (sandboxId: string) => {
+      await wakeBoatRuntime('one', 'runtime-1', deps)
+      await deps.stop(sandboxId)
+    },
+  }
+
+  await stopIdleBoatRuntimes(racing, NOW)
+
+  expect(calls).toEqual(['resume bx_23456789 wss://a-b-c-8080.on.boat.dev/acp', 'stop bx_23456789'])
+  expect(idle.boatStoppedAt).toEqual(NOW)
+})

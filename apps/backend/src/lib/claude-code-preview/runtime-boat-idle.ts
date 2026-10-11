@@ -25,12 +25,15 @@ export async function wakeBoatRuntime(
 ): Promise<void> {
   if (!runtimeId || !boatApiKey()) return
   const filter = { _id: runtimeId, teamId, boatSandboxId: { $exists: true } }
-  const runtime = await runtimes().findOne(filter)
+  // One write that both records the use and reads the stop flag: a sweep either
+  // claimed the row before it, and is seen here, or loses its claim to it.
+  const runtime = await runtimes().findOneAndUpdate(
+    filter,
+    { $set: { boatUsedAt: new Date() } },
+    { returnDocument: 'after' },
+  )
 
-  if (!runtime?.boatSandboxId) return
-  // Before the resume, so a sweep that is deciding right now loses its claim.
-  await runtimes().updateOne(filter, { $set: { boatUsedAt: new Date() } })
-  if (!runtime.boatStoppedAt) return
+  if (!runtime?.boatSandboxId || !runtime.boatStoppedAt) return
   await deps.resume(runtime.boatSandboxId, runtime.url)
   await runtimes().updateOne(filter, {
     $set: { boatUsedAt: new Date() },
@@ -69,6 +72,9 @@ export async function stopIdleBoatRuntimes(deps: Deps = defaults, now = new Date
         await runtimes().updateOne({ _id, teamId }, { $unset: { boatStoppedAt: '' } })
         throw error
       })
+      // A turn that woke the runtime between the claim and the stop cleared the
+      // flag for a sandbox that is now stopping; the next turn must resume it.
+      await runtimes().updateOne({ _id, teamId }, { $set: { boatStoppedAt: now } })
     } catch (error) {
       logError('openab.boat.idle_stop_failed', error, { team_id: teamId, runtime_id: _id })
     }

@@ -5,6 +5,7 @@ import { initializeSessionBypass as initializeAutoModeSessionBypass } from '@/li
 import { regionLabel } from '@/lib/agent/model-provider'
 import { startTraceSpan } from '@/lib/agent/tracing'
 import { resolveConversationChatRuntime } from '@/lib/claude-code-preview/agent-chat-runtime'
+import { wakeBoatRuntime } from '@/lib/claude-code-preview/runtime-boat-idle'
 import { conversationExecutionState } from '@/lib/claude-code-preview/session-execution-state'
 import { AppError } from '@/lib/errors'
 import { logEvent } from '@/lib/observability'
@@ -128,6 +129,8 @@ agent.post('/chat', async (c) => {
   const runtimeModelId = chatRuntime.runtime
   let releaseAgentRunClaim: (() => void) | null = null
 
+  // Admission reads the runtime next, and a sandbox stopped for being idle cannot answer.
+  if (!readOnlyResume) await wakeBoatRuntime(teamId, chatRuntime.runtimeId)
   // Runtime admission supersedes backend stream leases. Leases still route
   // replay/cancellation; they do not say whether an OpenAB session can accept work.
   const runtimeSnapshot = conversationForResume?.claudeCodePreview

@@ -11,7 +11,8 @@ const API = 'https://boat.dev/api/v1'
 const POLL_MS = 2_000
 const POLL_ATTEMPTS = 30
 const CALL_TIMEOUT_MS = 15_000
-const WAKE_ATTEMPTS = 45
+const WAKE_ATTEMPTS = 15
+const PROBE_TIMEOUT_MS = 4_000
 
 type Sandbox = { id: string; state: string; subdomain: string | null; error: string | null }
 
@@ -143,7 +144,7 @@ export async function resumeBoatRuntime(
 
   for (let attempt = 0; attempt < WAKE_ATTEMPTS; attempt++) {
     const answer = await deps
-      .fetch(health, { signal: AbortSignal.timeout(CALL_TIMEOUT_MS) })
+      .fetch(health, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
       .catch(() => null)
 
     if (answer?.ok) return
