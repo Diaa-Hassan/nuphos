@@ -38,6 +38,10 @@ export type Item = {
    * row's menu offers neither. Pinning still works: that is the viewer's own.
    */
   readOnlyChat?: boolean
+  /** The row this one nests under when both are in the same section. */
+  parentKey?: string
+  /** This row's activity, shown on its parent while the parent is folded. */
+  foldedStatus?: ReactNode
 }
 
 export type Section = {
