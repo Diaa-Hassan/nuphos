@@ -1,9 +1,9 @@
 import { afterAll, beforeEach, expect, test } from 'bun:test'
 
-import { createBoatRuntime, deleteBoatSandbox } from './runtime-boat'
-
 import { config } from '@/config'
 import { AppError } from '@/lib/errors'
+
+import { createBoatRuntime, deleteBoatSandbox } from './runtime-boat'
 
 const previousKey = config.claudeCodeRuntimeProvisioner.boatApiKey
 

@@ -25,15 +25,21 @@ const defaults: BoatDeps = {
 
 export const boatApiKey = () => config.claudeCodeRuntimeProvisioner.boatApiKey
 
-async function call(deps: BoatDeps, method: string, path: string, init: RequestInit = {}) {
+async function call(
+  deps: BoatDeps,
+  method: string,
+  path: string,
+  headers: Record<string, string> = {},
+  body?: unknown,
+) {
   const response = await deps.fetch(`${API}${path}`, {
-    ...init,
     method,
     headers: {
       Authorization: `Bearer ${boatApiKey() ?? ''}`,
       'Content-Type': 'application/json',
-      ...init.headers,
+      ...headers,
     },
+    ...(body === undefined ? {} : { body: JSON.stringify(body) }),
   })
 
   if (!response.ok && response.status !== 404)
@@ -64,15 +70,18 @@ export async function createBoatRuntime(
   args: { runtimeId: string; image: string; authKey: string },
   deps: BoatDeps = defaults,
 ): Promise<{ sandboxId: string; url: string }> {
-  const created = await call(deps, 'POST', '/sandboxes', {
-    headers: { 'Idempotency-Key': args.runtimeId },
-    body: JSON.stringify({
+  const created = await call(
+    deps,
+    'POST',
+    '/sandboxes',
+    { 'Idempotency-Key': args.runtimeId },
+    {
       // A runtime is long-lived; nothing resumes one that auto-stopped.
       ttlSeconds: null,
       env: { OPENAB_ACP_AUTH_KEY: args.authKey },
       setupScript: setupScript(args.image),
-    }),
-  })
+    },
+  )
   let { sandbox } = (await created.json()) as { sandbox: Sandbox }
 
   for (let attempt = 0; !sandbox.subdomain && attempt < POLL_ATTEMPTS; attempt++) {
@@ -81,7 +90,7 @@ export async function createBoatRuntime(
     const polled = await call(deps, 'GET', `/sandboxes/${sandbox.id}`)
 
     if (polled.status === 404) break
-    ;({ sandbox } = (await polled.json()) as { sandbox: Sandbox })
+    sandbox = ((await polled.json()) as { sandbox: Sandbox }).sandbox
   }
   if (!sandbox.subdomain) {
     await deleteBoatSandbox(sandbox.id, deps).catch(() => undefined)
@@ -97,7 +106,5 @@ export async function createBoatRuntime(
 
 /** Irreversible: removes the machine and its snapshots. An unknown sandbox is already gone. */
 export async function deleteBoatSandbox(sandboxId: string, deps: BoatDeps = defaults) {
-  await call(deps, 'DELETE', `/sandboxes/${sandboxId}`, {
-    headers: { 'X-Ascii-Confirm-Delete': sandboxId },
-  })
+  await call(deps, 'DELETE', `/sandboxes/${sandboxId}`, { 'X-Ascii-Confirm-Delete': sandboxId })
 }

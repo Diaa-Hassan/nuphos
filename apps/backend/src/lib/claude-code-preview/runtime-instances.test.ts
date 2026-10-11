@@ -236,7 +236,7 @@ test('with a boat key, a new agent runs on a sandbox and is deleted along with i
   config.agent.publicBackendUrl = 'https://api.nuphos.example'
   globalThis.fetch = ((url: string, init: RequestInit) => {
     if (!String(url).startsWith('https://boat.dev/')) return realFetch(url, init)
-    requests.push(`${String(init.method)} ${url}`)
+    requests.push(`${init.method ?? ''} ${url}`)
 
     return Promise.resolve(
       Response.json(
