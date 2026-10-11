@@ -3,7 +3,12 @@ import { afterAll, beforeEach, expect, test } from 'bun:test'
 import { config } from '@/config'
 import { AppError } from '@/lib/errors'
 
-import { createBoatRuntime, deleteBoatSandbox } from './runtime-boat'
+import {
+  createBoatRuntime,
+  deleteBoatSandbox,
+  resumeBoatRuntime,
+  stopBoatSandbox,
+} from './runtime-boat'
 
 const previousKey = config.claudeCodeRuntimeProvisioner.boatApiKey
 
@@ -21,7 +26,7 @@ const deps = {
     calls.push({
       method: init.method ?? 'GET',
       path: url.replace('https://boat.dev/api/v1', ''),
-      headers: init.headers as Record<string, string>,
+      headers: (init.headers ?? {}) as Record<string, string>,
       ...(typeof init.body === 'string' ? { body: JSON.parse(init.body) as unknown } : {}),
     })
     const reply = replies.shift() ?? { status: 500 }
@@ -110,4 +115,41 @@ test('deleting an unknown sandbox succeeds; any other refusal is surfaced', asyn
 
   await deleteBoatSandbox('bx_23456789', deps)
   await expect(deleteBoatSandbox('bx_23456789', deps)).rejects.toBeInstanceOf(AppError)
+})
+
+test('resume keeps the sandbox always-on and waits until the runtime answers', async () => {
+  replies = [{ status: 202 }, { status: 502 }, { status: 200 }]
+
+  await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)
+  expect(calls[0]).toMatchObject({
+    method: 'POST',
+    path: '/sandboxes/bx_23456789/resume',
+    body: { ttlSeconds: null },
+  })
+  expect(calls.slice(1).map((call) => call.path)).toEqual([
+    'https://a-b-c-8080.on.boat.dev/health',
+    'https://a-b-c-8080.on.boat.dev/health',
+  ])
+})
+
+test('a sandbox another waker already resumed is waited for, not an error', async () => {
+  replies = [{ status: 409 }, { status: 200 }]
+
+  await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)
+  expect(calls).toHaveLength(2)
+})
+
+test('a runtime that never answers after a resume asks the sender to retry', async () => {
+  replies = [{ status: 202 }]
+
+  await expect(
+    resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps),
+  ).rejects.toMatchObject({ code: 'runtime_waking' })
+})
+
+test('stop posts to the sandbox', async () => {
+  replies = [{ status: 202 }]
+
+  await stopBoatSandbox('bx_23456789', deps)
+  expect(calls).toMatchObject([{ method: 'POST', path: '/sandboxes/bx_23456789/stop' }])
 })

@@ -11,6 +11,7 @@ const API = 'https://boat.dev/api/v1'
 const POLL_MS = 2_000
 const POLL_ATTEMPTS = 30
 const CALL_TIMEOUT_MS = 15_000
+const WAKE_ATTEMPTS = 45
 
 type Sandbox = { id: string; state: string; subdomain: string | null; error: string | null }
 
@@ -27,7 +28,12 @@ const defaults: BoatDeps = {
 
 export const boatApiKey = () => config.claudeCodeRuntimeProvisioner.boatApiKey
 
-type CallOptions = { headers?: Record<string, string>; body?: unknown; missingOk?: boolean }
+type CallOptions = {
+  headers?: Record<string, string>
+  body?: unknown
+  /** Statuses that mean the sandbox is already where the call wants it. */
+  allow?: number[]
+}
 
 async function call(deps: BoatDeps, method: string, path: string, options: CallOptions = {}) {
   const response = await deps.fetch(`${API}${path}`, {
@@ -41,7 +47,7 @@ async function call(deps: BoatDeps, method: string, path: string, options: CallO
     signal: AbortSignal.timeout(CALL_TIMEOUT_MS),
   })
 
-  if (!response.ok && !(options.missingOk && response.status === 404))
+  if (!response.ok && !options.allow?.includes(response.status))
     throw new AppError(
       503,
       'runtime_host_unavailable',
@@ -110,6 +116,42 @@ export async function createBoatRuntime(
 export async function deleteBoatSandbox(sandboxId: string, deps: BoatDeps = defaults) {
   await call(deps, 'DELETE', `/sandboxes/${sandboxId}`, {
     headers: { 'X-Ascii-Confirm-Delete': sandboxId },
-    missingOk: true,
+    allow: [404],
   })
+}
+
+/** Accepted at once; boat snapshots the disk and archives the machine in the background. */
+export async function stopBoatSandbox(sandboxId: string, deps: BoatDeps = defaults) {
+  await call(deps, 'POST', `/sandboxes/${sandboxId}/stop`, { allow: [404] })
+}
+
+/**
+ * Resumes a stopped sandbox and returns once the runtime answers on its route.
+ * A resume that finds the sandbox already running is refused with 409, which
+ * is what a second waker should see.
+ */
+export async function resumeBoatRuntime(
+  sandboxId: string,
+  runtimeUrl: string,
+  deps: BoatDeps = defaults,
+) {
+  await call(deps, 'POST', `/sandboxes/${sandboxId}/resume`, {
+    body: { ttlSeconds: null },
+    allow: [409],
+  })
+  const health = `https://${new URL(runtimeUrl).host}/health`
+
+  for (let attempt = 0; attempt < WAKE_ATTEMPTS; attempt++) {
+    const answer = await deps
+      .fetch(health, { signal: AbortSignal.timeout(CALL_TIMEOUT_MS) })
+      .catch(() => null)
+
+    if (answer?.ok) return
+    await deps.sleep(POLL_MS)
+  }
+  throw new AppError(
+    503,
+    'runtime_waking',
+    'The agent is still waking up. Send the message again in a moment.',
+  )
 }

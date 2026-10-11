@@ -22,6 +22,7 @@ import {
   publishRuntimeHandoffs,
   startRuntimeHandoffAdoption,
 } from '@/lib/claude-code-preview/runtime-handoff'
+import { initBoatIdleStop, shutdownBoatIdleStop } from '@/lib/claude-code-preview/runtime-boat-idle'
 import {
   initClaudeCodeRuntimeProvisioner,
   shutdownClaudeCodeRuntimeProvisioner,
@@ -117,6 +118,7 @@ logEvent('info', 'backend.stuck_turn_probe.ready')
 if (initClaudeCodeRuntimeProvisioner()) {
   logEvent('info', 'backend.claude_code_runtime_provisioner.ready')
 }
+if (initBoatIdleStop()) logEvent('info', 'backend.boat_idle_stop.ready')
 startAgentRunStallSweeper()
 const stopRuntimeHandoffAdoption = startRuntimeHandoffAdoption()
 
@@ -189,6 +191,7 @@ async function shutdown(sig: string) {
   // Stop reconciliation before draining so the old backend cannot overwrite
   // runtime Deployments after the replacement revision takes ownership.
   shutdownClaudeCodeRuntimeProvisioner()
+  shutdownBoatIdleStop()
   shutdownDiscordGateway()
   const workersStopped = quiesceAgentWorkers()
 

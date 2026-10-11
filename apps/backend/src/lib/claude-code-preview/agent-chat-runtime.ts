@@ -10,6 +10,7 @@ import { backgroundWorkPrompt, markBackgroundWorkLost } from './background-work'
 import { lastTextChunkTracker, settledCodexStopReason } from './codex-turn-settle'
 import { openConversationSession } from './open-conversation-session'
 import { materializeRuntimeAttachments } from './runtime-attachments'
+import { wakeBoatRuntime } from './runtime-boat-idle'
 import {
   assertConversationRuntimeAvailable,
   assertRuntimeNotDeleting,
@@ -85,6 +86,7 @@ export async function runClaudeCodePreviewPrompt(args: {
   }
   await assertConversationRuntimeAvailable(args.conversationId)
   await assertRuntimeNotDeleting(args.teamId, args.endpoint.runtimeId, args.endpoint.url)
+  await wakeBoatRuntime(args.teamId, args.endpoint.runtimeId)
   const currentAttachment = await getConversationPreviewAttachment(args.conversationId, args.teamId)
 
   if (currentAttachment && currentAttachment.runtimeUrl !== args.endpoint.url)

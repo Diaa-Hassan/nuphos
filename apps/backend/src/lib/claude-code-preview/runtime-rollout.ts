@@ -53,7 +53,7 @@ function deploymentNeedsRollout(current: KubeResourceState, desired: KubeObject)
   )
 }
 
-async function defaultHasActiveRuntimeTurn(teamId: string, runtimeId: string): Promise<boolean> {
+export async function hasActiveRuntimeTurn(teamId: string, runtimeId: string): Promise<boolean> {
   const record = await runtimes().findOne({ _id: runtimeId, teamId })
   const endpoints = await resolveTeamRuntimeEndpoints(
     teamId,
@@ -110,7 +110,7 @@ export async function runtimeRolloutHold(args: {
 
   if (!current || !deploymentNeedsRollout(current, args.deployment)) return null
   if (args.rolloutBudget && args.rolloutBudget.remaining <= 0) return 'rate_limited'
-  if (await (args.hasActiveRuntimeTurn ?? defaultHasActiveRuntimeTurn)(args.teamId, args.runtimeId))
+  if (await (args.hasActiveRuntimeTurn ?? hasActiveRuntimeTurn)(args.teamId, args.runtimeId))
     return 'active_turn'
   if (args.rolloutBudget) args.rolloutBudget.remaining -= 1
 

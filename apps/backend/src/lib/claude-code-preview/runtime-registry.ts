@@ -43,6 +43,10 @@ export type ClaudeCodeRuntimeDoc = {
   hostedBy?: 'nuphos'
   /** The boat.dev sandbox this runtime runs on, deleted along with the row. */
   boatSandboxId?: string
+  /** When a turn last started on it, or an idle sweep last found one running. */
+  boatUsedAt?: Date
+  /** Set while its sandbox is stopped for being idle; the next turn resumes it. */
+  boatStoppedAt?: Date
   /** A row of the retired provisioner model, which nothing resolves any more. */
   managedBy?: 'provisioner'
   /** Envelope-encrypted ACP transport key. Mongo owns it; the Kubernetes
@@ -146,7 +150,7 @@ export async function registerTeamRuntime(args: {
     ...(args.label?.trim() ? { label: args.label.trim() } : {}),
     ...(args.hostedBy ? { hostedBy: args.hostedBy } : {}),
     ...(args.deploymentImage ? { deploymentImage: args.deploymentImage } : {}),
-    ...(args.boatSandboxId ? { boatSandboxId: args.boatSandboxId } : {}),
+    ...(args.boatSandboxId ? { boatSandboxId: args.boatSandboxId, boatUsedAt: now } : {}),
     ...(args.pairing ? { pairing: args.pairing } : {}),
     status: 'active',
     authKeyEnvelope: sealRuntimeAuthKey(authKey),
