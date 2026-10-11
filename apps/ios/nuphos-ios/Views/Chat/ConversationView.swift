@@ -25,6 +25,7 @@ struct ConversationView: View {
     @State private var updating = false
     @State private var showRename = false
     @State private var renamedTitle = ""
+    @State private var showRuntimes = false
 
     private var rows: [ChatRow] { ChatRow.rows(for: session) }
 
@@ -44,6 +45,9 @@ struct ConversationView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(Theme.chatCanvas)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if !session.resources.isEmpty { ResourceStrip(resources: session.resources) }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             VStack(spacing: 0) {
                 if !session.queued.isEmpty {
@@ -127,6 +131,8 @@ struct ConversationView: View {
                         }
                         if session.canManage {
                             Button("Rename", systemImage: "pencil") { renamedTitle = session.title; showRename = true }
+                            Button("Switch agent", systemImage: "arrow.left.arrow.right") { showRuntimes = true }
+                                .disabled(session.isStreaming)
                             Button {
                                 Task {
                                     updating = true
@@ -162,6 +168,16 @@ struct ConversationView: View {
             Text(archiveError ?? "")
         }
         .sheet(item: $toolDetail) { ToolDetailSheet(part: $0) }
+        .sheet(isPresented: $showRuntimes) {
+            RuntimePickerSheet(session: session) { runtime in
+                Task {
+                    updating = true
+                    defer { updating = false }
+                    do { try await session.move(to: runtime); await store.reload() }
+                    catch { archiveError = error.localizedDescription }
+                }
+            }
+        }
         .sheet(item: $planLink) { target in
             NavigationStack {
                 PlanDetailView(
@@ -209,6 +225,7 @@ struct ConversationView: View {
         .task { await session.pollWhileIdle() }
         // New files land while a turn runs; read them once it settles.
         .task(id: "\(session.isStreaming).\(session.messages.count)") {
+            await session.refreshResources()
             if !session.isStreaming { await session.refreshDownloads() }
         }
         .task {
@@ -551,6 +568,46 @@ struct MemoryRecallPill: View {
                 .padding(.top, 8)
                 .padding(.leading, 4)
             }
+        }
+    }
+}
+
+/// Pull requests and issues linked to the conversation, pinned under its title.
+struct ResourceStrip: View {
+    let resources: [SessionResource]
+    @Environment(\.openURL) private var openURL
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(resources) { resource in
+                    Button { openURL(resource.url) } label: {
+                        HStack(spacing: 5) {
+                            BrandLogo(name: "logo-\(resource.provider)", size: 12)
+                            Text(resource.chip).fontWeight(.medium).foregroundStyle(Theme.heading)
+                            Text(resource.state.capitalized).foregroundStyle(tone(resource))
+                        }
+                        .font(Theme.Text.caption)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .background(Theme.chatSurface, in: Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(resource.title), \(resource.state)")
+                }
+            }
+            .padding(.horizontal, 16)
+        }
+        .padding(.vertical, 6)
+        .background(Theme.chatCanvas)
+    }
+
+    private func tone(_ resource: SessionResource) -> Color {
+        guard resource.provider == "github" else { return Theme.muted }
+        switch resource.state {
+        case "merged": return Theme.brandText
+        case "closed": return .red
+        default: return .green
         }
     }
 }

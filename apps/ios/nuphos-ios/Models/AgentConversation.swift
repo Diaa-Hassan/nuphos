@@ -128,6 +128,26 @@ struct AgentConversation: Codable, Identifiable, Equatable, Hashable, Sendable {
     }
 }
 
+/// A pull request or Linear issue the agent linked to a conversation
+/// (`GET /agent/conversations/:id/resources`).
+struct SessionResource: Decodable, Identifiable, Equatable, Sendable {
+    let id: String
+    /// `github` | `linear`.
+    let provider: String
+    let title: String
+    let url: URL
+    let state: String
+    let repository: String?
+    let number: Int?
+
+    /// What a chip has room for: `#165` for a pull request, or the identifier
+    /// a Linear title starts with.
+    var chip: String {
+        if let number { return "#\(number)" }
+        return title.split(separator: " ").first.map(String.init) ?? title
+    }
+}
+
 struct AgentConversationsPage: Codable, Sendable {
     let conversations: [AgentConversation]
     let nextCursor: String?
