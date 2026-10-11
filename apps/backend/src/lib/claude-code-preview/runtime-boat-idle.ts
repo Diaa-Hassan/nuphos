@@ -19,11 +19,11 @@ const defaults: Deps = { resume, stop, hasActiveTurn: hasActiveRuntimeTurn }
 
 /** Called as a turn starts: records the use, and resumes a sandbox stopped for being idle. */
 export async function wakeBoatRuntime(
-  teamId: string,
+  teamId: string | undefined,
   runtimeId: string | undefined,
   deps: Deps = defaults,
 ): Promise<void> {
-  if (!runtimeId || !boatApiKey()) return
+  if (!teamId || !runtimeId || !boatApiKey()) return
   const filter = { _id: runtimeId, teamId, boatSandboxId: { $exists: true } }
   // One write that both records the use and reads the stop flag: a sweep either
   // claimed the row before it, and is seen here, or loses its claim to it.
