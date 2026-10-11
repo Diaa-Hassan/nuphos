@@ -41,7 +41,14 @@ export async function discordApi<T>(path: string, init: RequestInit = {}): Promi
   throw new Error('Discord API retry budget exhausted')
 }
 
-export type DiscordChannel = { id: string; type: number; guild_id?: string; parent_id?: string }
+export type DiscordChannel = {
+  id: string
+  type: number
+  guild_id?: string
+  parent_id?: string
+  name?: string
+  topic?: string | null
+}
 export type DiscordGuild = { id: string; name: string }
 
 export const NUPHOS_DISCORD_COMMAND = {
