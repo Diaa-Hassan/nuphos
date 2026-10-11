@@ -31,7 +31,8 @@ on non-2xx responses. Put request bodies in files.
 ```
 
 - `channels` are the only channels you can reach: the ones an administrator
-  enabled for Nuphos, plus every thread under them. Anything else answers
+  enabled for Nuphos, plus the public threads under them. Anything else,
+  private threads included, answers
   `403 discord_channel_not_enabled`; that is a boundary, not an error to work
   around. An administrator enables a channel with `/nuphos enable` there.
 - `thread` is the Discord thread this conversation lives in, or `null` when the

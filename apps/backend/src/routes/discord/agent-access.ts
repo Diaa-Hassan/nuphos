@@ -7,8 +7,9 @@ import type { DiscordChannel } from '@/lib/discord/api'
 // An agent reaches only the channels an administrator enabled for Nuphos and
 // the threads under them.
 const SNOWFLAKE = /^\d{5,20}$/u
-const isThread = (channel: DiscordChannel) =>
-  channel.type === 10 || channel.type === 11 || channel.type === 12
+// Announcement and public threads. A private thread (12) is invite-only in
+// Discord, so enabling its parent channel does not open it to the team.
+const isOpenThread = (channel: DiscordChannel) => channel.type === 10 || channel.type === 11
 
 export type RawMessage = {
   id: string
@@ -126,7 +127,7 @@ export async function resolveDiscordChannel(
     throw new AppError(409, 'discord_not_installed', 'Discord is not installed for this team')
   }
   const channel = await dependencies.getChannel(channelId).catch(() => null)
-  const parentId = channel && isThread(channel) ? channel.parent_id : channel?.id
+  const parentId = channel && isOpenThread(channel) ? channel.parent_id : channel?.id
 
   if (
     !channel ||
@@ -160,4 +161,21 @@ export function limitOf(value: string | undefined, max: number): number {
   }
 
   return limit
+}
+
+/** Search hits the team may see: enabled channels and the open threads under them. */
+export function reachableDiscordMessages(
+  found: { messages: RawMessage[][]; threads?: DiscordChannel[] },
+  enabled: string[],
+): RawMessage[] {
+  const reachable = new Set([
+    ...enabled,
+    ...(found.threads ?? [])
+      .filter(
+        (thread) => isOpenThread(thread) && thread.parent_id && enabled.includes(thread.parent_id),
+      )
+      .map((thread) => thread.id),
+  ])
+
+  return found.messages.flat().filter((message) => reachable.has(message.channel_id))
 }

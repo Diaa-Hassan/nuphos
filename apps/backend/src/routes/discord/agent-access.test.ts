@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test'
 
-import { discordMessageView, resolveDiscordChannel } from './agent-access'
+import { discordMessageView, reachableDiscordMessages, resolveDiscordChannel } from './agent-access'
 
 import type { DiscordChannelScopeDependencies } from './agent-access'
 
@@ -66,6 +66,47 @@ describe('Discord channel scope', () => {
         ),
       ),
     ).toEqual(denied)
+  })
+
+  test('refuses a private thread under an enabled channel', async () => {
+    expect(
+      await rejection(
+        resolveDiscordChannel(
+          'team-1',
+          THREAD,
+          dependencies({
+            getChannel: async (id) => ({ id, type: 12, guild_id: GUILD, parent_id: CHANNEL }),
+          }),
+        ),
+      ),
+    ).toEqual({ status: 403, code: 'discord_channel_not_enabled' })
+  })
+
+  test('keeps search hits from enabled channels and their open threads only', () => {
+    const message = (id: string, channelId: string) => ({
+      id,
+      channel_id: channelId,
+      timestamp: '2026-01-01T00:00:00.000Z',
+    })
+    const hits = reachableDiscordMessages(
+      {
+        messages: [
+          [message('1', CHANNEL)],
+          [message('2', THREAD)],
+          [message('3', '300000000000000002')],
+          [message('4', '300000000000000003')],
+          [message('5', '200000000000000002')],
+        ],
+        threads: [
+          { id: THREAD, type: 11, parent_id: CHANNEL },
+          { id: '300000000000000002', type: 12, parent_id: CHANNEL },
+          { id: '300000000000000003', type: 11, parent_id: '200000000000000002' },
+        ],
+      },
+      [CHANNEL],
+    )
+
+    expect(hits.map((hit) => hit.id)).toEqual(['1', '2'])
   })
 
   test('refuses before calling Discord when the id is not a snowflake or nothing is installed', async () => {

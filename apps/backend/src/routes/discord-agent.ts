@@ -10,6 +10,7 @@ import {
   discordMessageView,
   enabledChannelIds,
   limitOf,
+  reachableDiscordMessages,
   requireInstallation,
   resolveDiscordChannel,
   snowflake,
@@ -30,7 +31,7 @@ export const discordAgentRoutes = new Hono<{
 discordAgentRoutes.get('/', async (c) => {
   const teamId = c.get('teamId')
   const installation = await requireInstallation(teamId)
-  const sessionId = c.get('conversationAgent')?.sessionId ?? c.req.query('sessionId')
+  const sessionId = c.get('conversationAgent')?.sessionId
   const [enabled, guildChannels, thread] = await Promise.all([
     enabledChannelIds(teamId, installation.guildId),
     discord<DiscordChannel[]>(`/guilds/${installation.guildId}/channels`),
@@ -122,25 +123,16 @@ discordAgentRoutes.get('/search', async (c) => {
   const found = await discord<{
     messages?: RawMessage[][]
     threads?: DiscordChannel[]
-    total_results?: number
     retry_after?: number
   }>(`/guilds/${scope.guildId}/messages/search?${query.toString()}`)
 
   // Discord answers 202 without results while it indexes the server.
   if (!found.messages) return c.json({ indexing: true, retryAfter: found.retry_after ?? 0 })
-  const reachable = new Set([
-    ...enabled,
-    ...(found.threads ?? [])
-      .filter((thread) => thread.parent_id && enabled.includes(thread.parent_id))
-      .map((thread) => thread.id),
-  ])
 
   return c.json({
-    total: found.total_results,
-    messages: found.messages
-      .flat()
-      .filter((message) => reachable.has(message.channel_id))
-      .map(discordMessageView),
+    messages: reachableDiscordMessages({ ...found, messages: found.messages }, enabled).map(
+      discordMessageView,
+    ),
   })
 })
 
