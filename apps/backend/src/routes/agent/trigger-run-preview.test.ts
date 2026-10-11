@@ -38,7 +38,7 @@ useAgentTranscript({
   persistAcceptedConversationTurn: () => Promise.resolve({ isNew: true }),
 })
 useClaudeCodePreviewRuntime({
-  resolveConversationChatRuntime: () =>
+  resolveChatTurnRuntime: () =>
     Promise.resolve({ runtime: 'claude-code', endpoint: ENDPOINT }),
 })
 usePosthog({

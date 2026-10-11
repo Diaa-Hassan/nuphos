@@ -4,6 +4,7 @@ import { AppError } from '@/lib/errors'
 import { getTeamAgentRuntime } from '@/lib/identity'
 
 import { resolveLocalRuntimeEndpoint } from './local-runtime-catalog'
+import { wakeBoatRuntime } from './runtime-boat-idle'
 import { developmentRuntimeEndpoint, requireRuntimeInstance } from './runtime-catalog'
 import { runtimeLabel as providerLabel } from './runtime-provider'
 import { listTeamRuntimes, resolveTeamRuntimeEndpoints } from './runtime-registry'
@@ -147,4 +148,18 @@ export async function resolveConversationChatRuntime(
   }
 
   return { runtime, endpoint, runtimeId, runtimeLabel }
+}
+
+/**
+ * The runtime a turn is about to run on. Admission reads that runtime next, and
+ * a sandbox stopped for being idle cannot answer, so it is resumed here first.
+ */
+export async function resolveChatTurnRuntime(
+  ...args: Parameters<typeof resolveConversationChatRuntime>
+): Promise<ConversationChatRuntime> {
+  const chatRuntime = await resolveConversationChatRuntime(...args)
+
+  await wakeBoatRuntime(args[0], chatRuntime.runtimeId)
+
+  return chatRuntime
 }

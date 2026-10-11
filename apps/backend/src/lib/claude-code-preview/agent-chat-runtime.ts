@@ -10,7 +10,6 @@ import { backgroundWorkPrompt, markBackgroundWorkLost } from './background-work'
 import { lastTextChunkTracker, settledCodexStopReason } from './codex-turn-settle'
 import { openConversationSession } from './open-conversation-session'
 import { materializeRuntimeAttachments } from './runtime-attachments'
-import { wakeBoatRuntime } from './runtime-boat-idle'
 import {
   assertConversationRuntimeAvailable,
   assertRuntimeNotDeleting,
@@ -42,7 +41,7 @@ export type {
   ClaudeCodeAutonomousPermission,
   ClaudeCodeAutonomousUpdate,
 } from './autonomous-session-observer'
-export { resolveConversationChatRuntime } from './conversation-chat-route'
+export { resolveChatTurnRuntime, resolveConversationChatRuntime } from './conversation-chat-route'
 export type { ConversationChatRuntime } from './conversation-chat-route'
 
 // A handoff lets go of the stream only; the runtime keeps running the turn.
@@ -86,7 +85,6 @@ export async function runClaudeCodePreviewPrompt(args: {
   }
   await assertConversationRuntimeAvailable(args.conversationId)
   await assertRuntimeNotDeleting(args.teamId, args.endpoint.runtimeId, args.endpoint.url)
-  await wakeBoatRuntime(args.teamId, args.endpoint.runtimeId)
   const currentAttachment = await getConversationPreviewAttachment(args.conversationId, args.teamId)
 
   if (currentAttachment && currentAttachment.runtimeUrl !== args.endpoint.url)
