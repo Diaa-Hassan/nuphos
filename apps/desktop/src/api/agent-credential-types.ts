@@ -29,6 +29,7 @@ export type AgentCredentialSelection = {
   sonarqubeIntegrationIds: string[]
   notionIntegrationIds: string[]
   upstashAccountIds: string[]
+  mixpanelAccountIds: string[]
   cloudflareAccountIds: string[]
   deviceIds: string[]
 }
@@ -181,6 +182,12 @@ export type AgentCredentialOptions = {
     accountId: string
     label: string
     email: string | null
+  }[]
+  mixpanelAccounts: {
+    accountId: string
+    label: string
+    username: string
+    region: 'us' | 'eu' | 'in'
   }[]
   cloudflareAccounts: {
     accountId: string

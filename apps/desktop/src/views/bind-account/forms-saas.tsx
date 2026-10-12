@@ -133,6 +133,71 @@ export function UpstashForm({ st }: { st: BindState }) {
   )
 }
 
+export function MixpanelForm({ st }: { st: BindState }) {
+  return (
+    <>
+      <div className="mb-1 rounded-md border border-zGray-800 bg-zGray-850/50 px-3 py-2.5">
+        <div className="text-[12px] font-medium text-main mb-1.5">
+          How to create a Mixpanel service account
+        </div>
+        <ol className="text-[12px] text-secondary leading-relaxed space-y-1 list-decimal list-inside marker:text-tertiary">
+          <li>
+            In Mixpanel, open <span className="text-main">Organization Settings</span> →{' '}
+            <span className="text-main">Service Accounts</span> and add one.
+          </li>
+          <li>
+            Give it the <span className="text-main">Analyst</span> role on the projects the agent
+            may query.
+          </li>
+          <li>Copy the secret immediately — Mixpanel only shows it once.</li>
+        </ol>
+        <div className="mt-2.5">
+          <ConsoleLink href="https://docs.mixpanel.com/reference/service-accounts">
+            Mixpanel service accounts
+          </ConsoleLink>
+        </div>
+      </div>
+      <Field label="Label" hint="A friendly name to identify this Mixpanel account.">
+        <input
+          type="text"
+          value={st.mixpanelLabel}
+          onChange={(e) => st.setMixpanelLabel(e.target.value)}
+          placeholder="Acme Mixpanel"
+          className="w-full h-9 px-2.5 rounded-md bg-zGray-850 border border-zGray-800 focus:border-zViolet-500 outline-none text-[12.5px] font-mono placeholder:text-tertiary text-main"
+        />
+      </Field>
+      <Field label="Service Account Username">
+        <input
+          type="text"
+          value={st.mixpanelUsername}
+          onChange={(e) => st.setMixpanelUsername(e.target.value)}
+          placeholder="nuphos.a1b2c3.mp-service-account"
+          className="w-full h-9 px-2.5 rounded-md bg-zGray-850 border border-zGray-800 focus:border-zViolet-500 outline-none text-[12.5px] font-mono placeholder:text-tertiary text-main"
+        />
+      </Field>
+      <Field label="Service Account Secret" hint="Encrypted before storage.">
+        <input
+          type="password"
+          value={st.mixpanelSecret}
+          onChange={(e) => st.setMixpanelSecret(e.target.value)}
+          className="w-full h-9 px-2.5 rounded-md bg-zGray-850 border border-zGray-800 focus:border-zViolet-500 outline-none text-[12.5px] font-mono placeholder:text-tertiary text-main"
+        />
+      </Field>
+      <Field label="Data Residency" hint="Where your Mixpanel projects store their data.">
+        <select
+          value={st.mixpanelRegion}
+          onChange={(e) => st.setMixpanelRegion(e.target.value as 'us' | 'eu' | 'in')}
+          className="w-full h-9 px-2.5 rounded-md bg-field border border-zGray-800 focus:border-zViolet-500 outline-none text-[12.5px] text-main"
+        >
+          <option value="us">US (mixpanel.com)</option>
+          <option value="eu">EU (eu.mixpanel.com)</option>
+          <option value="in">India (in.mixpanel.com)</option>
+        </select>
+      </Field>
+    </>
+  )
+}
+
 export function ResendForm({ st }: { st: BindState }) {
   const { resendLabel, setResendLabel, resendApiKey, setResendApiKey } = st
 

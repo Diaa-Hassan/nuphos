@@ -128,6 +128,39 @@ export async function submitUpstash(st: BindState, env: SubmitEnv) {
   }
 }
 
+export async function submitMixpanel(st: BindState, env: SubmitEnv) {
+  const { setSubmitting, reset } = st
+  const label = st.mixpanelLabel.trim()
+  const username = st.mixpanelUsername.trim()
+  const secret = st.mixpanelSecret.trim()
+
+  if (!label) {
+    toast.error('Label is required')
+
+    return
+  }
+  if (!username) {
+    toast.error('The service account username is required')
+
+    return
+  }
+  if (!secret) {
+    toast.error('The service account secret is required')
+
+    return
+  }
+  setSubmitting(true)
+  try {
+    await api.atlasBindMixpanelAccount(env.teamId, label, username, secret, st.mixpanelRegion)
+    reset()
+    env.onBound()
+    env.onClose()
+  } catch (e) {
+    toast.apiError('Could not connect Mixpanel', e)
+    setSubmitting(false)
+  }
+}
+
 export async function submitResend(st: BindState, env: SubmitEnv) {
   const { setError, setSubmitting, reset } = st
   const label = st.resendLabel.trim()

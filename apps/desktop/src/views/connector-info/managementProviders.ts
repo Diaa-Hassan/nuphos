@@ -7,6 +7,7 @@ export const ACCESS_EDITABLE_PROVIDERS: Partial<
   Record<ConnectorInfoProvider, BindingAccessProvider>
 > = {
   upstash: 'upstash',
+  mixpanel: 'mixpanel',
   posthog: 'posthog',
   tencent: 'tencent',
   aliyun: 'aliyun',

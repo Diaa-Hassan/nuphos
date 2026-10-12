@@ -78,6 +78,7 @@ describe('intersectTriggerCredentialAccess', () => {
       sonarqubeIntegrationIds: ['sonar'],
       notionIntegrationIds: ['notion'],
       upstashAccountIds: ['upstash'],
+      mixpanelAccountIds: ['mixpanel'],
       cloudflareAccountIds: ['cloudflare'],
     })
 
@@ -91,6 +92,7 @@ describe('intersectTriggerCredentialAccess', () => {
       sonarqubeIntegrationIds: ['sonar'],
       notionIntegrationIds: ['notion'],
       upstashAccountIds: ['upstash'],
+      mixpanelAccountIds: ['mixpanel'],
       cloudflareAccountIds: ['cloudflare'],
     })
   })

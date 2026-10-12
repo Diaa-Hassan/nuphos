@@ -73,6 +73,7 @@ export const EMPTY_CREDENTIAL_ACCESS: AgentCredentialSelection = {
   sonarqubeIntegrationIds: [],
   notionIntegrationIds: [],
   upstashAccountIds: [],
+  mixpanelAccountIds: [],
   cloudflareAccountIds: [],
   deviceIds: [],
 }
@@ -106,6 +107,7 @@ export const EMPTY_CREDENTIAL_OPTIONS: AgentCredentialOptions = {
   sonarqubeIntegrations: [],
   notionIntegrations: [],
   upstashAccounts: [],
+  mixpanelAccounts: [],
   cloudflareAccounts: [],
   devices: [],
 }

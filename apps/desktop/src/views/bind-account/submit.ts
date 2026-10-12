@@ -19,6 +19,7 @@ import {
   submitResend,
   submitSecureframe,
   submitUpstash,
+  submitMixpanel,
   submitVanta,
   submitZeabur,
 } from './submit-saas'
@@ -52,6 +53,8 @@ export async function submitBind(st: BindState, env: SubmitEnv) {
     await submitNotion(st, env)
   } else if (st.provider === 'upstash') {
     await submitUpstash(st, env)
+  } else if (st.provider === 'mixpanel') {
+    await submitMixpanel(st, env)
   } else if (st.provider === 'resend') {
     await submitResend(st, env)
   } else if (st.provider === 'tencent') {

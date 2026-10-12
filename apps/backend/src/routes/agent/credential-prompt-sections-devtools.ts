@@ -73,6 +73,22 @@ export function appendUpstashAccountLines(
   }
 }
 
+export function appendMixpanelAccountLines(
+  lines: string[],
+  mixpanelAccounts: Options['mixpanelAccounts'],
+  teamId: string,
+) {
+  if (mixpanelAccounts.length === 0) return
+  lines.push('', 'Mixpanel accounts:')
+  for (const account of mixpanelAccounts) {
+    const label = safePromptField(account.label)
+
+    lines.push(
+      `- accountId=${account.accountId}; label=${label}; username=${safePromptField(account.username)}; region=${account.region}; setupCommand="bash skills/mixpanel/scripts/setup-credentials.sh ${teamId} ${account.accountId}"`,
+    )
+  }
+}
+
 export function appendCloudflareAccountLines(
   lines: string[],
   cloudflareAccounts: Options['cloudflareAccounts'],

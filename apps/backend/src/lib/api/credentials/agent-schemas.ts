@@ -28,6 +28,7 @@ export const agentCredentialSelectionSchema = z.object({
   sonarqubeIntegrationIds: z.array(objectIdStringSchema).optional(),
   notionIntegrationIds: z.array(objectIdStringSchema).optional(),
   upstashAccountIds: z.array(objectIdStringSchema).optional(),
+  mixpanelAccountIds: z.array(objectIdStringSchema).optional(),
   cloudflareAccountIds: z.array(z.string().min(1)).optional(),
   deviceIds: z.array(z.string().min(1)).default([]),
 })
@@ -56,6 +57,7 @@ const agentCredentialAccessSchema = z.object({
   sonarqubeIntegrationIds: z.array(objectIdStringSchema).optional(),
   notionIntegrationIds: z.array(objectIdStringSchema).optional(),
   upstashAccountIds: z.array(objectIdStringSchema).optional(),
+  mixpanelAccountIds: z.array(objectIdStringSchema).optional(),
   cloudflareAccountIds: z.array(z.string().min(1)).optional(),
   deviceIds: z.array(z.string().min(1)).optional(),
   updatedAt: z.string().datetime().optional(),

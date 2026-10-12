@@ -50,6 +50,7 @@ const baseTab = (overrides: Partial<Tab> = {}): Tab => ({
     sonarqubeIntegrationIds: [],
     notionIntegrationIds: [],
     upstashAccountIds: [],
+    mixpanelAccountIds: [],
     cloudflareAccountIds: [],
   },
   ...overrides,

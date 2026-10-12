@@ -42,6 +42,7 @@ function credentialOptions(): AgentCredentialOptions {
     sonarqubeIntegrations: [],
     notionIntegrations: [],
     upstashAccounts: [],
+    mixpanelAccounts: [],
     posthogIntegrations: [],
     cloudflareAccounts: [],
   }

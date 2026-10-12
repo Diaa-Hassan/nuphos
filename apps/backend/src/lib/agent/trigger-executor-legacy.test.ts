@@ -43,6 +43,7 @@ const options = {
   sonarqubeIntegrations: [],
   notionIntegrations: [{ integrationId: 'notion-late', workspaceName: 'Team' }],
   upstashAccounts: [],
+  mixpanelAccounts: [],
   posthogIntegrations: [],
   cloudflareAccounts: [],
   devices: [],

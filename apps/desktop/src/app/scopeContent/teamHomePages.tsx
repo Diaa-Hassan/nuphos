@@ -75,6 +75,7 @@ export function renderTeamHomePages(ctx: ScopeRenderContext): React.ReactNode | 
         notionIntegrations={accounts?.notion ?? []}
         onpremClusters={accounts?.onprem ?? []}
         upstashAccounts={accounts?.upstash ?? []}
+        mixpanelAccounts={accounts?.mixpanel ?? []}
         resendIntegrations={accounts?.resend ?? []}
         tencentAccounts={accounts?.tencent ?? []}
         aliyunAccounts={accounts?.aliyun ?? []}

@@ -32,6 +32,7 @@ import { knowledgeRoutes } from '@/routes/knowledge'
 import { larkInstallationsRoutes } from '@/routes/lark-installations'
 import { linearWorkspacesRoutes } from '@/routes/linear-workspaces'
 import { linodeAccountsRoutes } from '@/routes/linode-accounts'
+import { mixpanelAccountsRoutes } from '@/routes/mixpanel-accounts'
 import { monitoringRoutes } from '@/routes/monitoring'
 import { notionIntegrationsRoutes } from '@/routes/notion-integrations'
 import { onpremClustersRoutes } from '@/routes/onprem-clusters'
@@ -143,6 +144,7 @@ teamScoped.route('/secureframe-integrations', secureframeIntegrationsRoutes)
 teamScoped.route('/sonarqube-integrations', sonarqubeIntegrationsRoutes)
 teamScoped.route('/notion-integrations', notionIntegrationsRoutes)
 teamScoped.route('/upstash-accounts', upstashAccountsRoutes)
+teamScoped.route('/mixpanel-accounts', mixpanelAccountsRoutes)
 teamScoped.route('/resend-integrations', resendIntegrationsRoutes)
 teamScoped.route('/posthog-integrations', posthogIntegrationsRoutes)
 teamScoped.route('/connectors', teamConnectorsRoutes)

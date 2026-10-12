@@ -50,6 +50,7 @@ export function allCredentialAccessFromOptions(
           ),
           notionIntegrationIds: options.notionIntegrations.map((entry) => entry.integrationId),
           upstashAccountIds: options.upstashAccounts.map((entry) => entry.accountId),
+          mixpanelAccountIds: options.mixpanelAccounts.map((entry) => entry.accountId),
           cloudflareAccountIds: options.cloudflareAccounts.map((entry) => entry.accountId),
         }
       : {}),
@@ -106,6 +107,7 @@ export function hasCredentialOptions(options: AgentCredentialOptions): boolean {
       options.sonarqubeIntegrations.length +
       options.notionIntegrations.length +
       options.upstashAccounts.length +
+      options.mixpanelAccounts.length +
       options.cloudflareAccounts.length +
       options.devices.length >
     0
@@ -144,6 +146,7 @@ export function isEmptyCredentialAccess(access: AgentCredentialAccess | undefine
       (access.sonarqubeIntegrationIds?.length ?? 0) +
       (access.notionIntegrationIds?.length ?? 0) +
       (access.upstashAccountIds?.length ?? 0) +
+      (access.mixpanelAccountIds?.length ?? 0) +
       (access.cloudflareAccountIds?.length ?? 0) +
       (access.deviceIds?.length ?? 0) ===
     0

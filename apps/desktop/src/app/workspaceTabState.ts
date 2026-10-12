@@ -41,6 +41,7 @@ import type {
   TailscaleOAuthClient,
   TencentAccount,
   UpstashAccount,
+  MixpanelAccount,
   UptimeKumaInstance,
   VantaIntegration,
   VolcengineAccount,
@@ -73,6 +74,7 @@ export type AccountSet = {
   notion: NotionIntegration[]
   onprem: OnpremCluster[]
   upstash: UpstashAccount[]
+  mixpanel: MixpanelAccount[]
   resend: ResendIntegration[]
   tencent: TencentAccount[]
   aliyun: AliyunAccount[]

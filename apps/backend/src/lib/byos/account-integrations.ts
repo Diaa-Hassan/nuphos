@@ -19,6 +19,7 @@ import type {
   SonarqubeIntegrationBinding,
   TailscaleOAuthClientBinding,
   UpstashAccountBinding,
+  MixpanelAccountBinding,
   UptimeKumaInstanceBinding,
   VantaIntegrationBinding,
 } from '@/models'
@@ -216,6 +217,18 @@ export async function findUpstashAccount(
   )
 
   return (doc?.upstashAccounts ?? []).find((b) => b.id.equals(bindingId)) ?? null
+}
+
+export async function findMixpanelAccount(
+  teamId: ObjectId,
+  bindingId: ObjectId,
+): Promise<MixpanelAccountBinding | null> {
+  const doc = await teamByosBindings().findOne(
+    { _id: teamId },
+    { projection: { mixpanelAccounts: 1 } },
+  )
+
+  return (doc?.mixpanelAccounts ?? []).find((b) => b.id.equals(bindingId)) ?? null
 }
 
 export async function findResendIntegration(

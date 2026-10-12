@@ -37,6 +37,7 @@ const CREDENTIAL_ARRAY_KEYS = [
   'sonarqubeIntegrationIds',
   'notionIntegrationIds',
   'upstashAccountIds',
+  'mixpanelAccountIds',
   'cloudflareAccountIds',
 ] as const satisfies readonly CredentialArrayKey[]
 

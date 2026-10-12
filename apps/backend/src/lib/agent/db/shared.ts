@@ -203,14 +203,14 @@ export type AgentCredentialAccess = {
   // Optional for docs written before Resend joined the session-isolation tier.
   resendIntegrationIds?: string[]
   posthogIntegrationIds?: string[]
-  // Optional for docs written before these connectors moved off self-discovery
-  // into the selected-credential tier.
+  // Optional for docs written before these connectors joined the selected-credential tier.
   githubInstallationIds?: string[]
   gitlabBindingIds?: string[]
   grafanaInstanceIds?: string[]
   sonarqubeIntegrationIds?: string[]
   notionIntegrationIds?: string[]
   upstashAccountIds?: string[]
+  mixpanelAccountIds?: string[]
   cloudflareAccountIds?: string[]
   // Optional for docs written before devices joined the credential-selector
   // model — devices are user-owned, never team-shared.

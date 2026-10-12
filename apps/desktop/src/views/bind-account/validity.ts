@@ -84,7 +84,11 @@ export function bindFormValid(st: BindState): boolean {
                                         AZURE_GUID_PATTERN.test(st.azureSubscriptionId.trim()) &&
                                         // Don't offer Bind when the connector is known-unconfigured.
                                         st.azureOidc?.configured !== false
-                                      : st.zeaburToken.trim().length > 0
+                                      : st.provider === 'mixpanel'
+                                        ? st.mixpanelLabel.trim().length > 0 &&
+                                          st.mixpanelUsername.trim().length > 0 &&
+                                          st.mixpanelSecret.trim().length > 0
+                                        : st.zeaburToken.trim().length > 0
 }
 
 export function providerLabelOf(provider: Provider): string {
@@ -124,5 +128,7 @@ export function providerLabelOf(provider: Provider): string {
                                     ? 'Huawei Cloud'
                                     : provider === 'azure'
                                       ? 'Microsoft Azure'
-                                      : 'Zeabur'
+                                      : provider === 'mixpanel'
+                                        ? 'Mixpanel'
+                                        : 'Zeabur'
 }

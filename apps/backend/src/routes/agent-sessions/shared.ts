@@ -184,6 +184,7 @@ function normalizeCredentialAccess(
     sonarqubeIntegrationIds: access?.sonarqubeIntegrationIds,
     notionIntegrationIds: access?.notionIntegrationIds,
     upstashAccountIds: access?.upstashAccountIds,
+    mixpanelAccountIds: access?.mixpanelAccountIds,
     cloudflareAccountIds: access?.cloudflareAccountIds,
     deviceIds: access?.deviceIds ?? [],
   }

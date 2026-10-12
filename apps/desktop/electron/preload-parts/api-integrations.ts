@@ -109,6 +109,21 @@ export const integrationsApi = {
     ipcRenderer.invoke('atlas:getUpstashAccountAccess', teamId, accountId),
   atlasUpdateUpstashAccountAccess: (teamId: string, accountId: string, access: unknown) =>
     ipcRenderer.invoke('atlas:updateUpstashAccountAccess', teamId, accountId, access),
+  atlasListMixpanelAccounts: (teamId: string) =>
+    ipcRenderer.invoke('atlas:listMixpanelAccounts', teamId),
+  atlasBindMixpanelAccount: (
+    teamId: string,
+    label: string,
+    username: string,
+    secret: string,
+    region: string,
+  ) => ipcRenderer.invoke('atlas:bindMixpanelAccount', teamId, label, username, secret, region),
+  atlasUnbindMixpanelAccount: (teamId: string, accountId: string) =>
+    ipcRenderer.invoke('atlas:unbindMixpanelAccount', teamId, accountId),
+  atlasGetMixpanelAccountAccess: (teamId: string, accountId: string) =>
+    ipcRenderer.invoke('atlas:getMixpanelAccountAccess', teamId, accountId),
+  atlasUpdateMixpanelAccountAccess: (teamId: string, accountId: string, access: unknown) =>
+    ipcRenderer.invoke('atlas:updateMixpanelAccountAccess', teamId, accountId, access),
   atlasGetTencentAccountAccess: (teamId: string, accountId: string) =>
     ipcRenderer.invoke('atlas:getTencentAccountAccess', teamId, accountId),
   atlasUpdateTencentAccountAccess: (teamId: string, accountId: string, access: unknown) =>

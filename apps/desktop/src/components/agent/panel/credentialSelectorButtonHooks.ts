@@ -34,6 +34,7 @@ import {
   buildNotionCredentialSections,
   buildSonarqubeCredentialSections,
   buildUpstashCredentialSections,
+  buildMixpanelCredentialSections,
 } from './credentialSectionsC'
 
 import type { CredentialSelectorControl } from './credentialSections'
@@ -151,6 +152,10 @@ export function useCredentialSections(options: CredentialSelectorControl['option
     () => buildUpstashCredentialSections(options.upstashAccounts),
     [options.upstashAccounts],
   )
+  const mixpanelSections = useMemo(
+    () => buildMixpanelCredentialSections(options.mixpanelAccounts),
+    [options.mixpanelAccounts],
+  )
   const cloudflareSections = useMemo(
     () => buildCloudflareCredentialSections(options.cloudflareAccounts),
     [options.cloudflareAccounts],
@@ -185,6 +190,7 @@ export function useCredentialSections(options: CredentialSelectorControl['option
     sonarqubeSections,
     notionSections,
     upstashSections,
+    mixpanelSections,
     cloudflareSections,
   }
 }

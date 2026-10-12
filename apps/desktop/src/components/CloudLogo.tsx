@@ -28,6 +28,7 @@ type Props = {
     | 'sonarqube'
     | 'notion'
     | 'upstash'
+    | 'mixpanel'
     | 'resend'
     | 'tencent'
     | 'aliyun'
@@ -74,6 +75,7 @@ const SRC = {
   // swap to black in light theme (same split as GitHub/Tailscale below).
   notion: '/notion-dark.svg',
   upstash: 'https://cdn.simpleicons.org/upstash/00E9A3',
+  mixpanel: 'https://cdn.simpleicons.org/mixpanel/7856FF',
   // Resend's mark is monochrome; no local asset, keep the CDN source.
   resend: 'https://cdn.simpleicons.org/resend/FFFFFF',
   tencent: '/tencent.svg',

@@ -115,6 +115,25 @@ export function buildUpstashCredentialSections(
   ]
 }
 
+export function buildMixpanelCredentialSections(
+  accounts: AgentCredentialOptions['mixpanelAccounts'],
+): CredentialSection[] {
+  if (accounts.length === 0) return []
+
+  return [
+    {
+      id: 'mixpanel',
+      provider: 'mixpanel' as const,
+      title: 'Mixpanel',
+      items: accounts.map((account) => ({
+        id: account.accountId,
+        label: account.label,
+        sublabel: account.username,
+      })),
+    },
+  ]
+}
+
 export function buildCloudflareCredentialSections(
   accounts: AgentCredentialOptions['cloudflareAccounts'],
 ): CredentialSection[] {

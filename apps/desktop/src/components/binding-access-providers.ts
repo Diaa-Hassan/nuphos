@@ -7,6 +7,7 @@ export type BindingAccessProvider =
   | 'gcp'
   | 'azure'
   | 'upstash'
+  | 'mixpanel'
   | 'posthog'
   | 'tencent'
   | 'aliyun'
@@ -61,6 +62,12 @@ export const PROVIDERS: Record<BindingAccessProvider, ProviderConfig> = {
     adminBypass: true,
     load: (teamId, id) => api.atlasGetUpstashAccountAccess(teamId, id),
     save: (teamId, id, input) => api.atlasUpdateUpstashAccountAccess(teamId, id, input),
+  },
+  mixpanel: {
+    resourceLabel: 'Mixpanel account',
+    adminBypass: true,
+    load: (teamId, id) => api.atlasGetMixpanelAccountAccess(teamId, id),
+    save: (teamId, id, input) => api.atlasUpdateMixpanelAccountAccess(teamId, id, input),
   },
   posthog: {
     resourceLabel: 'PostHog integration',

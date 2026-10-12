@@ -42,6 +42,7 @@ export type CredentialSection = {
     | 'sonarqube'
     | 'notion'
     | 'upstash'
+    | 'mixpanel'
     | 'cloudflare'
     | 'device'
   title: string

@@ -227,6 +227,20 @@ export type UpstashAccountBinding = {
   access?: BindingAccess
 }
 
+export type MixpanelAccountBinding = {
+  id: ObjectId
+  label: string
+  // Mixpanel service account: HTTP Basic with the username and its secret. The
+  // username is the non-secret half, so it stays plaintext; the secret is
+  // encrypted at rest. `region` is the project's data residency, which picks
+  // the API host.
+  username: string
+  encryptedSecret: EncryptedEnvelope
+  region: 'us' | 'eu' | 'in'
+  createdAt: Date
+  access?: BindingAccess
+}
+
 /**
  * Microsoft Azure binding via OIDC workload identity federation (like
  * AWS/Tencent/Aliyun/Volcengine): the customer creates an Entra ID app

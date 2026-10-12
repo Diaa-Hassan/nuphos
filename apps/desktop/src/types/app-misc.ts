@@ -31,6 +31,7 @@ import type {
   SonarqubeIntegration,
   TencentAccount,
   UpstashAccount,
+  MixpanelAccount,
   VantaIntegration,
   VolcengineAccount,
 } from './provider-accounts.ts'
@@ -114,6 +115,7 @@ export type TeamConnectorsBundle = {
   notion: NotionIntegration[]
   onprem: OnpremCluster[]
   upstash: UpstashAccount[]
+  mixpanel: MixpanelAccount[]
   resend: ResendIntegration[]
   betterstack: BetterStackIntegration[]
   uptimeKuma: UptimeKumaInstance[]

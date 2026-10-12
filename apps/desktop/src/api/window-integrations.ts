@@ -38,6 +38,7 @@ import type {
   TencentOidcInfo,
   TencentSite,
   UpstashAccount,
+  MixpanelAccount,
   VantaIntegration,
   VantaTest,
   VolcengineAccount,
@@ -105,6 +106,21 @@ export type WindowIntegrationsApi = {
   atlasUnbindUpstashAccount(teamId: string, accountId: string): Promise<void>
   atlasGetUpstashAccountAccess(teamId: string, accountId: string): Promise<BindingAccess>
   atlasUpdateUpstashAccountAccess(
+    teamId: string,
+    accountId: string,
+    access: Pick<BindingAccess, 'memberAllowList'>,
+  ): Promise<BindingAccess>
+  atlasListMixpanelAccounts(teamId: string): Promise<MixpanelAccount[]>
+  atlasBindMixpanelAccount(
+    teamId: string,
+    label: string,
+    username: string,
+    secret: string,
+    region: MixpanelAccount['region'],
+  ): Promise<MixpanelAccount>
+  atlasUnbindMixpanelAccount(teamId: string, accountId: string): Promise<void>
+  atlasGetMixpanelAccountAccess(teamId: string, accountId: string): Promise<BindingAccess>
+  atlasUpdateMixpanelAccountAccess(
     teamId: string,
     accountId: string,
     access: Pick<BindingAccess, 'memberAllowList'>,

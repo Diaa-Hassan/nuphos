@@ -183,6 +183,9 @@ async function listConnectorIds(
   if (provider === 'posthog') {
     return (await api.atlasListPosthogIntegrations(teamId)).map((item) => item.id)
   }
+  if (provider === 'mixpanel') {
+    return (await api.atlasListMixpanelAccounts(teamId)).map((item) => item.id)
+  }
   switch (provider) {
     case 'aws':
       return unique((await api.atlasListAwsAccounts(teamId)).map((item) => item.accountId))

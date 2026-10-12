@@ -28,6 +28,7 @@ export const CONNECTOR_COLLECTIONS = new Set([
   'sonarqube-integrations',
   'notion-integrations',
   'upstash-accounts',
+  'mixpanel-accounts',
   'slack-installations',
   'lark-installations',
 ])

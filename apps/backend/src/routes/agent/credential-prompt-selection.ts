@@ -31,6 +31,7 @@ export type AgentCredentialAccessSelection = Pick<
   | 'sonarqubeIntegrationIds'
   | 'notionIntegrationIds'
   | 'upstashAccountIds'
+  | 'mixpanelAccountIds'
   | 'cloudflareAccountIds'
   | 'deviceIds'
 >
@@ -186,6 +187,7 @@ export function selectAgentCredentials(
       access.upstashAccountIds,
       (account) => account.accountId,
     ),
+    mixpanelAccounts: pick(options.mixpanelAccounts, access.mixpanelAccountIds, (a) => a.accountId),
     cloudflareAccounts: pick(
       options.cloudflareAccounts,
       access.cloudflareAccountIds,

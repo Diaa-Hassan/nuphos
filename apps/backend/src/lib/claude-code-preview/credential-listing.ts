@@ -183,6 +183,13 @@ export const CREDENTIAL_LISTERS: Record<SelectionKey, Lister> = {
     details: (a, id) => viaTeamApi(a.label, `GET /upstash-accounts/${id}/credentials`),
     unsetMeansAll: true,
   }),
+  mixpanelAccountIds: lister({
+    provider: 'mixpanel',
+    available: (o) => o.mixpanelAccounts,
+    idOf: (a) => a.accountId,
+    details: (a, id) => viaTeamApi(a.label, `GET /mixpanel-accounts/${id}/credentials`),
+    unsetMeansAll: true,
+  }),
   cloudflareAccountIds: lister({
     provider: 'cloudflare',
     available: (o) => o.cloudflareAccounts,

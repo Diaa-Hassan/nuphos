@@ -5,6 +5,7 @@ import type {
   AliyunAccount,
   AzureAccount,
   HuaweiAccount,
+  MixpanelAccount,
   NotionIntegration,
   ResendIntegration,
   SecureframeIntegration,
@@ -22,6 +23,7 @@ export function buildSaasConnectorRows({
   sonarqubeIntegrations,
   notionIntegrations,
   upstashAccounts,
+  mixpanelAccounts,
   resendIntegrations,
   tencentAccounts,
   aliyunAccounts,
@@ -36,6 +38,7 @@ export function buildSaasConnectorRows({
   sonarqubeIntegrations: SonarqubeIntegration[]
   notionIntegrations: NotionIntegration[]
   upstashAccounts: UpstashAccount[]
+  mixpanelAccounts: MixpanelAccount[]
   resendIntegrations: ResendIntegration[]
   tencentAccounts: TencentAccount[]
   aliyunAccounts: AliyunAccount[]
@@ -131,6 +134,20 @@ export function buildSaasConnectorRows({
           name: account.label,
         }),
       onDelete: () => api.atlasUnbindUpstashAccount(teamId, account.id),
+    })),
+    ...mixpanelAccounts.map((account) => ({
+      key: `mixpanel:${account.id}`,
+      provider: 'mixpanel' as const,
+      account: account.label,
+      principal: account.username,
+      status: 'Mixpanel account',
+      onAction: () =>
+        onOpenConnectorInfo({
+          provider: 'mixpanel',
+          connectorId: account.id,
+          name: account.label,
+        }),
+      onDelete: () => api.atlasUnbindMixpanelAccount(teamId, account.id),
     })),
     ...resendIntegrations.map((integration) => ({
       key: `resend:${integration.id}`,

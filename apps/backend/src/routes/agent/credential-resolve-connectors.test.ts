@@ -48,6 +48,7 @@ describe('resolveConnectorCredentialAccess', () => {
       sonarqubeIntegrationIds: undefined,
       notionIntegrationIds: undefined,
       upstashAccountIds: undefined,
+      mixpanelAccountIds: undefined,
       cloudflareAccountIds: undefined,
     })
   })

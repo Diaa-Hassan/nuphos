@@ -1,5 +1,5 @@
 import type { BindingAccess } from '../types/k8s-core.ts'
-import type { AliyunSite, TencentSite } from '../types/provider-accounts.ts'
+import type { AliyunSite, MixpanelAccount, TencentSite } from '../types/provider-accounts.ts'
 
 export const integrationsApi = {
   atlasListLinodeAccounts: (teamId: string) => window.api.atlasListLinodeAccounts(teamId),
@@ -65,6 +65,23 @@ export const integrationsApi = {
     accountId: string,
     access: Pick<BindingAccess, 'memberAllowList'>,
   ) => window.api.atlasUpdateUpstashAccountAccess(teamId, accountId, access),
+  atlasListMixpanelAccounts: (teamId: string) => window.api.atlasListMixpanelAccounts(teamId),
+  atlasBindMixpanelAccount: (
+    teamId: string,
+    label: string,
+    username: string,
+    secret: string,
+    region: MixpanelAccount['region'],
+  ) => window.api.atlasBindMixpanelAccount(teamId, label, username, secret, region),
+  atlasUnbindMixpanelAccount: (teamId: string, accountId: string) =>
+    window.api.atlasUnbindMixpanelAccount(teamId, accountId),
+  atlasGetMixpanelAccountAccess: (teamId: string, accountId: string) =>
+    window.api.atlasGetMixpanelAccountAccess(teamId, accountId),
+  atlasUpdateMixpanelAccountAccess: (
+    teamId: string,
+    accountId: string,
+    access: Pick<BindingAccess, 'memberAllowList'>,
+  ) => window.api.atlasUpdateMixpanelAccountAccess(teamId, accountId, access),
   atlasGetTencentAccountAccess: (teamId: string, accountId: string) =>
     window.api.atlasGetTencentAccountAccess(teamId, accountId),
   atlasUpdateTencentAccountAccess: (

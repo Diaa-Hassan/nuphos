@@ -43,6 +43,7 @@ const CONNECTOR_DEEP_READ_COLLECTIONS = new Set([
 const CONNECTOR_DEEP_READ_PATHS = [
   /^notion-integrations\/[^/]+\/credentials$/u,
   /^upstash-accounts\/[^/]+\/(?:credentials|databases)$/u,
+  /^mixpanel-accounts\/[^/]+\/credentials$/u,
   /^vanta-integrations\/[^/]+\/tests$/u,
   /^secureframe-integrations\/[^/]+\/tests$/u,
 ]

@@ -7,6 +7,7 @@ export type ConnectorSelectionKey =
   | 'sonarqubeIntegrationIds'
   | 'notionIntegrationIds'
   | 'upstashAccountIds'
+  | 'mixpanelAccountIds'
   | 'cloudflareAccountIds'
 
 const SELECTION_SCOPED_CONNECTORS = new Map<string, ConnectorSelectionKey>([
@@ -16,6 +17,7 @@ const SELECTION_SCOPED_CONNECTORS = new Map<string, ConnectorSelectionKey>([
   ['sonarqube-integrations', 'sonarqubeIntegrationIds'],
   ['notion-integrations', 'notionIntegrationIds'],
   ['upstash-accounts', 'upstashAccountIds'],
+  ['mixpanel-accounts', 'mixpanelAccountIds'],
   ['cloudflare-accounts', 'cloudflareAccountIds'],
 ])
 

@@ -12,6 +12,7 @@ import type {
   OnpremClusterBinding,
   TencentAccountBinding,
   UpstashAccountBinding,
+  MixpanelAccountBinding,
   VolcengineAccountBinding,
 } from '@/models/bindings-cloud'
 import type {
@@ -92,6 +93,7 @@ export type TeamByosBindings = {
   // Optional: existing team docs predate this field, so every reader uses
   // `doc.upstashAccounts ?? []`.
   upstashAccounts?: UpstashAccountBinding[]
+  mixpanelAccounts?: MixpanelAccountBinding[]
   // Optional for the same reason; readers use `doc.resendIntegrations ?? []`.
   resendIntegrations?: ResendIntegrationBinding[]
   posthogIntegrations?: PosthogIntegrationBinding[]
@@ -134,6 +136,7 @@ export function emptyTeamByosBindings(): Omit<TeamByosBindings, '_id' | 'updated
     sonarqubeIntegrations: [],
     notionIntegrations: [],
     upstashAccounts: [],
+    mixpanelAccounts: [],
     posthogIntegrations: [],
   }
 }

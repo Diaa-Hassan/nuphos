@@ -44,6 +44,7 @@ export type AddIntegrationKey =
   | 'asana'
   | 'notion'
   | 'upstash'
+  | 'mixpanel'
   | 'resend'
   | 'slack'
   | 'discord'
@@ -84,6 +85,7 @@ const ITEM_META: Record<AddIntegrationKey, { name: string; description: string }
   posthog: { name: 'PostHog', description: 'Product analytics & HogQL queries.' },
   mongodb: { name: 'MongoDB', description: 'Governed queries, schemas & changes.' },
   upstash: { name: 'Upstash', description: 'Serverless Redis & Vector databases.' },
+  mixpanel: { name: 'Mixpanel', description: 'Product analytics: funnels, retention & events.' },
   tailscale: { name: 'Tailscale', description: 'Private WireGuard mesh network.' },
   vanta: { name: 'Vanta', description: 'Continuous compliance monitoring.' },
   secureframe: { name: 'Secureframe', description: 'Security & compliance automation.' },

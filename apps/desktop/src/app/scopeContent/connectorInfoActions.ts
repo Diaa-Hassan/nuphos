@@ -135,6 +135,7 @@ export function connectorInfoActions(
     case 'huawei':
     case 'notion':
     case 'upstash':
+    case 'mixpanel':
     case 'resend':
     case 'jira':
     case 'asana':
@@ -184,6 +185,7 @@ export function connectorInfoDisconnectAction(
       sonarqubeIntegrations: accounts.sonarqube,
       notionIntegrations: accounts.notion,
       upstashAccounts: accounts.upstash,
+      mixpanelAccounts: accounts.mixpanel,
       resendIntegrations: accounts.resend,
       tencentAccounts: accounts.tencent,
       aliyunAccounts: accounts.aliyun,

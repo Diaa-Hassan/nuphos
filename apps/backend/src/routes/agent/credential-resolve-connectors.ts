@@ -9,6 +9,7 @@ export type ConnectorCredentialAccess = Pick<
   | 'sonarqubeIntegrationIds'
   | 'notionIntegrationIds'
   | 'upstashAccountIds'
+  | 'mixpanelAccountIds'
   | 'cloudflareAccountIds'
 >
 
@@ -61,6 +62,11 @@ export function resolveConnectorCredentialAccess(
     upstashAccountIds: narrow(
       selection.upstashAccountIds,
       options.upstashAccounts,
+      (account) => account.accountId,
+    ),
+    mixpanelAccountIds: narrow(
+      selection.mixpanelAccountIds,
+      options.mixpanelAccounts,
       (account) => account.accountId,
     ),
     cloudflareAccountIds: narrow(

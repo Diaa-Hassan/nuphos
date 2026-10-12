@@ -4,7 +4,7 @@ import { AzureBindWizard } from './azure'
 import { CloudflareConnect } from './cloudflare'
 import { SecureframeForm, TailscaleForm, VantaForm } from './forms-access'
 import { BetterStackForm, HetznerForm, LinodeForm, UptimeKumaForm } from './forms-hosting'
-import { NotionForm, ResendForm, UpstashForm, ZeaburForm } from './forms-saas'
+import { MixpanelForm, NotionForm, ResendForm, UpstashForm, ZeaburForm } from './forms-saas'
 import { GcpBindWizard } from './gcp'
 import { HuaweiBindWizard } from './huawei'
 import { TencentBindWizard } from './tencent'
@@ -67,6 +67,8 @@ export function BindDialogBody({
         <NotionForm st={st} />
       ) : provider === 'upstash' ? (
         <UpstashForm st={st} />
+      ) : provider === 'mixpanel' ? (
+        <MixpanelForm st={st} />
       ) : provider === 'resend' ? (
         <ResendForm st={st} />
       ) : provider === 'tencent' ? (

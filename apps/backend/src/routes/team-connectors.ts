@@ -25,6 +25,7 @@ import { huaweiAccountsView } from '@/routes/huawei-accounts'
 import { publicView as jiraSiteView } from '@/routes/jira-sites'
 import { publicView as linearWorkspaceView } from '@/routes/linear-workspaces'
 import { publicView as linodeAccountView } from '@/routes/linode-accounts'
+import { publicView as mixpanelAccountView } from '@/routes/mixpanel-accounts'
 import { publicView as notionIntegrationView } from '@/routes/notion-integrations'
 import { publicView as onpremClusterView } from '@/routes/onprem-clusters/shared'
 import { posthogPublicView } from '@/routes/posthog-integrations'
@@ -116,6 +117,7 @@ teamConnectorsRoutes.get('/', async (c) => {
     notion: connectorViews('notion', doc?.notionIntegrations, notionIntegrationView),
     onprem: connectorViews('onprem', doc?.onpremClusters, onpremClusterView),
     upstash: connectorViews('upstash', doc?.upstashAccounts, upstashAccountView),
+    mixpanel: connectorViews('mixpanel', doc?.mixpanelAccounts, mixpanelAccountView),
     resend: connectorViews('resend', doc?.resendIntegrations, resendIntegrationView),
     posthog: connectorViews('posthog', doc?.posthogIntegrations, posthogPublicView),
     betterstack: connectorViews(

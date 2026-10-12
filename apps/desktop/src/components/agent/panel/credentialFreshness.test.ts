@@ -34,6 +34,7 @@ function selection(partial: Partial<AgentCredentialSelection>): AgentCredentialS
     sonarqubeIntegrationIds: [],
     notionIntegrationIds: [],
     upstashAccountIds: [],
+    mixpanelAccountIds: [],
     cloudflareAccountIds: [],
     deviceIds: [],
     ...partial,

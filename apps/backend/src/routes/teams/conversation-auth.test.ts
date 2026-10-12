@@ -79,6 +79,7 @@ describe('conversation team API capabilities', () => {
       'sonarqube-integrations',
       'notion-integrations',
       'upstash-accounts',
+      'mixpanel-accounts',
       'slack-installations',
       'lark-installations',
     ]
@@ -99,6 +100,7 @@ describe('conversation team API capabilities', () => {
       '/gitlab-bindings/binding-1/projects',
       '/notion-integrations/notion-1/credentials',
       '/upstash-accounts/upstash-1/credentials',
+      '/mixpanel-accounts/mixpanel-1/credentials',
       '/vanta-integrations/vanta-1/tests',
       '/secureframe-integrations/secureframe-1/tests',
       '/sonarqube-integrations/sonar-1/issues',
@@ -144,6 +146,7 @@ describe('conversation team API capabilities', () => {
       '/gitlab-bindings/gitlab-1/token',
       '/notion-integrations/notion-1/credentials',
       '/upstash-accounts/upstash-1/credentials',
+      '/mixpanel-accounts/mixpanel-1/credentials',
     ]) {
       expect(conversationTeamApiRoute('GET', path), path).toBe('canonical')
     }
@@ -204,6 +207,7 @@ describe('conversation connector selection scope', () => {
       ['/sonarqube-integrations/sonar-1/issues', 'sonarqubeIntegrationIds'],
       ['/notion-integrations/notion-1/credentials', 'notionIntegrationIds'],
       ['/upstash-accounts/upstash-1/databases', 'upstashAccountIds'],
+      ['/mixpanel-accounts/mixpanel-1/credentials', 'mixpanelAccountIds'],
       ['/cloudflare-accounts/cf-1/credentials', 'cloudflareAccountIds'],
     ]
 

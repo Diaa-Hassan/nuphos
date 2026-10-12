@@ -29,6 +29,7 @@ import type {
   TailscaleOAuthClient,
   TencentAccount,
   UpstashAccount,
+  MixpanelAccount,
   UptimeKumaInstance,
   VantaIntegration,
   VolcengineAccount,
@@ -49,6 +50,7 @@ export type TeamHomeViewProps = {
   notionIntegrations: NotionIntegration[]
   onpremClusters: OnpremCluster[]
   upstashAccounts: UpstashAccount[]
+  mixpanelAccounts: MixpanelAccount[]
   resendIntegrations: ResendIntegration[]
   tencentAccounts: TencentAccount[]
   aliyunAccounts: AliyunAccount[]

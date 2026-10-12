@@ -134,6 +134,14 @@ export type UpstashAccount = {
   createdAt?: string
 }
 
+export type MixpanelAccount = {
+  id: string
+  label: string
+  username: string
+  region: 'us' | 'eu' | 'in'
+  createdAt?: string
+}
+
 // A bound Resend account. `permission` is probed by the backend at bind time:
 // a sending-access key can only send mail, not read domains/audiences.
 export type ResendIntegration = {

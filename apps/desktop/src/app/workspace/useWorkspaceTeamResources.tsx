@@ -82,6 +82,7 @@ export function useWorkspaceTeamResources(a: Args) {
             notion: bundle.notion ?? [],
             onprem: bundle.onprem ?? [],
             upstash: bundle.upstash ?? [],
+            mixpanel: bundle.mixpanel ?? [],
             resend: bundle.resend ?? [],
             tencent: bundle.tencent ?? [],
             aliyun: bundle.aliyun ?? [],

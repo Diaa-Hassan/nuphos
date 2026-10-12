@@ -34,6 +34,10 @@ export function useTokenProviderState() {
   const [upstashLabel, setUpstashLabel] = useState('')
   const [upstashEmail, setUpstashEmail] = useState('')
   const [upstashApiKey, setUpstashApiKey] = useState('')
+  const [mixpanelLabel, setMixpanelLabel] = useState('')
+  const [mixpanelUsername, setMixpanelUsername] = useState('')
+  const [mixpanelSecret, setMixpanelSecret] = useState('')
+  const [mixpanelRegion, setMixpanelRegion] = useState<'us' | 'eu' | 'in'>('us')
   const [resendLabel, setResendLabel] = useState('')
   const [resendApiKey, setResendApiKey] = useState('')
 
@@ -68,6 +72,10 @@ export function useTokenProviderState() {
     setUpstashLabel('')
     setUpstashEmail('')
     setUpstashApiKey('')
+    setMixpanelLabel('')
+    setMixpanelUsername('')
+    setMixpanelSecret('')
+    setMixpanelRegion('us')
     setResendLabel('')
     setResendApiKey('')
   }
@@ -135,6 +143,14 @@ export function useTokenProviderState() {
     setUpstashEmail,
     upstashApiKey,
     setUpstashApiKey,
+    mixpanelLabel,
+    setMixpanelLabel,
+    mixpanelUsername,
+    setMixpanelUsername,
+    mixpanelSecret,
+    setMixpanelSecret,
+    mixpanelRegion,
+    setMixpanelRegion,
     resendLabel,
     setResendLabel,
     resendApiKey,

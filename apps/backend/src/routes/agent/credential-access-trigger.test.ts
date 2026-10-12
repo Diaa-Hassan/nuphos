@@ -42,6 +42,7 @@ const options: AgentCredentialOptions = {
   sonarqubeIntegrations: [],
   notionIntegrations: [],
   upstashAccounts: [],
+  mixpanelAccounts: [],
   posthogIntegrations: [],
   cloudflareAccounts: [],
 }

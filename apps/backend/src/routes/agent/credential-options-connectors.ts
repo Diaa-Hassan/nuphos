@@ -10,6 +10,7 @@ type ConnectorKeys =
   | 'sonarqubeIntegrations'
   | 'notionIntegrations'
   | 'upstashAccounts'
+  | 'mixpanelAccounts'
   | 'posthogIntegrations'
   | 'cloudflareAccounts'
 
@@ -23,6 +24,7 @@ export type ConnectorCredentialOptions = Pick<
   | 'sonarqubeIntegrations'
   | 'notionIntegrations'
   | 'upstashAccounts'
+  | 'mixpanelAccounts'
   | 'posthogIntegrations'
   | 'cloudflareAccounts'
 >
@@ -34,6 +36,7 @@ export const emptyConnectorCredentialOptions = (): ConnectorCredentialOptions =>
   sonarqubeIntegrations: [],
   notionIntegrations: [],
   upstashAccounts: [],
+  mixpanelAccounts: [],
   posthogIntegrations: [],
   cloudflareAccounts: [],
 })
@@ -45,6 +48,7 @@ export const connectorCredentialOptionsProjection = {
   sonarqubeIntegrations: 1,
   notionIntegrations: 1,
   upstashAccounts: 1,
+  mixpanelAccounts: 1,
   posthogIntegrations: 1,
   cloudflareAccounts: 1,
 } as const
@@ -97,6 +101,14 @@ export function connectorCredentialOptions(
       label: binding.label,
       email: binding.email,
     }))
+  const mixpanelAccounts = (doc?.mixpanelAccounts ?? [])
+    .filter((binding) => canUseAllowList(binding.access?.memberAllowList, userId))
+    .map((binding) => ({
+      accountId: binding.id.toHexString(),
+      label: binding.label,
+      username: binding.username,
+      region: binding.region,
+    }))
   const posthogIntegrations = (doc?.posthogIntegrations ?? [])
     .filter((binding) => canUseAllowList(binding.access?.memberAllowList, userId))
     .map((binding) => ({
@@ -120,6 +132,7 @@ export function connectorCredentialOptions(
     sonarqubeIntegrations,
     notionIntegrations,
     upstashAccounts,
+    mixpanelAccounts,
     posthogIntegrations,
     cloudflareAccounts,
   }

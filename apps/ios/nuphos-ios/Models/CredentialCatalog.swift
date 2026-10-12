@@ -67,6 +67,7 @@ struct CredentialCatalog: Equatable, Sendable {
         .init(optionsKey: "sonarqubeIntegrations", selectionKey: "sonarqubeIntegrationIds", title: "SonarQube", logo: "logo-sonarqube", idKey: "integrationId", labelKeys: ["label"], detailKeys: ["baseUrl"]),
         .init(optionsKey: "notionIntegrations", selectionKey: "notionIntegrationIds", title: "Notion", logo: "logo-notion", idKey: "integrationId", labelKeys: ["label"], detailKeys: ["workspaceName"]),
         .init(optionsKey: "upstashAccounts", selectionKey: "upstashAccountIds", title: "Upstash", logo: "logo-upstash", idKey: "accountId", labelKeys: ["label"], detailKeys: ["email"]),
+        .init(optionsKey: "mixpanelAccounts", selectionKey: "mixpanelAccountIds", title: "Mixpanel", logo: "logo-mixpanel", idKey: "accountId", labelKeys: ["label"], detailKeys: ["username"]),
         .init(optionsKey: "cloudflareAccounts", selectionKey: "cloudflareAccountIds", title: "Cloudflare", logo: "logo-cloudflare", idKey: "accountId", labelKeys: ["accountName"], detailKeys: ["accountId"]),
     ]
 

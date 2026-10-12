@@ -15,6 +15,7 @@ export type BindProvider =
   | 'secureframe'
   | 'notion'
   | 'upstash'
+  | 'mixpanel'
   | 'resend'
   | 'tencent'
   | 'aliyun'

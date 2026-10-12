@@ -78,6 +78,7 @@ function oneOfEach(): AgentCredentialOptions {
     sonarqubeIntegrations: [{ integrationId: ID, label, baseUrl: 'https://s' }],
     notionIntegrations: [{ integrationId: ID, label, workspaceName: null }],
     upstashAccounts: [{ accountId: ID, label, email: null }],
+    mixpanelAccounts: [{ accountId: ID, label, username: 'sa', region: 'us' }],
     posthogIntegrations: [
       {
         integrationId: ID,
@@ -203,7 +204,13 @@ describe('usage notes', () => {
         grafanaInstanceIds: [ID],
         sonarqubeIntegrationIds: [ID],
       },
-      { ...oneOfEach(), cloudflareAccounts: [], notionIntegrations: [], upstashAccounts: [] },
+      {
+        ...oneOfEach(),
+        cloudflareAccounts: [],
+        notionIntegrations: [],
+        upstashAccounts: [],
+        mixpanelAccounts: [],
+      },
     )
 
     expect(entries.map((entry) => [entry.provider, entry.usage])).toEqual([

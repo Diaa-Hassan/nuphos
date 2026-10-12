@@ -44,6 +44,26 @@ export const devToolLoaders: ConnectorInfoLoaders = {
       externalLabel: 'Open Upstash Console',
     }
   },
+  mixpanel: async (teamId, connectorId) => {
+    const item = (await api.atlasListMixpanelAccounts(teamId)).find((row) => row.id === connectorId)
+
+    if (!item) return null
+
+    return {
+      name: item.label,
+      fields: [
+        { label: 'Label', value: item.label },
+        { label: 'Service account', value: item.username, mono: true },
+        { label: 'Data residency', value: item.region.toUpperCase() },
+        ...(item.createdAt
+          ? [{ label: 'Connected', value: new Date(item.createdAt).toLocaleString() }]
+          : []),
+        { label: 'Connector ID', value: item.id, mono: true },
+      ],
+      externalUrl: 'https://mixpanel.com',
+      externalLabel: 'Open Mixpanel',
+    }
+  },
   resend: async (teamId, connectorId) => {
     const item = (await api.atlasListResendIntegrations(teamId)).find(
       (row) => row.id === connectorId,

@@ -234,6 +234,7 @@ export function normalizeCredentialSelection(input: unknown): AgentCredentialSel
       'notionIntegrationIds',
     ),
     upstashAccountIds: normalizeOptionalObjectIdList(raw.upstashAccountIds, 'upstashAccountIds'),
+    mixpanelAccountIds: normalizeOptionalObjectIdList(raw.mixpanelAccountIds, 'mixpanelAccountIds'),
     cloudflareAccountIds: normalizeOptionalStringList(
       raw.cloudflareAccountIds,
       'cloudflareAccountIds',

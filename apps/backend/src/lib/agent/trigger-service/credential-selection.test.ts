@@ -36,6 +36,7 @@ const options = {
   sonarqubeIntegrations: [],
   notionIntegrations: [],
   upstashAccounts: [],
+  mixpanelAccounts: [],
   posthogIntegrations: [],
   cloudflareAccounts: [],
   devices: [],

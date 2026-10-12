@@ -27,6 +27,7 @@ export {
   findSonarqubeIntegration,
   findTailscaleClient,
   findUpstashAccount,
+  findMixpanelAccount,
   findPosthogIntegration,
   findUptimeKumaInstance,
   findVantaIntegration,

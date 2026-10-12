@@ -56,3 +56,4 @@ export {
 } from './secrets/trackers'
 export { decryptPosthogSecret, encryptPosthogSecret } from './secrets/posthog'
 export { decryptUpstashSecret, encryptUpstashSecret } from './secrets/upstash'
+export { decryptMixpanelSecret, encryptMixpanelSecret } from './secrets/mixpanel'

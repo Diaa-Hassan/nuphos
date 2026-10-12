@@ -15,6 +15,7 @@ import type {
   NotionIntegrationBinding,
   PosthogIntegrationBinding,
   UpstashAccountBinding,
+  MixpanelAccountBinding,
   ResendIntegrationBinding,
   JiraSiteBinding,
   AsanaAccountBinding,
@@ -196,6 +197,15 @@ export type UpstashAccountVariables = TeamAuthVariables & {
   /** The full binding — the credentials route decrypts the API key to hand it
    *  to the agent sandbox. */
   upstashBinding: UpstashAccountBinding
+}
+
+export type MixpanelAccountVariables = TeamAuthVariables & {
+  mixpanelAccountId: string
+  mixpanelAccountLabel: string
+  mixpanelAccess?: BindingAccess
+  /** The full binding — the credentials route decrypts the secret to hand it
+   *  to the agent sandbox. */
+  mixpanelBinding: MixpanelAccountBinding
 }
 
 export type ResendIntegrationVariables = TeamAuthVariables & {

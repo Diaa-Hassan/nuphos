@@ -36,6 +36,7 @@ export function normalizeCredentialAccess(
     sonarqubeIntegrationIds: value?.sonarqubeIntegrationIds ?? [],
     notionIntegrationIds: value?.notionIntegrationIds ?? [],
     upstashAccountIds: value?.upstashAccountIds ?? [],
+    mixpanelAccountIds: value?.mixpanelAccountIds ?? [],
     cloudflareAccountIds: value?.cloudflareAccountIds ?? [],
     deviceIds: value?.deviceIds ?? [],
   }
@@ -73,6 +74,7 @@ export function normalizeCredentialOptions(
     sonarqubeIntegrations: value?.sonarqubeIntegrations ?? [],
     notionIntegrations: value?.notionIntegrations ?? [],
     upstashAccounts: value?.upstashAccounts ?? [],
+    mixpanelAccounts: value?.mixpanelAccounts ?? [],
     cloudflareAccounts: value?.cloudflareAccounts ?? [],
     devices: value?.devices ?? [],
   }
@@ -112,6 +114,7 @@ export function credentialSelectionSignature(value: AgentCredentialSelection): s
     sonarqubeIntegrationIds: sortedIds(value.sonarqubeIntegrationIds),
     notionIntegrationIds: sortedIds(value.notionIntegrationIds),
     upstashAccountIds: sortedIds(value.upstashAccountIds),
+    mixpanelAccountIds: sortedIds(value.mixpanelAccountIds),
     cloudflareAccountIds: sortedIds(value.cloudflareAccountIds),
     deviceIds: sortedIds(value.deviceIds),
   })
@@ -167,6 +170,7 @@ export function allCredentialAccess(options: AgentCredentialOptions): AgentCrede
       (integration) => integration.integrationId,
     ),
     upstashAccountIds: (options.upstashAccounts ?? []).map((account) => account.accountId),
+    mixpanelAccountIds: (options.mixpanelAccounts ?? []).map((account) => account.accountId),
     cloudflareAccountIds: (options.cloudflareAccounts ?? []).map((account) => account.accountId),
     deviceIds: (options.devices ?? []).map((device) => device.deviceId),
   }
@@ -249,6 +253,7 @@ export function emptyCredentialAccess(): AgentCredentialSelection {
     sonarqubeIntegrationIds: [],
     notionIntegrationIds: [],
     upstashAccountIds: [],
+    mixpanelAccountIds: [],
     cloudflareAccountIds: [],
     deviceIds: [],
   }
@@ -284,6 +289,7 @@ export function credentialOptionsCount(options: AgentCredentialOptions): number 
     (options.sonarqubeIntegrations ?? []).length +
     (options.notionIntegrations ?? []).length +
     (options.upstashAccounts ?? []).length +
+    (options.mixpanelAccounts ?? []).length +
     (options.cloudflareAccounts ?? []).length +
     (options.devices ?? []).length
   )

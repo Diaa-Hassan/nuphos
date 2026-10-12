@@ -63,7 +63,7 @@ export const CONNECTOR_CATEGORIES: ConnectorCategory[] = [
     id: 'observability',
     label: 'Observability',
     foldedAtRest: true,
-    catalog: ['betterstack', 'uptime-kuma', 'grafana', 'sentry', 'posthog'],
+    catalog: ['betterstack', 'uptime-kuma', 'grafana', 'sentry', 'posthog', 'mixpanel'],
     sidebarOnly: ['gcp-monitoring'],
   },
   {

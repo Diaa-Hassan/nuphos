@@ -184,6 +184,12 @@ export function CredentialSelectorSectionList({
         onChangeIds={(ids) => onChange({ ...value, upstashAccountIds: ids })}
       />
       <CredentialSectionGroup
+        sections={sections.mixpanelSections}
+        selectedIds={value.mixpanelAccountIds}
+        newIds={unseen?.mixpanelAccountIds}
+        onChangeIds={(ids) => onChange({ ...value, mixpanelAccountIds: ids })}
+      />
+      <CredentialSectionGroup
         sections={sections.cloudflareSections}
         selectedIds={value.cloudflareAccountIds}
         newIds={unseen?.cloudflareAccountIds}

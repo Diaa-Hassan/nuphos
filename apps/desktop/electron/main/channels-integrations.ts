@@ -84,6 +84,25 @@ export const integrationsChannels = {
     accountId: string,
     access: Pick<atlas.BindingAccess, 'memberAllowList'>,
   ) => atlas.updateUpstashAccountAccess(teamId, accountId, access),
+  'atlas:listMixpanelAccounts': (_e: unknown, teamId: string) => atlas.listMixpanelAccounts(teamId),
+  'atlas:bindMixpanelAccount': (
+    _e: unknown,
+    teamId: string,
+    label: string,
+    username: string,
+    secret: string,
+    region: atlas.MixpanelAccount['region'],
+  ) => atlas.bindMixpanelAccount(teamId, label, username, secret, region),
+  'atlas:unbindMixpanelAccount': (_e: unknown, teamId: string, accountId: string) =>
+    atlas.unbindMixpanelAccount(teamId, accountId),
+  'atlas:getMixpanelAccountAccess': (_e: unknown, teamId: string, accountId: string) =>
+    atlas.getMixpanelAccountAccess(teamId, accountId),
+  'atlas:updateMixpanelAccountAccess': (
+    _e: unknown,
+    teamId: string,
+    accountId: string,
+    access: Pick<atlas.BindingAccess, 'memberAllowList'>,
+  ) => atlas.updateMixpanelAccountAccess(teamId, accountId, access),
   'atlas:getTencentAccountAccess': (_e: unknown, teamId: string, accountId: string) =>
     atlas.getTencentAccountAccess(teamId, accountId),
   'atlas:updateTencentAccountAccess': (
