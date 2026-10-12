@@ -58,17 +58,50 @@ async function call(deps: BoatDeps, method: string, path: string, options: CallO
   return response
 }
 
-// Containers and named volumes survive a sandbox stop and resume; `host` is
-// idempotent, and the transport key is what guards the public route.
-function setupScript(image: string): string {
-  return [
-    'set -eu',
-    'docker run -d --name nuphos-runtime --restart unless-stopped -p 8080:8080 \\',
-    '  -v nuphos-runtime-home:/home/node -v nuphos-runtime-workspace:/workspace \\',
-    '  -e OPENAB_ACP_AUTH_KEY -e OPENAB_RUNTIME_CONSOLE=false \\',
-    `  -e OPENAB_STREAM_EDIT_INTERVAL_MS=300 '${image}'`,
-    'host 8080 --public',
-  ].join('\n')
+// The sandbox is the isolation boundary, so the image is only how the runtime
+// gets there: its filesystem is unpacked once and the runtime runs from it as a
+// service, which a resume starts without waiting for a container engine. The
+// transport key comes from the sandbox environment and guards the public route.
+export function setupScript(image: string): string {
+  return `set -eu
+image='${image}'
+docker pull -q "$image"
+container=$(docker create "$image")
+sudo mkdir -p /opt/nuphos-runtime
+docker export "$container" | sudo tar -x -C /opt/nuphos-runtime
+{
+  docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$image"
+  echo "OPENAB_ACP_AUTH_KEY=$OPENAB_ACP_AUTH_KEY"
+  echo OPENAB_RUNTIME_CONSOLE=false
+  echo OPENAB_STREAM_EDIT_INTERVAL_MS=300
+} | sudo install -m 600 /dev/stdin /etc/nuphos-runtime.env
+docker rm "$container" >/dev/null
+docker image rm "$image" >/dev/null
+sudo tee /etc/systemd/system/nuphos-runtime.service >/dev/null <<'UNIT'
+[Unit]
+Description=Nuphos runtime
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+RootDirectory=/opt/nuphos-runtime
+MountAPIVFS=yes
+BindReadOnlyPaths=/run/systemd/resolve/stub-resolv.conf:/etc/resolv.conf
+User=1000
+Group=1000
+WorkingDirectory=/home/node
+EnvironmentFile=/etc/nuphos-runtime.env
+ExecStart=/usr/local/bin/nuphos-runtime-start openab run -c /etc/openab/config.toml
+Restart=always
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo systemctl daemon-reload
+sudo systemctl enable --now nuphos-runtime
+host 8080 --public
+`
 }
 
 /** Creates the sandbox and returns once it has the subdomain its ACP address is built from. */

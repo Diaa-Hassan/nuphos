@@ -40,7 +40,11 @@ const deps = {
 const sandbox = (subdomain: string | null, state = 'provisioning') => ({
   sandbox: { id: 'bx_23456789', state, subdomain, error: null },
 })
-const args = { runtimeId: 'runtime-1', image: 'ghcr.io/nuphos/runtime:1.2.3-codex', authKey: 'k' }
+const args = {
+  runtimeId: 'runtime-1',
+  image: 'ghcr.io/nuphos/runtime:1.2.3-codex',
+  authKey: 'transport-key-0123456789',
+}
 
 beforeEach(() => {
   calls = []
@@ -65,14 +69,15 @@ test('creates an always-on sandbox that runs the image and waits for its address
     method: 'POST',
     path: '/sandboxes',
     headers: { Authorization: 'Bearer boat_test', 'Idempotency-Key': 'runtime-1' },
-    body: { ttlSeconds: null, env: { OPENAB_ACP_AUTH_KEY: 'k' } },
+    body: { ttlSeconds: null, env: { OPENAB_ACP_AUTH_KEY: args.authKey } },
   })
   const { setupScript } = create!.body as { setupScript: string }
 
-  // The key reaches the container from the sandbox environment, never the script.
-  expect(setupScript).toContain(`'${args.image}'`)
+  // The key reaches the runtime from the sandbox environment, never the script.
+  expect(setupScript).toContain(`image='${args.image}'`)
+  expect(setupScript).toContain('systemctl enable --now nuphos-runtime')
   expect(setupScript).toContain('host 8080 --public')
-  expect(setupScript).not.toContain('OPENAB_ACP_AUTH_KEY=')
+  expect(setupScript).not.toContain(args.authKey)
   expect(polls.map((call) => [call.method, call.path])).toEqual([
     ['GET', '/sandboxes/bx_23456789'],
     ['GET', '/sandboxes/bx_23456789'],
