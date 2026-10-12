@@ -20,9 +20,11 @@ afterAll(() => {
 type Call = { method: string; path: string; headers: Record<string, string>; body?: unknown }
 let calls: Call[] = []
 let replies: { status: number; body?: unknown }[] = []
+let redirects: (string | undefined)[] = []
 
 const deps = {
   fetch: ((url: string, init: RequestInit) => {
+    redirects.push(init.redirect)
     calls.push({
       method: init.method ?? 'GET',
       path: url.replace('https://boat.dev/api/v1', ''),
@@ -43,6 +45,7 @@ const args = { runtimeId: 'runtime-1', image: 'ghcr.io/nuphos/runtime:1.2.3-code
 beforeEach(() => {
   calls = []
   replies = []
+  redirects = []
 })
 
 test('creates an always-on sandbox that runs the image and waits for its address', async () => {
@@ -118,11 +121,10 @@ test('deleting an unknown sandbox succeeds; any other refusal is surfaced', asyn
 })
 
 test('resume keeps the sandbox always-on and waits until the runtime answers', async () => {
-  replies = [{ status: 202 }, { status: 502 }, { status: 200 }]
+  // A stopped sandbox's route redirects (302) before the runtime is back.
+  replies = [{ status: 202 }, { status: 302 }, { status: 502 }, { status: 200 }]
 
-  expect(await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)).toBe(
-    true,
-  )
+  await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)
   expect(calls[0]).toMatchObject({
     method: 'POST',
     path: '/sandboxes/bx_23456789/resume',
@@ -131,16 +133,9 @@ test('resume keeps the sandbox always-on and waits until the runtime answers', a
   expect(calls.slice(1).map((call) => call.path)).toEqual([
     'https://a-b-c-8080.on.boat.dev/health',
     'https://a-b-c-8080.on.boat.dev/health',
+    'https://a-b-c-8080.on.boat.dev/health',
   ])
-})
-
-test('a sandbox that is still running is waited for and reported as not resumed', async () => {
-  replies = [{ status: 409 }, { status: 200 }]
-
-  expect(await resumeBoatRuntime('bx_23456789', 'wss://a-b-c-8080.on.boat.dev/acp', deps)).toBe(
-    false,
-  )
-  expect(calls).toHaveLength(2)
+  expect(redirects).toEqual([undefined, 'manual', 'manual', 'manual'])
 })
 
 test('a runtime that never answers after a resume asks the sender to retry', async () => {
@@ -151,9 +146,10 @@ test('a runtime that never answers after a resume asks the sender to retry', asy
   ).rejects.toMatchObject({ code: 'runtime_waking' })
 })
 
-test('stop posts to the sandbox', async () => {
-  replies = [{ status: 202 }]
+test('stop posts to the sandbox, and one that is already archived is not an error', async () => {
+  replies = [{ status: 202 }, { status: 400 }]
 
   await stopBoatSandbox('bx_23456789', deps)
-  expect(calls).toMatchObject([{ method: 'POST', path: '/sandboxes/bx_23456789/stop' }])
+  await stopBoatSandbox('bx_23456789', deps)
+  expect(calls[0]).toMatchObject({ method: 'POST', path: '/sandboxes/bx_23456789/stop' })
 })

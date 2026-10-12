@@ -22,12 +22,11 @@ const minutesAgo = (minutes: number) => new Date(NOW.getTime() - minutes * 60_00
 let calls: string[] = []
 let activeTurn = false
 let stopFails = false
-let resumed = true
 const deps = {
   resume: (sandboxId: string, url: string) => {
     calls.push(`resume ${sandboxId} ${url}`)
 
-    return Promise.resolve(resumed)
+    return Promise.resolve()
   },
   stop: (sandboxId: string) => {
     calls.push(`stop ${sandboxId}`)
@@ -57,7 +56,6 @@ beforeEach(() => {
   calls = []
   activeTurn = false
   stopFails = false
-  resumed = true
 })
 
 test('a runtime nobody has used for a while is stopped once', async () => {
@@ -109,20 +107,22 @@ test('a turn on a stopped runtime resumes it first; on a running one it only rec
   expect(calls).toHaveLength(1)
 })
 
-test('a wake that finds the sandbox still running leaves a fresh stop claim in place', async () => {
-  const claimed = row({ boatStoppedAt: new Date() })
+test('a turn that wakes the runtime while it is being stopped gets the stop undone', async () => {
+  const idle = row()
+  const racing = {
+    ...deps,
+    stop: async (sandboxId: string) => {
+      await wakeBoatRuntime('one', 'runtime-1', deps)
+      await deps.stop(sandboxId)
+    },
+  }
 
-  resumed = false
-  await wakeBoatRuntime('one', 'runtime-1', deps)
+  await stopIdleBoatRuntimes(racing, NOW)
 
-  expect(claimed.boatStoppedAt).toBeDefined()
-})
-
-test('a stop flag left behind on a running sandbox is cleared by the next turn', async () => {
-  const leftover = row({ boatStoppedAt: minutesAgo(10) })
-
-  resumed = false
-  await wakeBoatRuntime('one', 'runtime-1', deps)
-
-  expect(leftover.boatStoppedAt).toBeUndefined()
+  expect(calls).toEqual([
+    'resume bx_23456789 wss://a-b-c-8080.on.boat.dev/acp',
+    'stop bx_23456789',
+    'resume bx_23456789 wss://a-b-c-8080.on.boat.dev/acp',
+  ])
+  expect(idle.boatStoppedAt).toBeUndefined()
 })

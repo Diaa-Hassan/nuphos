@@ -121,33 +121,34 @@ export async function deleteBoatSandbox(sandboxId: string, deps: BoatDeps = defa
   })
 }
 
-/** Accepted at once; boat snapshots the disk and archives the machine in the background. */
+/**
+ * Accepted at once; boat archives the machine within a few seconds. A sandbox
+ * that is already archived answers 400, which is where the call wants it.
+ */
 export async function stopBoatSandbox(sandboxId: string, deps: BoatDeps = defaults) {
-  await call(deps, 'POST', `/sandboxes/${sandboxId}/stop`, { allow: [404] })
+  await call(deps, 'POST', `/sandboxes/${sandboxId}/stop`, { allow: [400, 404] })
 }
 
 /**
  * Resumes a stopped sandbox and returns once the runtime answers on its route.
- * A sandbox that is still running refuses the resume with 409; the answer is
- * whether this call is the one that resumed it.
+ * Resuming one that is running, or still being stopped, is accepted too: it
+ * cancels the stop and the sandbox stays up.
  */
 export async function resumeBoatRuntime(
   sandboxId: string,
   runtimeUrl: string,
   deps: BoatDeps = defaults,
-): Promise<boolean> {
-  const resumed = await call(deps, 'POST', `/sandboxes/${sandboxId}/resume`, {
-    body: { ttlSeconds: null },
-    allow: [409],
-  })
+): Promise<void> {
+  await call(deps, 'POST', `/sandboxes/${sandboxId}/resume`, { body: { ttlSeconds: null } })
   const health = `https://${new URL(runtimeUrl).host}/health`
 
   for (let attempt = 0; attempt < WAKE_ATTEMPTS; attempt++) {
     const answer = await deps
-      .fetch(health, { signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
+      // A stopped sandbox's route redirects to a boat page that answers 200.
+      .fetch(health, { redirect: 'manual', signal: AbortSignal.timeout(PROBE_TIMEOUT_MS) })
       .catch(() => null)
 
-    if (answer?.ok) return resumed.status !== 409
+    if (answer?.ok) return
     await deps.sleep(POLL_MS)
   }
   throw new AppError(
