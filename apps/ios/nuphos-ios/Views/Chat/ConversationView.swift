@@ -375,6 +375,9 @@ struct UserBubble: View {
     var transfers: [TransferUpload] = []
     var session: ChatSession?
 
+    @State private var expanded = false
+    @Environment(\.transcriptReadingInteraction) private var readingInteraction
+
     var body: some View {
         VStack(alignment: .trailing, spacing: 6) {
             if let sender {
@@ -401,14 +404,27 @@ struct UserBubble: View {
                 }
             }
             if !text.isEmpty {
-                Text(text)
-                    .font(Theme.Text.body)
-                    .lineSpacing(Theme.Text.leading)
-                    .foregroundStyle(Theme.heading)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .background(Theme.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                let preview = MessagePreview.head(of: text)
+                let folded = preview != nil && !expanded
+                VStack(alignment: .leading, spacing: 8) {
+                    // Folded, a selection would copy the preview instead of the message.
+                    PlainMessageText(text: folded ? preview ?? text : text, selectable: !folded)
+                    if preview != nil {
+                        Button(expanded ? "Show less" : "Show more") {
+                            // Like a step disclosure: a reading interaction,
+                            // applied in one layout rather than animated.
+                            readingInteraction()
+                            var transaction = Transaction(animation: nil)
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) { expanded.toggle() }
+                        }
+                        .font(Theme.Text.label.weight(.medium))
+                        .foregroundStyle(Theme.muted)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .background(Theme.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
             }
         }
         .frame(maxWidth: .infinity, alignment: .trailing)
@@ -433,10 +449,7 @@ struct SendingBubble: View {
                 }
             }
             if !submission.text.isEmpty {
-                Text(submission.text)
-                    .font(Theme.Text.body)
-                    .lineSpacing(Theme.Text.leading)
-                    .foregroundStyle(Theme.heading)
+                PlainMessageText(text: MessagePreview.head(of: submission.text) ?? submission.text, selectable: false)
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                     .background(Theme.bubble, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
