@@ -1,0 +1,45 @@
+
+  [32m[1mVITE[22m v8.0.10[39m  [2mready in [0m[1m290[22m[2m[0m ms[22m
+
+  [32m➜[39m  [1mLocal[22m:   [36mhttp://localhost:[1m5177[22m/[39m
+[2m  [32m➜[39m  [1mNetwork[22m[2m: use [22m[1m--host[22m[2m to expose[22m
+[36mvite v8.0.10 [32mbuilding client environment for development...[36m[39m
+[36m
+watching for file changes...[39m
+[36mvite v8.0.10 [32mbuilding client environment for development...[36m[39m
+[36m
+watching for file changes...[39m
+
+[43m[30m WARN [39m[49m [36minlineDynamicImports[39m option is deprecated, please use [36mcodeSplitting: false[39m instead.
+
+[36m
+build started...[39m
+[36m
+build started...[39m
+[2Ktransforming...[2Ktransforming...[32m✓[39m 21 modules transformed.
+[32m✓[39m 265 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist-electron/[0m[36mpreload.cjs  [39m[2m[1m90.15 kB[0m[0m[2m │ gzip: 12.68 kB[0m
+
+[36mbuilt in 841ms.[39m
+rendering chunks...
+computing gzip size...
+[2mdist-electron/[0m[36mmain.js  [39m[33m[1m752.67 kB[0m[39m[2m │ gzip: 174.27 kB[0m
+
+[36mbuilt in 893ms.[39m
+(node:73018) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `Electron --trace-deprecation ...` to show where the warning was created)
+
+DevTools listening on ws://127.0.0.1:9225/devtools/browser/602a9f87-f2a9-45ea-a66b-bf91f64e65e8
+{"event":"nuphos.dev.electron_backend_health","status":"unhealthy","consecutiveFailures":1,"latencyMs":359,"error":"fetch failed"}
+Browserslist: browsers data (caniuse-lite) is 6 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+{"event":"nuphos.dev.electron_backend_health","status":"healthy","consecutiveFailures":0,"latencyMs":48}
+[nuphos-dev] electron window opened
+[local-tool] local agent: CLI checked {"provider":"codex","ms":774}
+[local-tool] local agent: CLI checked {"provider":"claude-code","ms":954}
+[local-tool] local agent: openab up {"provider":"codex","ms":264}
+[local-tool] local agent: openab up {"provider":"claude-code","ms":270}
+(node:73018) MaxListenersExceededWarning: Possible EventEmitter memory leak detected. 11 destroyed listeners added to [WebContents]. MaxListeners is 10. Use emitter.setMaxListeners() to increase limit
