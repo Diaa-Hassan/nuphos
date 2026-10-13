@@ -255,10 +255,14 @@ struct ConversationView: View {
         .frame(maxWidth: 240)
     }
 
-    /// Plan links open the plan here; everything else leaves the app.
+    /// Plan links open the plan here and session links open that chat the
+    /// way a tapped notification does; everything else leaves the app.
     private func open(link url: URL) {
         if let target = PlanLink.target(in: url) {
             planLink = target
+        } else if let link = SessionLink.target(in: url) {
+            guard link.sessionId != session.sessionId else { return }
+            PushNotifications.shared.pendingTarget = PushTarget(teamId: link.teamId, sessionId: link.sessionId)
         } else {
             openURL(url)
         }
