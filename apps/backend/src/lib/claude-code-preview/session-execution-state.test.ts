@@ -13,8 +13,8 @@ useRuntimeRegistry({
     Promise.resolve([{ url: endpoint, authKey: 'operator-fixture' }]),
 })
 
-test('legacy conversation state follows its OpenAB placement and permits a follow-up', async () => {
-  const methods: string[] = []
+test('an attached conversation reads its own session and permits a follow-up', async () => {
+  const calls: { method: string; sessionId?: string }[] = []
   const server = Bun.serve({
     port: 0,
     fetch(request, server) {
@@ -26,7 +26,7 @@ test('legacy conversation state follows its OpenAB placement and permits a follo
       message(ws, data) {
         const frame = JSON.parse(String(data))
 
-        methods.push(frame.method)
+        calls.push({ method: frame.method, sessionId: frame.params?.sessionId })
         const result =
           frame.method === 'initialize'
             ? { protocolVersion: 1 }
@@ -49,17 +49,35 @@ test('legacy conversation state follows its OpenAB placement and permits a follo
   endpoint = `ws://127.0.0.1:${server.port}/acp`
   try {
     const snapshot = await conversationExecutionState({
-      sessionId: 'legacy',
+      sessionId: 'attached',
       teamId: 'team',
       agentRuntime: 'claude-code',
-    } as AgentConversation)
+      claudeCodePreview: { runtimeUrl: endpoint, openabSessionId: 'sess_attached' },
+    } as unknown as AgentConversation)
 
     expect(snapshot.schemaVersion).toBe(2)
     expect(snapshot.actions?.send).toBe(true)
-    expect(methods).toEqual(['initialize', '_openab/session/state'])
+    expect(calls).toEqual([
+      { method: 'initialize', sessionId: undefined },
+      { method: '_openab/session/state', sessionId: 'sess_attached' },
+    ])
   } finally {
     await server.stop(true)
   }
+})
+
+test('a chat whose first prompt is still creating its session is not a lost connection', async () => {
+  // Nothing to probe yet. A team runtime rejects a session it does not own, so
+  // probing anyway flashed "Connection lost" right after the first send.
+  endpoint = 'ws://unreachable.invalid/acp'
+  const snapshot = await conversationExecutionState({
+    sessionId: 'starting',
+    teamId: 'team',
+    agentRuntime: 'claude-code',
+  } as AgentConversation)
+
+  expect(snapshot.state).toBe('dormant')
+  expect(snapshot.actions?.send).toBe(true)
 })
 
 test('a moved conversation reports a startable agent, not a lost connection', async () => {

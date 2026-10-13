@@ -16,26 +16,18 @@ import type { AgentConversation } from '@/lib/agent/db'
 export async function conversationExecutionState(
   conversation: Pick<
     AgentConversation,
-    | 'teamId'
-    | 'sessionId'
-    | 'userId'
-    | 'agentRuntime'
-    | 'runtimeId'
-    | 'claudeCodePreview'
-    | 'runtimeMigration'
+    'teamId' | 'sessionId' | 'userId' | 'agentRuntime' | 'runtimeId' | 'claudeCodePreview'
   >,
 ): Promise<SessionExecutionState> {
   const attachment = liveAttachment(conversation)
 
   if (!conversation.teamId) return { state: 'disconnected' }
-  // A moved conversation has no attachment by design: the move clears it and the
-  // next prompt creates the session. Probing for one anyway reported
-  // 'disconnected', which the desktop reads as a broken conversation — the status
-  // says "Connection lost" and a queued message parks on "waiting for the agent
-  // to be ready" forever, because only a prompt can change that state. Say what
-  // is actually true. A conversation that has never been moved keeps the probe:
-  // one from before attachments were tracked may still have a live session.
-  if (!attachment && conversation.runtimeMigration)
+  // No attachment means no runtime session yet: a new chat whose first prompt is
+  // still creating it, or a moved one whose next prompt will. There is nothing to
+  // probe, and a team runtime rejects a session it does not own, which reads as
+  // 'disconnected' — the desktop's "Connection lost", and a queued message parked
+  // on "waiting for the agent to be ready". Say what is actually true.
+  if (!attachment)
     return {
       state: 'dormant',
       schemaVersion: 2,
@@ -49,8 +41,7 @@ export async function conversationExecutionState(
       purpose: 'control',
     })
 
-    if (!endpoint || (attachment && endpoint.url !== attachment.runtimeUrl))
-      return { state: 'disconnected' }
+    if (!endpoint || endpoint.url !== attachment.runtimeUrl) return { state: 'disconnected' }
     client = await OpenAbAcpClient.connect({
       ...(await reachableRuntimeEndpoint(endpoint)),
       connectTimeoutMs: 3_000,
@@ -59,9 +50,7 @@ export async function conversationExecutionState(
     await client.initialize()
 
     return parseSessionExecutionState(
-      await client.getSessionExecutionState(
-        attachment?.openabSessionId ?? 'sess_00000000-0000-0000-0000-000000000000',
-      ),
+      await client.getSessionExecutionState(attachment.openabSessionId),
     )
   } catch (error) {
     return {

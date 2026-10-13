@@ -147,6 +147,7 @@ export function usePanelPermissions(acc: Acc) {
         page.conversations.map((conversation) => [
           conversation.sessionId,
           {
+            attached: conversation.claudeCodeRuntimeAttached === true,
             provider: conversation.agentRuntime,
             runtimeId: conversation.runtimeId,
             runtimeLabel: conversation.runtimeLabel,
@@ -156,21 +157,20 @@ export function usePanelPermissions(acc: Acc) {
 
       setTabs((current) =>
         current.map((tab) => {
-          // Attachment is not synced here: the listing reports every conversation
-          // as attached, and a tab whose runtime is still starting would then probe
-          // too early and read "disconnected". The first runtime frame attaches it.
-          const runtime = runtimeBySession.get(tab.sessionId)
+          const attached = runtimeBySession.get(tab.sessionId)
 
-          return runtime === undefined ||
-            (tab.agentRuntime === runtime.provider &&
-              tab.runtimeId === runtime.runtimeId &&
-              tab.runtimeLabel === runtime.runtimeLabel)
+          return attached === undefined ||
+            (tab.claudeCodeRuntimeAttached === attached.attached &&
+              tab.agentRuntime === attached.provider &&
+              tab.runtimeId === attached.runtimeId &&
+              tab.runtimeLabel === attached.runtimeLabel)
             ? tab
             : {
                 ...tab,
-                agentRuntime: runtime.provider,
-                runtimeId: runtime.runtimeId,
-                runtimeLabel: runtime.runtimeLabel,
+                claudeCodeRuntimeAttached: attached.attached,
+                agentRuntime: attached.provider,
+                runtimeId: attached.runtimeId,
+                runtimeLabel: attached.runtimeLabel,
               }
         }),
       )
