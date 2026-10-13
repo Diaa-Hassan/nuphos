@@ -4,7 +4,7 @@
 // memory ingest chain.
 import { randomUUID } from 'node:crypto'
 
-import { serializeMessageDoc } from './errors'
+import { transcriptTailFrame } from './errors'
 import { traceAgentChatError } from './trace'
 import { getFirstTranscriptMessage, uiMessagesToTranscript } from './transcript'
 
@@ -128,7 +128,7 @@ export async function finishPreviewTurn(args: {
     // their original turn instead of briefly piling onto the latest reply.
     const stored = await getConversationMessagesHead(sessionId, userId, transcriptMessages.length)
 
-    args.emit({ type: 'atlas-transcript-snapshot', messages: stored.map(serializeMessageDoc) })
+    args.emit(transcriptTailFrame(stored, transcriptMessages.length - tail.length))
   } catch (err) {
     traceAgentChatError('agent.chat.preview_transcript_persist.error', err, run.trace, {
       message_count: transcriptMessages.length,
@@ -240,7 +240,7 @@ export async function persistInterruptedPreviewTurn(args: {
     // their original turn instead of briefly piling onto the latest reply.
     const stored = await getConversationMessagesHead(sessionId, userId, transcriptMessages.length)
 
-    args.emit({ type: 'atlas-transcript-snapshot', messages: stored.map(serializeMessageDoc) })
+    args.emit(transcriptTailFrame(stored, transcriptMessages.length - args.steered.length - 1))
   } catch (err) {
     traceAgentChatError('agent.chat.preview_interrupted_persist.error', err, run.trace, {
       message_count: transcriptMessages.length,

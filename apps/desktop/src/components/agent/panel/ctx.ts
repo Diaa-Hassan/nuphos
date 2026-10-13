@@ -56,7 +56,8 @@ export type PanelCtx = {
     canRename?: boolean,
     runtimeId?: string,
   ) => void
-  onSessionChange?: (sessionId: string | null) => void
+  /** `unshown`: the chat the panel left without ever showing it (it could not be opened). */
+  onSessionChange?: (sessionId: string | null, unshown?: string) => void
   onOpenNuphosLink?: (href: string) => boolean
   onOpenAgentSettings?: () => void
   newChatRequest: number
@@ -125,8 +126,6 @@ export type PanelCtx = {
   activePendingAuthToolCallId: string | null
   bypassBySession: Record<string, boolean>
   setBypassBySession: Dispatch<SetStateAction<Record<string, boolean>>>
-  autoModeAvailable: boolean
-  setAutoModeAvailable: Dispatch<SetStateAction<boolean>>
   defaultPermissionMode: PermissionMode
   setDefaultPermissionMode: Dispatch<SetStateAction<PermissionMode>>
   applyDefaultPermissionMode: (mode: PermissionMode) => void
@@ -220,18 +219,10 @@ export type PanelCtx = {
     mode: 'revise' | 'delete',
     label: string,
   ) => Promise<void>
-  decideAuthorization: (
-    toolCallId: string,
-    decision: AuthorizationDecisionAction,
-    ruleDescription?: string,
-  ) => void
+  decideAuthorization: (toolCallId: string, decision: AuthorizationDecisionAction) => void
   resumePermissionTurn: (toolCallId: string, output: Record<string, unknown>) => void
   authorizationContextValue: {
-    decide: (
-      toolCallId: string,
-      decision: AuthorizationDecisionAction,
-      ruleDescription?: string,
-    ) => void
+    decide: (toolCallId: string, decision: AuthorizationDecisionAction) => void
     activeToolCallId: string | null
     readOnly: boolean
   }

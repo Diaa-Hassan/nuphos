@@ -6,6 +6,7 @@ import {
   sessionResourceInput,
   unlinkSessionResource,
 } from '@/lib/agent/session-resources'
+import { sessionResources } from '@/lib/agent/session-thread-resources'
 import { toolError, toolResult } from '@/lib/mcp/protocol'
 
 import { toolInputJsonSchema } from './ai-sdk-adapter'
@@ -15,7 +16,7 @@ import type { PreviewToolModule } from '../preview-tool-context'
 const label = z.string().trim().min(1).max(200)
 const bind = z.object({ label, resource: sessionResourceInput }).strict()
 const list = z.object({ label }).strict()
-const unlink = z.object({ label, resourceId: z.string().uuid() }).strict()
+const unlink = z.object({ label, resourceId: z.string().trim().min(1).max(300) }).strict()
 
 export function sessionResourceToolModule(): PreviewToolModule {
   return {
@@ -28,13 +29,14 @@ export function sessionResourceToolModule(): PreviewToolModule {
       },
       {
         name: 'list_session_resources',
-        description: 'List the external resources linked to this conversation.',
+        description:
+          'List the external resources linked to this conversation, including its Slack or Discord thread.',
         inputSchema: toolInputJsonSchema(list),
       },
       {
         name: 'unlink_session_resource',
         description:
-          'Remove a resource link from this conversation and stop future event wakeups. Does not change or delete the external resource.',
+          'Remove a resource link from this conversation and stop future event wakeups. Unlinking its Slack or Discord thread also stops the conversation posting there; a new mention in that thread starts a new conversation. Does not change or delete the external resource.',
         inputSchema: toolInputJsonSchema(unlink),
       },
     ],
@@ -51,7 +53,7 @@ export function sessionResourceToolModule(): PreviewToolModule {
 
         if (!parsed.success) return toolError(parsed.error.message)
 
-        return toolResult({ resources: (await resourceConversation(ctx)).linkedResources ?? [] })
+        return toolResult({ resources: await sessionResources(await resourceConversation(ctx)) })
       },
       unlink_session_resource: async (args) => {
         const parsed = unlink.safeParse(args)

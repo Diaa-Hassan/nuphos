@@ -1,5 +1,6 @@
-- New agent: OpenCode joins Claude Code, Codex, Grok Build and Antigravity.
-- Each Cloud agent has its own page: rename it, sign it in again, disable or remove it.
-- Several images in one message show as a compact grid, and the preview steps through them.
-- Pick the model per conversation from what the agent offers.
-- Fixes: taps on the composer edges and toolbar icons now act on the first touch.
+- Share a session from your phone: set who on the team can open it, invite teammates and pick their role.
+- Type @ in the composer to point the agent at one of your other sessions.
+- Agent usage shows what is left, as a bar that drains like a battery.
+- Session managers can switch the agent.
+- Long messages stay fast and are folded; pull to refresh works on empty lists.
+- The approval card no longer offers "For session" and "Always allow", which had stopped working.

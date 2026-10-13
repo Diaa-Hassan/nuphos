@@ -21,7 +21,7 @@ export type LocalExecTurn = {
 }
 
 export type LocalExecToolResult =
-  { stdout: string; stderr: string; exitCode: number; ranOn?: string } | { error: string }
+  { stdout: string; stderr: string; exitCode: number } | { error: string }
 
 /**
  * Client tools that still run in the Electron renderer via the classic
@@ -111,13 +111,16 @@ export function createLocalTools(localToolsEnabled: boolean): Record<string, unk
 }
 
 /** The requested device when available, else the only available one. */
-function pickDevice(devices: LocalExecDevice[], requested: string | undefined): string | undefined {
-  if (requested && devices.some((d) => d.deviceId === requested)) return requested
+export function pickDevice(
+  devices: LocalExecDevice[],
+  requested: string | undefined,
+): string | undefined {
+  if (requested) return devices.some((d) => d.deviceId === requested) ? requested : undefined
 
   return devices.length === 1 ? devices[0]?.deviceId : undefined
 }
 
-function describeDevices(devices: LocalExecDevice[]): string {
+export function describeDevices(devices: LocalExecDevice[]): string {
   return devices.map((d) => `${d.deviceId} (${d.label})`).join(', ')
 }
 
@@ -158,7 +161,7 @@ export function createLocalExecTool(
       description:
         "Execute a shell command on one of the user's local devices (their own Desktop machines that allow local exec and are currently online; only in their own conversations). " +
         "You CAN operate on the user's local files and apps with this — listing, reading, moving, or deleting their files when asked. Never claim you cannot touch the local machine while this tool is available. " +
-        'Default to this for isolated local commands with a result and exit code: npm, docker, git, make, cargo, gcloud, aws, etc. Use local_terminal when an interactive or persistent shell, shared input, or a visible terminal is needed. ' +
+        'Returns the output and exit code of a command that exits on its own: npm, docker, git, make, cargo, gcloud, aws, etc. A command still running after about 40 seconds is stopped. ' +
         'Send commands directly. NEVER use this tool to launch or drive Terminal, iTerm, Windows Terminal or another terminal app to execute commands (including open -a Terminal, AppleScript/osascript do script or GUI keyboard automation). Use local_terminal for a terminal/dock request; if unavailable, report it rather than launching another app. ' +
         "For cloud operations, use sandbox bash when Nuphos-managed credentials work; use local_exec when the fix requires the user's locally authenticated cloud CLI, including scoped connector permission changes on a device already signed in to the matching CLI with administration access. Verify the local cloud account and identity first. " +
         "IMPORTANT: do NOT use this to run `kubectl port-forward`. Use the typed `port_forward_start` tool instead — `kubectl port-forward` via shell leaves no UI state, the user can't see or stop the forward, and a forward opened inside the sandbox is unreachable from the user's machine.",
@@ -188,10 +191,7 @@ export function createLocalExecTool(
               "No local devices are available for this conversation. Ask the user to select their device in this conversation's credential selector (the shield button in the composer); they must have Nuphos Desktop open and signed in on that device.",
           }
         }
-        const deviceId =
-          purpose === 'terminal' && device && !devices.some((d) => d.deviceId === device)
-            ? undefined
-            : pickDevice(devices, device)
+        const deviceId = pickDevice(devices, device)
 
         if (!deviceId) {
           const choices = `pass device=<deviceId>, one of: ${describeDevices(devices)}.`
@@ -236,9 +236,7 @@ export function createLocalExecTool(
             exitCode: outcome.result.exitCode,
           })
 
-          return device && device !== deviceId
-            ? { ...outcome.result, ranOn: describeDevices(devices) }
-            : outcome.result
+          return outcome.result
         }
         if (outcome.status === 'device_disconnected') {
           await audit(deviceId, command, requestedAt, { outcome: 'device_offline', dispatchedAt })

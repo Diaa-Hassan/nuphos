@@ -1,4 +1,6 @@
-import { GitMerge, GitPullRequest, GitPullRequestClosed, Link2, Terminal, X } from 'lucide-react'
+import { faDiscord } from '@fortawesome/free-brands-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
+import { GitMerge, GitPullRequest, GitPullRequestClosed, Terminal, X } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
 import { agentApi } from '../../api/agent-api'
@@ -6,6 +8,104 @@ import { useSessionTerminalProcesses } from '../../lib/sessionTerminalProcesses'
 import { toast } from '../ui/toast'
 
 import type { SessionResource } from '../../api/session-resource-types'
+import type { ReactNode } from 'react'
+
+const iconClass = 'size-3 shrink-0'
+
+const ring = <circle cx="7" cy="7" r="6" fill="none" stroke="currentColor" strokeWidth="1.5" />
+
+/** A filled disc with the glyph cut out, as Linear draws Done, Canceled and Triage. */
+function cutout(glyph: string) {
+  return (
+    <>
+      <circle cx="7" cy="7" r="7" fill="currentColor" />
+      <path
+        d={glyph}
+        fill="none"
+        stroke="rgb(var(--color-background-base))"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </>
+  )
+}
+
+/**
+ * Linear's own workflow-state glyphs. Each type gets one color, shared by the
+ * icon and the tag label, so the tag reads like the issue row in Linear.
+ */
+const linearStates: Partial<Record<string, { glyph: ReactNode; color: string }>> = {
+  triage: { glyph: cutout('M4 5.5h6l-1.5-1.5M10 8.5H4l1.5 1.5'), color: 'session-resource-triage' },
+  backlog: {
+    glyph: (
+      <circle
+        cx="7"
+        cy="7"
+        r="6"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeDasharray="1.4 1.74"
+      />
+    ),
+    color: 'text-tertiary',
+  },
+  unstarted: { glyph: ring, color: 'text-tertiary' },
+  started: {
+    glyph: (
+      <>
+        {ring}
+        <path d="M7 3.5a3.5 3.5 0 0 1 0 7z" fill="currentColor" />
+      </>
+    ),
+    color: 'session-resource-started',
+  },
+  completed: { glyph: cutout('M4.5 7.2l1.7 1.7 3.4-3.6'), color: 'session-resource-linear' },
+  canceled: { glyph: cutout('M5 5l4 4M9 5l-4 4'), color: 'text-tertiary' },
+  duplicate: { glyph: cutout('M5 5l4 4M9 5l-4 4'), color: 'text-tertiary' },
+}
+
+function resourceStyle(resource: SessionResource): { icon: ReactNode; color: string } {
+  if (resource.provider === 'linear') {
+    const state = linearStates[resource.stateType ?? '']
+
+    // Links made before state types were stored keep the logo until Linear reports a change.
+    if (!state)
+      return {
+        icon: <img src="/linear.svg" alt="Linear" className={iconClass} />,
+        color: 'session-resource-linear',
+      }
+
+    return {
+      icon: (
+        <svg viewBox="0 0 14 14" className={iconClass} aria-hidden>
+          {state.glyph}
+        </svg>
+      ),
+      color: state.color,
+    }
+  }
+  if (resource.provider === 'slack')
+    return {
+      icon: <img src="/slack.svg" alt="Slack" className={iconClass} />,
+      color: 'text-secondary',
+    }
+  if (resource.provider === 'discord')
+    return {
+      icon: <FontAwesomeIcon icon={faDiscord} className={`${iconClass} text-[#5865f2]`} />,
+      color: 'text-secondary',
+    }
+  if (resource.state === 'merged')
+    return { icon: <GitMerge className={iconClass} />, color: 'session-resource-merged' }
+  if (resource.state === 'closed')
+    return {
+      icon: <GitPullRequestClosed className={iconClass} />,
+      color: 'session-resource-closed',
+    }
+
+  return { icon: <GitPullRequest className={iconClass} />, color: 'session-resource-open' }
+}
 
 /** Resource links belong to their session, including sessions that are not open. */
 export function SessionResources({
@@ -61,41 +161,28 @@ export function SessionResources({
 
   if (!resources.length && !processes.length) return null
   const linked = resources.filter((resource) => !removed.includes(resource.id))
-  const visible = titlebar ? linked : linked.slice(0, 2)
 
   return (
     <div
       className={
         titlebar
           ? 't-session-heading titlebar-no-drag flex min-w-0 items-center gap-1 overflow-hidden text-[11px] text-tertiary'
-          : 'flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 px-2 pb-2 pl-8 text-[11px] text-tertiary'
+          : 'flex min-w-0 items-center gap-2 overflow-hidden px-2 pb-2 pl-8 text-[11px] text-tertiary'
       }
       aria-label="Linked resources"
     >
-      {visible.map((resource) => {
-        let Icon = Link2
-        let color = 'session-resource-linear'
+      {linked.map((resource) => {
+        const thread = resource.provider === 'slack' || resource.provider === 'discord'
+        const { icon, color } = resourceStyle(resource)
+        let label = resource.title.split(/\s+/, 1)[0]
 
-        if (resource.provider === 'github') {
-          Icon = GitPullRequest
-          color = 'session-resource-open'
-          if (resource.state === 'merged') {
-            Icon = GitMerge
-            color = 'session-resource-merged'
-          } else if (resource.state === 'closed') {
-            Icon = GitPullRequestClosed
-            color = 'session-resource-closed'
-          }
-        }
-        const label =
-          resource.provider === 'github'
-            ? `#${String(resource.number)}`
-            : resource.title.split(/\s+/, 1)[0]
+        if (resource.provider === 'github') label = `#${String(resource.number)}`
+        else if (thread) label = resource.title
 
         return (
           <span
             key={resource.id}
-            className={`inline-flex shrink-0 items-center ${titlebar ? 'session-resource-tag rounded border' : ''} ${color}`}
+            className={`inline-flex items-center ${titlebar ? 'session-resource-tag shrink-0 rounded border' : thread ? 'min-w-0' : 'shrink-0'} ${color}`}
           >
             <ResourceLabel
               onPointerDown={(event) => {
@@ -104,7 +191,7 @@ export function SessionResources({
               onClick={(event) => {
                 if (!titlebar) return
                 event.stopPropagation()
-                onOpen?.(resource.url, event.metaKey)
+                onOpen?.(resource.url, thread || event.metaKey)
               }}
               key={resource.id}
               className={
@@ -115,13 +202,7 @@ export function SessionResources({
               title={`${resource.repository ?? ''} ${resource.title} · ${resource.state}`}
               aria-label={`${label} · ${resource.state}`}
             >
-              <span className="inline-flex shrink-0">
-                {resource.provider === 'linear' ? (
-                  <img src="/linear.svg" alt="Linear" className="size-3 shrink-0" />
-                ) : (
-                  <Icon className="size-3 shrink-0" />
-                )}
-              </span>
+              <span className="inline-flex shrink-0">{icon}</span>
               <span className="truncate">{label}</span>
             </ResourceLabel>
             {titlebar && canManage && (

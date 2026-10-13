@@ -55,6 +55,8 @@ export type AgentConversation = {
   lastActiveAt: string
   /** Owner-set archive marker; conversation stays intact and listable. */
   archivedAt?: string
+  /** The conversation that opened this one as a thread; the sidebar nests it there. */
+  parentSessionId?: string
   /** This conversation is backed by a long-lived Claude Code runtime session. */
   claudeCodeRuntimeAttached?: boolean
   agentRuntime?: AgentProvider
@@ -140,9 +142,17 @@ export type AgentActiveRun = {
 
 export type AgentMessageMetadata = {
   version: 1
-  sender: { type: 'user'; id: string; displayName: string; avatarURL?: string }
-  source: 'nuphos' | 'slack' | 'discord' | 'lark'
+  sender: {
+    type: 'user' | 'agent' | 'system'
+    id: string
+    displayName: string
+    avatarURL?: string
+    agentRuntime?: AgentProvider
+  }
+  source: 'nuphos' | 'slack' | 'discord' | 'lark' | 'agent.thread' | 'agent.resource'
   sentAt: string
+  /** The session an agent.thread message came from. */
+  sourceSessionId?: string
 }
 
 export type AgentPersistedMessage = {
