@@ -29,7 +29,6 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
     conversationDropRef,
     dockCurrentSession,
     onDockToSidebar,
-    gated,
     handleMessageFeedback,
     handleRejectPlan,
     isSidebarMode,
@@ -63,8 +62,11 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
   // for the teammates they mention.
   const inviteSessionId = activeTab?.foreign ? undefined : activeTab?.sessionId
   const bypassControl =
-    activeTab?.sessionId && !activeTab.readOnly && !activeTab.foreign && !gated
-      ? { active: bypassBySession[activeTab.sessionId] ?? false, onSelect: selectBypassMode }
+    activeTab?.sessionId && !activeTab.readOnly && (!activeTab.foreign || activeTab.canManage)
+      ? {
+          active: bypassBySession[activeTab.sessionId] ?? false,
+          onSelect: selectBypassMode,
+        }
       : undefined
 
   return activeTab && !switchingConversation ? (
@@ -90,7 +92,10 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
                 onStop={stopActive}
                 onApprovePlan={(planId) => {
                   if (activeTab.readOnly) return
-                  track('agent_plan_approved', { plan_id: planId, surface: 'inline_card' })
+                  track('agent_plan_approved', {
+                    plan_id: planId,
+                    surface: 'inline_card',
+                  })
                   // Persist approval; the usePlan poll reflects the new status.
                   void api
                     .agentUpdatePlan(planId, { status: 'approved' }, teamId)
