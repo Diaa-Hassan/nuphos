@@ -82,7 +82,7 @@ test('a self-hosted agent counts as new only when it was not there before', () =
 test('the stepper marks local first and every cloud screen second', () => {
   assert.equal(setupStep('local'), 1)
   assert.equal(setupStep('cloud'), 2)
-  assert.equal(setupStep('managed'), 2)
+  assert.equal(setupStep('box'), 2)
   assert.equal(setupStep('self-hosted'), 2)
   assert.equal(setupStep('done'), undefined)
 })

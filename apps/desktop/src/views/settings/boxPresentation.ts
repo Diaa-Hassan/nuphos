@@ -14,9 +14,9 @@ export const BOX_BADGE: Record<BoxState, RuntimeStatusView> = {
   error: { label: 'Error', tone: 'error' },
 }
 
-/** What can be done to a Box in each state; the backend answers 409 otherwise. */
+/** What can be done to a Box in each state; the backend answers 409 otherwise, and a failed Box can only be deleted. */
 export function boxActions(state: BoxState): { pause: boolean; resume: boolean } {
-  return { pause: state === 'running', resume: state === 'paused' || state === 'error' }
+  return { pause: state === 'running', resume: state === 'paused' }
 }
 
 export function boxes(devices: AgentDevice[]): BoxDevice[] {
@@ -37,4 +37,19 @@ export function boxAgents(deviceId: string, instances: RuntimeInstance[]): Runti
   return instances.filter(
     (instance) => instance.kind === 'local' && instance.local?.deviceId === deviceId,
   )
+}
+
+export type BoxSetupPhase = 'idle' | 'starting' | 'ready' | 'error'
+
+/** Where a Box made by a setup flow stands: up once the team lists one of its agents. */
+export function boxSetupPhase(
+  deviceId: string | null,
+  devices: AgentDevice[] | null,
+  agents: RuntimeInstance[],
+): BoxSetupPhase {
+  if (!deviceId) return 'idle'
+  if (agents.length > 0) return 'ready'
+  const device = boxes(devices ?? []).find((candidate) => candidate.deviceId === deviceId)
+
+  return device?.box.state === 'error' ? 'error' : 'starting'
 }

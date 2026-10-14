@@ -6,6 +6,7 @@ import {
   anyCreating,
   boxActions,
   boxAgents,
+  boxSetupPhase,
   boxState,
   boxes,
 } from './boxPresentation.ts'
@@ -39,10 +40,10 @@ test('each Box state has a badge', () => {
   assert.equal(BOX_BADGE.error.tone, 'error')
 })
 
-test('only a running Box pauses, and a paused or failed one resumes', () => {
+test('only a running Box pauses, only a paused one resumes, and a failed one can only be deleted', () => {
   assert.deepEqual(boxActions('running'), { pause: true, resume: false })
   assert.deepEqual(boxActions('paused'), { pause: false, resume: true })
-  assert.deepEqual(boxActions('error'), { pause: false, resume: true })
+  assert.deepEqual(boxActions('error'), { pause: false, resume: false })
   assert.deepEqual(boxActions('creating'), { pause: false, resume: false })
 })
 
@@ -74,4 +75,15 @@ test('a running machine whose agent is not connected yet still shows as creating
   assert.equal(boxState(box('a', 'running', false)), 'creating')
   assert.equal(boxState(box('a', 'running')), 'running')
   assert.equal(boxState(box('a', 'paused', false)), 'paused')
+})
+
+test('a new Box is starting until the team lists one of its agents', () => {
+  const claude = agent('1', 'local', 'a')
+
+  assert.equal(boxSetupPhase(null, null, []), 'idle')
+  assert.equal(boxSetupPhase('a', null, []), 'starting')
+  assert.equal(boxSetupPhase('a', [box('a', 'creating')], []), 'starting')
+  assert.equal(boxSetupPhase('a', [box('a', 'running')], []), 'starting')
+  assert.equal(boxSetupPhase('a', [box('a', 'error')], []), 'error')
+  assert.equal(boxSetupPhase('a', [box('a', 'running')], [claude]), 'ready')
 })
