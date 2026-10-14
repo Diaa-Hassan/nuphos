@@ -105,6 +105,7 @@ test('the Claude Code sign-in helper ships in the image and writes where the age
   assert.match(dockerfile, /test -r \/opt\/nuphos-runtime\/claude-login\.mjs/u)
   const login = readFileSync(new URL('../image/claude-login.mjs', import.meta.url), 'utf8')
 
-  assert.ok(login.includes("join(home, '.claude', '.credentials.json')"))
+  // The credential is read from the runtime's own config dir when it has one, else ~/.claude.
+  assert.ok(login.includes("join(configDir ?? join(home, '.claude'), '.credentials.json')"))
   assert.ok(CLAUDE_AUTH_FILE.startsWith('/home/node/'))
 })

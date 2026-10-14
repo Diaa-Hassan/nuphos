@@ -20,8 +20,13 @@ const boxCreateSchema = z.object({
 
 /** What a client sees of a device: never the credential hash. */
 /** Null when the Box's machine no longer exists; the row is dropped with it. */
-async function deviceView(deps: AgentDeviceRouteDependencies, device: AgentDevice) {
-  const online = await deps.isOnline(device.userId, device.deviceId)
+async function deviceView(
+  deps: AgentDeviceRouteDependencies,
+  device: AgentDevice,
+  /** Right after a pause the frozen tunnel still looks alive; the caller knows better. */
+  online?: boolean,
+) {
+  online ??= await deps.isOnline(device.userId, device.deviceId)
   const state = device.box && deps.box ? await deps.box.state(device, online) : undefined
 
   if (state === 'gone') {
@@ -51,8 +56,8 @@ async function deviceView(deps: AgentDeviceRouteDependencies, device: AgentDevic
 
 export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   const routes = new Hono<{ Variables: AuthVariables }>()
-  const viewOrGone = async (device: AgentDevice) => {
-    const view = await deviceView(deps, device)
+  const viewOrGone = async (device: AgentDevice, online?: boolean) => {
+    const view = await deviceView(deps, device, online)
 
     if (!view) throw new AppError(404, 'not_found', 'This Box no longer exists')
 
@@ -94,7 +99,7 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
     const userId = c.get('userId')
     const device = await requireBoxes().pause(userId, c.req.valid('param').deviceId)
 
-    return c.json(await viewOrGone(device))
+    return c.json(await viewOrGone(device, false))
   })
 
   routes.post('/devices/:deviceId/box/resume', zv('param', deviceParam), async (c) => {
