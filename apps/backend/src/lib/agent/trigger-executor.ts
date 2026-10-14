@@ -1,11 +1,13 @@
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 
 import { signNuphosToken } from '@/lib/identity'
+import { logEvent } from '@/lib/observability'
 import { SLACK_INCIDENT_BUSY_POSTS_PER_HOUR } from '@/lib/slack/incident-notifications'
 import { runAgentForTrigger } from '@/routes/agent'
 import { persistedMessageToUiMessage } from '@/routes/slack/messages'
 
 import { buildTriggerRunStamp } from './conversation-trigger-run'
+import { executeConversationTurn } from './conversation-turn'
 import { getConversationBySessionId, getConversationWithMessages } from './db'
 import { incidentDeliveryPolicy } from './incident-delivery-policy'
 import { claimAgentRunForSession } from './run-admission'
@@ -18,35 +20,54 @@ import {
 } from './trigger-executor-context'
 
 import type { ConversationTriggerRunKind } from './conversation-trigger-run'
+import type { AgentConversation } from './db'
 import type { AgentTrigger } from './trigger-db'
 import type { TriggerGroupMember } from './trigger-group-db'
 import type { UIMessage } from 'ai'
 
 export { resolveMessageTemplate } from './trigger-executor-context'
 
+type TriggerFireOptions = {
+  /**
+   * How this fire came about. Required — only the caller knows, and the run
+   * list on the Trigger page exists to tell a scheduled fire apart from a
+   * webhook and from someone pressing Run now. Defaulting it here would
+   * mislabel runs silently.
+   */
+  runKind: ConversationTriggerRunKind
+  sessionId?: string
+  deliveryId?: string
+  /** Stable per fire (the BullMQ job id), so a redelivered fire is not delivered twice. */
+  fireId?: string
+  incidentScope?: string
+  groupMember?: TriggerGroupMember
+}
+
 export async function executeTrigger(
   trigger: AgentTrigger,
   webhookPayload: unknown,
-  options: {
-    /**
-     * How this fire came about. Required — only the caller knows, and the run
-     * list on the Trigger page exists to tell a scheduled fire apart from a
-     * webhook and from someone pressing Run now. Defaulting it here would
-     * mislabel runs silently.
-     */
-    runKind: ConversationTriggerRunKind
-    sessionId?: string
-    deliveryId?: string
-    incidentScope?: string
-    groupMember?: TriggerGroupMember
-  },
+  options: TriggerFireOptions,
 ): Promise<string> {
   if (!trigger._id) throw new Error('Cannot execute a trigger without an id')
   if (isRetiredTriggerShape(trigger)) {
     throw new Error(`Trigger ${trigger._id.toHexString()} is a retired database alert`)
   }
   const triggerId = trigger._id.toHexString()
-  const { principalUserId, credentialAccess } = await resolveExecutionAuthorization(trigger)
+  const { principalUserId, credentialAccess, target } = await resolveExecutionAuthorization(trigger)
+  const reportedStatus = readReportedStatus(webhookPayload)
+  const context = templateContext(trigger, triggerId, webhookPayload, options, reportedStatus)
+
+  // Exclusive with routing and incident mode, so nothing below applies to it.
+  if (target) {
+    await deliverToTargetSession(
+      trigger,
+      target,
+      resolveMessageTemplate(trigger.messageTemplate, context),
+      options.fireId,
+    )
+
+    return target.sessionId
+  }
 
   if (trigger.incidentMode && !trigger.slackDestination) {
     throw new Error(
@@ -69,7 +90,6 @@ export async function executeTrigger(
     // An alert firing is a fact, so it is recorded before the agent decides
     // anything. Everything the agent is told about the past is a pointer: the
     // history itself is something it fetches, the way an on-call would.
-    const reportedStatus = readReportedStatus(webhookPayload)
     const incidentContext =
       trigger.incidentMode && trigger.teamId
         ? await prepareIncidentContext({
@@ -81,34 +101,7 @@ export async function executeTrigger(
           })
         : null
 
-    // Stable template context: `trigger.*` is always present; `payload.*` is the
-    // webhook body (or undefined for cron). This way `{{payload.foo}}` resolves
-    // for webhook triggers and templates don't have to special-case the source.
-    const contextPayload = {
-      trigger: {
-        id: triggerId,
-        name: trigger.name,
-        firedAt: new Date().toISOString(),
-        ...(options.deliveryId ? { deliveryId: options.deliveryId } : {}),
-        ...(reportedStatus ? { reportedStatus } : {}),
-        ...(options.groupMember
-          ? {
-              group: {
-                member: {
-                  key: options.groupMember.key,
-                  provider: options.groupMember.provider,
-                  integrationId: options.groupMember.integrationId,
-                  kind: options.groupMember.kind,
-                  resourceId: options.groupMember.resourceId,
-                },
-              },
-            }
-          : {}),
-      },
-      ...(webhookPayload !== undefined ? { payload: webhookPayload } : {}),
-    }
-
-    const baseMessage = resolveMessageTemplate(trigger.messageTemplate, contextPayload)
+    const baseMessage = resolveMessageTemplate(trigger.messageTemplate, context)
     const resolvedMessage = trigger.incidentMode
       ? `${baseMessage}${incidentDeliveryPolicy({
           ...(reportedStatus ? { reportedStatus } : {}),
@@ -174,8 +167,94 @@ export async function executeTrigger(
   }
 }
 
+/**
+ * Wakes the bound session the way a GitHub event does. A busy session parks the
+ * message until its turn releases, and identical parked fires coalesce.
+ */
+async function deliverToTargetSession(
+  trigger: AgentTrigger,
+  target: AgentConversation,
+  text: string,
+  fireId: string | undefined,
+): Promise<void> {
+  const triggerId = trigger._id!.toHexString()
+  const { sessionId } = target
+
+  if (target.archivedAt) {
+    logEvent('info', 'agent.trigger.target_session_archived', {
+      trigger_id: triggerId,
+      session_id: sessionId,
+    })
+
+    return
+  }
+  await executeConversationTurn(
+    {
+      userId: target.userId,
+      // resolveExecutionAuthorization paused the Trigger unless this is its team.
+      teamId: target.teamId!,
+      targetSessionId: sessionId,
+      messageId: fireId
+        ? createHash('sha256').update(`${triggerId}:${fireId}`).digest('hex')
+        : randomUUID(),
+      locale: target.metadata?.locale ?? 'en-US',
+    },
+    target,
+    text,
+    'agent.resource',
+    {
+      version: 1,
+      sender: { type: 'system', id: `trigger:${triggerId}`, displayName: trigger.name },
+      source: 'agent.resource',
+      resourceUrl: `/teams/${trigger.teamId}/triggers/${triggerId}`,
+      sentAt: new Date().toISOString(),
+    },
+  )
+  await agentTriggers().updateOne(
+    { _id: trigger._id },
+    { $set: { lastRunAt: new Date(), updatedAt: new Date() } },
+  )
+}
+
 export class RoutedSessionBusyError extends Error {
   constructor() {
     super('Routed session is busy')
+  }
+}
+
+/**
+ * Stable template context: `trigger.*` is always present; `payload.*` is the
+ * webhook body (or undefined for cron). This way `{{payload.foo}}` resolves
+ * for webhook triggers and templates don't have to special-case the source.
+ */
+function templateContext(
+  trigger: AgentTrigger,
+  triggerId: string,
+  webhookPayload: unknown,
+  options: TriggerFireOptions,
+  reportedStatus: ReturnType<typeof readReportedStatus>,
+) {
+  return {
+    trigger: {
+      id: triggerId,
+      name: trigger.name,
+      firedAt: new Date().toISOString(),
+      ...(options.deliveryId ? { deliveryId: options.deliveryId } : {}),
+      ...(reportedStatus ? { reportedStatus } : {}),
+      ...(options.groupMember
+        ? {
+            group: {
+              member: {
+                key: options.groupMember.key,
+                provider: options.groupMember.provider,
+                integrationId: options.groupMember.integrationId,
+                kind: options.groupMember.kind,
+                resourceId: options.groupMember.resourceId,
+              },
+            },
+          }
+        : {}),
+    },
+    ...(webhookPayload !== undefined ? { payload: webhookPayload } : {}),
   }
 }
