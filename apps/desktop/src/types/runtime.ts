@@ -1,3 +1,5 @@
+import type { BoxState } from '../api/device-types.ts'
+
 /** Every agent a team runtime can run. This computer's own agent is narrower: `LocalAgentProvider`. */
 export const AGENT_PROVIDERS = ['claude-code', 'codex', 'grok', 'antigravity', 'opencode'] as const
 
@@ -22,6 +24,8 @@ export type LocalRuntimeSummary = {
   usage?: unknown
   /** When that computer read the usage above. */
   usageAt?: string
+  /** Set when this computer is one of the owner's Boxes. */
+  box?: { state: BoxState }
 }
 
 export type RuntimeInstance = {

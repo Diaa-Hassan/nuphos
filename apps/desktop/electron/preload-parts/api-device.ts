@@ -32,4 +32,9 @@ export const deviceApi = {
   localRuntimeOpenWorkspace: () => ipcRenderer.invoke('localRuntime:openWorkspace'),
   localRuntimeListActivity: (before?: string) =>
     ipcRenderer.invoke('localRuntime:listActivity', before),
+  boxListDevices: () => ipcRenderer.invoke('box:listDevices'),
+  boxCreate: (label?: string) => ipcRenderer.invoke('box:create', label),
+  boxPause: (deviceId: string) => ipcRenderer.invoke('box:pause', deviceId),
+  boxResume: (deviceId: string) => ipcRenderer.invoke('box:resume', deviceId),
+  boxDelete: (deviceId: string) => ipcRenderer.invoke('box:delete', deviceId),
 }
