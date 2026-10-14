@@ -95,7 +95,7 @@ export function SearchResults({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
-      <div className="flex h-11 items-center justify-between gap-3 px-6 text-xs text-secondary">
+      <div className="flex h-8 items-center justify-between gap-3 px-4 text-xs text-secondary">
         <span className="truncate font-medium">{heading}</span>
         {!busy && (
           <span className="shrink-0 text-secondary">
@@ -116,7 +116,7 @@ export function SearchResults({
         role="listbox"
         aria-label={heading}
         aria-busy={busy}
-        className="space-y-1 px-3 pb-3"
+        className="space-y-0.5 px-2 pb-2"
       >
         {!busy &&
           mode === 'people' &&
@@ -132,7 +132,7 @@ export function SearchResults({
                 <Avatar
                   src={person.avatarURL}
                   name={person.name || person.email}
-                  size={32}
+                  size={28}
                   className="shrink-0 rounded-full"
                 />
               }
@@ -162,10 +162,10 @@ export function SearchResults({
             />
           ))}
       </div>
-      <div role="status" className="px-6 text-sm text-secondary">
-        {busy && <p className="py-8">Searching…</p>}
+      <div role="status" className="px-4 text-sm text-secondary">
+        {busy && <p className="py-5">Searching…</p>}
         {!busy && !results.error && count === 0 && (
-          <p className="py-8">
+          <p className="py-5">
             {results.recent
               ? 'Sessions you open will appear here. Type to search your team.'
               : mode === 'people'
@@ -192,7 +192,7 @@ export function SearchResults({
         </button>
       )}
       {!busy && mode === 'people' && count > 0 && (
-        <p className="px-6 pb-5 text-xs text-secondary">
+        <p className="px-4 pb-3 text-xs text-secondary">
           Choose a teammate, then search within their sessions.
         </p>
       )}

@@ -57,21 +57,21 @@ export function SearchResultRow({
         if (mode) onOpen(mode === 'beside')
       }}
       className={clsx(
-        'flex min-h-[72px] cursor-pointer items-center gap-3.5 rounded-[7px] px-3 py-3',
+        'flex min-h-[52px] cursor-pointer items-center gap-2.5 rounded-md px-2 py-2',
         selected ? 'bg-zGray-750' : 'hover:bg-zGray-800',
       )}
     >
-      {avatar ?? <MessageSquare size={19} className="shrink-0 text-secondary" />}
+      {avatar ?? <MessageSquare size={16} className="shrink-0 text-secondary" />}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-medium text-main">
+        <div className="truncate text-[13px] font-medium text-main">
           <Highlight text={title} query={query} />
         </div>
         {preview && (
-          <div className="mt-1 truncate text-xs text-secondary">
+          <div className="mt-0.5 truncate text-xs text-secondary">
             <Highlight text={preview} query={query} />
           </div>
         )}
-        <div className="mt-1.5 truncate text-xs text-secondary">{subtitle}</div>
+        <div className="mt-0.5 truncate text-xs text-secondary">{subtitle}</div>
       </div>
       {selected && (
         <span className="flex shrink-0 items-center gap-2 text-xs text-secondary">
