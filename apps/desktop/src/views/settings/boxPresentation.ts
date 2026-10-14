@@ -1,35 +1,30 @@
 import type { RuntimeStatusView } from './runtimePresentation'
-import type { AgentDevice, BoxState } from '../../api/device-types'
+import type { AgentDevice, BoxState, BoxStatus } from '../../api/device-types'
 import type { RuntimeInstance } from '../../types/runtime'
 
-export const BOX_POLL_MS = 10_000
-// A Box comes online 10–30 s after it is created, so watch it closely until then.
+export type BoxDevice = AgentDevice & { box: BoxStatus }
+
+// Only a Box being created changes without the user acting: it comes online in 10–30 s.
 export const BOX_CREATING_POLL_MS = 2_000
 
 export const BOX_BADGE: Record<BoxState, RuntimeStatusView> = {
   creating: { label: 'Creating', tone: 'pending' },
   running: { label: 'Running', tone: 'online' },
   paused: { label: 'Paused', tone: 'off' },
-  stopped: { label: 'Stopped', tone: 'off' },
   error: { label: 'Error', tone: 'error' },
 }
 
 /** What can be done to a Box in each state; the backend answers 409 otherwise. */
 export function boxActions(state: BoxState): { pause: boolean; resume: boolean } {
-  return { pause: state === 'running', resume: state === 'paused' || state === 'stopped' }
+  return { pause: state === 'running', resume: state === 'paused' || state === 'error' }
 }
 
-export function boxes(
-  devices: AgentDevice[],
-): (AgentDevice & Required<Pick<AgentDevice, 'box'>>)[] {
-  return devices.filter((device) => device.box !== undefined) as (AgentDevice &
-    Required<Pick<AgentDevice, 'box'>>)[]
+export function boxes(devices: AgentDevice[]): BoxDevice[] {
+  return devices.filter((device): device is BoxDevice => device.box !== undefined)
 }
 
-export function boxPollMs(devices: AgentDevice[]): number {
+export function anyCreating(devices: AgentDevice[]): boolean {
   return devices.some((device) => device.box?.state === 'creating')
-    ? BOX_CREATING_POLL_MS
-    : BOX_POLL_MS
 }
 
 /** The team's agents that run on this Box. */

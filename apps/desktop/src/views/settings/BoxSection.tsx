@@ -9,17 +9,23 @@ import { toast } from '../../components/ui/toast'
 import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
 import { AGENT_PROVIDER } from '../../types/runtime'
 
-import { BOX_BADGE, boxActions, boxAgents, boxPollMs, boxes } from './boxPresentation'
+import {
+  BOX_BADGE,
+  BOX_CREATING_POLL_MS,
+  anyCreating,
+  boxActions,
+  boxAgents,
+  boxes,
+} from './boxPresentation'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
 import { STATUS_DOT } from './runtimePresentation'
 import { inputClasses } from './styles'
 
+import type { BoxDevice } from './boxPresentation'
 import type { AgentDeviceList } from '../../api'
 import type { RuntimeInstance } from '../../types/runtime'
 
-type BoxDevice = ReturnType<typeof boxes>[number]
-
-/** The signed-in user's own Boxes, above the team's agents. Hidden when the backend has no Box provider. */
+/** The signed-in user's own Boxes, above the team's agents. New Box shows only when the backend can make one. */
 export function BoxSection({
   teamId,
   instances,
@@ -34,35 +40,43 @@ export function BoxSection({
 
   const reload = useCallback(() => setRevision((value) => value + 1), [])
 
+  // Loads on mount, after each action and when the window shows again; polls only while a Box is being created.
   useEffect(() => {
     let cancelled = false
     let timer: ReturnType<typeof setTimeout> | undefined
-    const poll = () =>
+    const load = () => {
+      clearTimeout(timer)
       void api.boxListDevices().then(
         (next) => {
           if (cancelled) return
           setList(next)
-          timer = setTimeout(poll, boxPollMs(next.devices))
+          if (anyCreating(next.devices)) timer = setTimeout(load, BOX_CREATING_POLL_MS)
         },
-        () => {
-          if (!cancelled) timer = setTimeout(poll, boxPollMs([]))
-        },
+        () => {},
       )
+    }
+    const onVisible = () => {
+      if (!document.hidden) load()
+    }
 
-    poll()
+    load()
+    document.addEventListener('visibilitychange', onVisible)
 
     return () => {
       cancelled = true
       clearTimeout(timer)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [revision])
 
-  if (!list?.boxAvailable) return null
+  const owned = boxes(list?.devices ?? [])
+
+  if (!list?.boxAvailable && owned.length === 0) return null
 
   const create = async () => {
     setCreating(true)
     try {
-      await api.boxCreate(label.trim() || undefined)
+      await api.boxCreate(teamId, label.trim() || undefined)
       setLabel('')
       reload()
     } catch (error) {
@@ -71,7 +85,6 @@ export function BoxSection({
       setCreating(false)
     }
   }
-  const owned = boxes(list.devices)
 
   return (
     <section aria-label="Boxes" className="mx-auto w-full max-w-5xl px-5 pt-5 lg:px-8">
@@ -83,31 +96,33 @@ export function BoxSection({
             use them.
           </p>
         </div>
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void create()
-          }}
-        >
-          <input
-            type="text"
-            maxLength={200}
-            value={label}
-            placeholder="Name (optional)"
-            aria-label="Box name"
-            onChange={(event) => setLabel(event.target.value)}
-            className={clsx(inputClasses, 'h-8 w-44')}
-          />
-          <Button type="submit" size="sm" disabled={creating}>
-            {creating ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Box className="h-3.5 w-3.5" />
-            )}
-            New Box
-          </Button>
-        </form>
+        {list?.boxAvailable && (
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void create()
+            }}
+          >
+            <input
+              type="text"
+              maxLength={200}
+              value={label}
+              placeholder="Name (optional)"
+              aria-label="Box name"
+              onChange={(event) => setLabel(event.target.value)}
+              className={clsx(inputClasses, 'h-8 w-44')}
+            />
+            <Button type="submit" size="sm" disabled={creating}>
+              {creating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Box className="h-3.5 w-3.5" />
+              )}
+              New Box
+            </Button>
+          </form>
+        )}
       </div>
       {owned.length > 0 && (
         <ul className="mt-3 divide-y divide-zGray-800/60 rounded-xl border border-zGray-800/70">
@@ -126,9 +141,10 @@ export function BoxSection({
   )
 }
 
-function boxDetail(state: BoxDevice['box']['state'], agents: RuntimeInstance[], platform: string) {
-  if (state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
-  if (agents.length === 0) return platform
+function boxDetail(device: BoxDevice, agents: RuntimeInstance[]) {
+  if (device.box.state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
+  if (device.box.state === 'error' && device.box.error) return device.box.error
+  if (agents.length === 0) return device.platform
 
   return agents.map((agent) => AGENT_PROVIDER[agent.provider].label).join(' · ')
 }
@@ -173,8 +189,14 @@ function BoxRow({
           <div className="truncate text-[13px] font-medium text-main" title={device.label}>
             {device.label}
           </div>
-          <div className="truncate text-[12px] text-tertiary">
-            {boxDetail(state, agents, device.platform)}
+          <div
+            className={clsx(
+              'line-clamp-2 text-[12px]',
+              state === 'error' ? 'text-error' : 'text-tertiary',
+            )}
+            title={boxDetail(device, agents)}
+          >
+            {boxDetail(device, agents)}
           </div>
         </div>
       </div>

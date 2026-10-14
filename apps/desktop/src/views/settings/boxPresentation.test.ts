@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { BOX_BADGE, boxActions, boxAgents, boxPollMs, boxes } from './boxPresentation.ts'
+import { BOX_BADGE, anyCreating, boxActions, boxAgents, boxes } from './boxPresentation.ts'
 
 import type { AgentDevice } from '../../api/device-types.ts'
 import type { RuntimeInstance } from '../../types/runtime.ts'
@@ -20,7 +20,6 @@ test('each Box state has a badge', () => {
       creating: 'Creating',
       running: 'Running',
       paused: 'Paused',
-      stopped: 'Stopped',
       error: 'Error',
     },
   )
@@ -28,23 +27,22 @@ test('each Box state has a badge', () => {
   assert.equal(BOX_BADGE.error.tone, 'error')
 })
 
-test('only a running Box pauses, and only a paused or stopped one resumes', () => {
+test('only a running Box pauses, and a paused or failed one resumes', () => {
   assert.deepEqual(boxActions('running'), { pause: true, resume: false })
   assert.deepEqual(boxActions('paused'), { pause: false, resume: true })
-  assert.deepEqual(boxActions('stopped'), { pause: false, resume: true })
+  assert.deepEqual(boxActions('error'), { pause: false, resume: true })
   assert.deepEqual(boxActions('creating'), { pause: false, resume: false })
-  assert.deepEqual(boxActions('error'), { pause: false, resume: false })
 })
 
-test('lists only Boxes and polls fast while one is being created', () => {
+test('lists only Boxes and knows when one is being created', () => {
   const laptop: AgentDevice = { deviceId: 'mac', label: 'Mac', platform: 'darwin' }
 
   assert.deepEqual(
     boxes([laptop, box('a', 'running')]).map((device) => device.deviceId),
     ['a'],
   )
-  assert.equal(boxPollMs([laptop, box('a', 'running')]), 10_000)
-  assert.equal(boxPollMs([box('a', 'running'), box('b', 'creating')]), 2_000)
+  assert.equal(anyCreating([laptop, box('a', 'running')]), false)
+  assert.equal(anyCreating([box('a', 'running'), box('b', 'creating')]), true)
 })
 
 const agent = (id: string, kind: RuntimeInstance['kind'], deviceId?: string) =>

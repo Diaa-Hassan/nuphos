@@ -102,13 +102,15 @@ export type LocalRuntimeActivityPage = {
   nextCursor: string | null
 }
 
-export type BoxState = 'creating' | 'running' | 'paused' | 'stopped' | 'error'
+export type BoxState = 'creating' | 'running' | 'paused' | 'error'
 
 /** A Box: a device Nuphos runs in a sandbox for its owner. */
 export type BoxStatus = {
   provider: 'instabox'
   sandboxId: string
   state: BoxState
+  /** Why `state` is `error`. */
+  error?: string
   updatedAt?: string
 }
 
