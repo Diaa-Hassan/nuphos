@@ -24,9 +24,12 @@ export const BOX_INSTALL_COMMAND = [
   'command -v nuphos >/dev/null || curl -fsSL https://nuphos.ai/install | sh',
 ].join('\n')
 
-/** Starts the host detached from the command session; it keeps the Box's own credential. */
+/**
+ * Starts the host, which keeps the Box's own credential. Run with `background: true`:
+ * a foreground run would wait for the host, which never exits on its own.
+ */
 export const AGENT_COMMAND =
-  'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; pgrep -x nuphos >/dev/null || setsid nohup nuphos agent >> "$HOME/nuphos-agent.log" 2>&1 < /dev/null &'
+  'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; pgrep -x nuphos >/dev/null || exec setsid nuphos agent >> "$HOME/nuphos-agent.log" 2>&1 < /dev/null'
 
 export function connection(timeoutMs: number) {
   const box = config.box.instabox

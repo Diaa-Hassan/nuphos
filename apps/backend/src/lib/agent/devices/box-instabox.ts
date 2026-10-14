@@ -173,7 +173,7 @@ async function order(
     // The token rides in the environment of this one command: not on disk, not in argv.
     await sandbox.commands.run(AGENT_COMMAND, {
       envs: { ...downloadEnv(), NUPHOS_JOIN_TOKEN: token, NUPHOS_API_URL: url },
-      timeoutMs: QUICK_TIMEOUT_MS,
+      background: true,
     })
     // Setup is done when the machine is actually here, not when its commands returned.
     if (!(await present(userId, deviceId, JOIN_TIMEOUT_MS)))
@@ -226,7 +226,7 @@ export async function resumeBox(userId: string, deviceId: string): Promise<Agent
 
     await sandbox.commands.run(AGENT_COMMAND, {
       envs: { ...downloadEnv(), NUPHOS_API_URL: url },
-      timeoutMs: QUICK_TIMEOUT_MS,
+      background: true,
     })
   } catch (error) {
     throw unavailable('Could not resume the Box', error)

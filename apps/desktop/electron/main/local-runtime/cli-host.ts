@@ -287,4 +287,14 @@ console.log(
   'Conversations you move onto this computer can be continued by anyone in that team, and their messages run commands here.',
 )
 await controller.setUser(owner)
+// A sign-in made through Nuphos (openab runs it over the tunnel) is not seen by
+// this process until the agent is probed again, so signed-out agents are re-probed.
+setInterval(() => {
+  const { agents } = controller.state()
+  const signedOut = LOCAL_AGENT_PROVIDERS.filter(
+    (p) => agents[p].cli?.installed && !agents[p].cli.loggedIn,
+  )
+
+  if (!stopping && signedOut.length) void controller.refresh(true, signedOut)
+}, 30_000)
 await signInClaude(owner)
