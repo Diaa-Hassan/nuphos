@@ -27,6 +27,7 @@ export function useWorkspaceShortcuts(a: Args) {
     workspaceActions,
     settingsOpen,
     setSettingsOpen,
+    setSessionSearchOpen,
     setSettingsInitialSection,
     shortcutsHelpOpen,
     setShortcutsHelpOpen,
@@ -75,6 +76,12 @@ export function useWorkspaceShortcuts(a: Args) {
       // window: the onboarding branch returns before SettingsPage renders, and
       // CreateOrJoinTeamView stacks above it in DOM order.
       if (onboardingActive || createOrJoinOpen) return
+      if (action === 'search-sessions') {
+        setSettingsOpen(false)
+        setSessionSearchOpen((open) => !open)
+
+        return
+      }
       if (action === 'new-chat') {
         setSettingsOpen(false)
         workspaceActions.selectSession(null)
@@ -107,6 +114,7 @@ export function useWorkspaceShortcuts(a: Args) {
     toggleSidebarCollapsed,
     reopenLastClosedTab,
     setSettingsOpen,
+    setSessionSearchOpen,
     setSettingsInitialSection,
     setShortcutsHelpOpen,
   ])

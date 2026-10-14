@@ -84,6 +84,7 @@ export function useWorkspaceShellState() {
   } | null>(null)
   const [createOrJoinOpen, setCreateOrJoinOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [sessionSearchOpen, setSessionSearchOpen] = useState(false)
   const [shortcutsHelpOpen, setShortcutsHelpOpen] = useState(false)
   // Snapshots of recently closed tabs, newest last, for ⌘⇧T reopen. Only the
   // persistable navigation state is kept — runtime state (SSH PTY etc.) is
@@ -216,6 +217,8 @@ export function useWorkspaceShellState() {
     settingsInitialSection,
     setSettingsInitialSection,
     openSettingsSection,
+    sessionSearchOpen,
+    setSessionSearchOpen,
     shortcutsHelpOpen,
     setShortcutsHelpOpen,
     closedTabSnapshotsRef,

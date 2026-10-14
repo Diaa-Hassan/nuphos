@@ -1,12 +1,15 @@
 import { clsx } from 'clsx'
+import { useEffect } from 'react'
 import { createPortal } from 'react-dom'
 
 import { ChatLinkMenuContext } from '../../components/agent/chatLinkMenuContext'
 import { ConfettiBurst } from '../../components/ConfettiBurst'
 import { PortForwardBottomBar } from '../../components/PortForwardBottomBar'
+import { SessionSearchDialog } from '../../components/session-search/SessionSearchDialog'
 import { ShortcutsHelpModal } from '../../components/ShortcutsHelpModal'
 import { Sidebar } from '../../components/Sidebar'
 import { TeamInvitationsTakeover } from '../../components/TeamInvitationsPanel'
+import { recordSessionVisit } from '../../lib/sessionHistory'
 import { CreateOrJoinTeamView } from '../../views/CreateOrJoinTeamView'
 import { OnboardingFlow } from '../../views/onboarding/OnboardingFlow'
 import { SettingsPage } from '../../views/SettingsPage'
@@ -76,6 +79,12 @@ function WorkspacePane({ user, onLogout, onUserUpdated }: WorkspaceProps) {
     createTeamAndEnter,
     handleLogout,
   } = ws
+
+  useEffect(() => {
+    if (scope?.teamId && ws.selectedSessionId && !ws.mainPageOpen && (pane?.active ?? true)) {
+      recordSessionVisit(user.id, scope.teamId, ws.selectedSessionId)
+    }
+  }, [user.id, scope?.teamId, ws.selectedSessionId, ws.mainPageOpen, pane?.active])
 
   // Full-screen "Create or join team" page (workspace picker). Rendered in the
   // no-scope shell too, where the picker's entry is also reachable.
@@ -251,6 +260,24 @@ function WorkspacePane({ user, onLogout, onUserUpdated }: WorkspaceProps) {
           onOpenAuditConversation={openAuditConversation}
         />
       )}
+      {ws.sessionSearchOpen &&
+        !settingsOpen &&
+        !createOrJoinOpen &&
+        !invitationTakeoverOpen &&
+        (pane?.active ?? true) && (
+          <SessionSearchDialog
+            key={scope.teamId}
+            teamId={scope.teamId}
+            teamName={ws.currentTeam?.name ?? 'Workspace'}
+            userId={user.id}
+            onClose={() => ws.setSessionSearchOpen(false)}
+            onOpen={(sessionId, beside) => {
+              ws.setSessionSearchOpen(false)
+              if (beside && pane?.openSessionBeside(sessionId, scope.teamId)) return
+              ws.workspaceActions.selectSession(sessionId, { teamId: scope.teamId })
+            }}
+          />
+        )}
       <ShortcutsHelpModal open={shortcutsHelpOpen} onClose={() => setShortcutsHelpOpen(false)} />
       {createOrJoinOverlay}
       {invitationTakeover}

@@ -179,6 +179,7 @@ export type SidebarProps = {
   onOpenMyPreferences?: () => void
   onOpenUserSettings?: () => void
   /** Open the ⌘/ keyboard-shortcuts cheat sheet. */
+  onSearch?: () => void
   onOpenShortcutsHelp?: () => void
   onCreateTeam?: () => void
   pendingInvitations?: TeamInvitation[]
