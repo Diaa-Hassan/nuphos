@@ -4,7 +4,7 @@ import type { RuntimeInstance } from '../../types/runtime'
 
 export type BoxDevice = AgentDevice & { box: BoxStatus }
 
-// Only a Box being created changes without the user acting: it comes online in 10–30 s.
+// Only a Box being set up changes without the user acting: it comes online in 10–30 s.
 export const BOX_CREATING_POLL_MS = 2_000
 
 export const BOX_BADGE: Record<BoxState, RuntimeStatusView> = {
@@ -23,8 +23,13 @@ export function boxes(devices: AgentDevice[]): BoxDevice[] {
   return devices.filter((device): device is BoxDevice => device.box !== undefined)
 }
 
+/** A machine that runs but whose agent has not connected yet is still being set up. */
+export function boxState(device: BoxDevice): BoxState {
+  return device.box.state === 'running' && device.online === false ? 'creating' : device.box.state
+}
+
 export function anyCreating(devices: AgentDevice[]): boolean {
-  return devices.some((device) => device.box?.state === 'creating')
+  return boxes(devices).some((device) => boxState(device) === 'creating')
 }
 
 /** The team's agents that run on this Box. */

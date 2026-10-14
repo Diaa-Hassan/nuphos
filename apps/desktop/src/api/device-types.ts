@@ -107,11 +107,9 @@ export type BoxState = 'creating' | 'running' | 'paused' | 'error'
 /** A Box: a device Nuphos runs in a sandbox for its owner. */
 export type BoxStatus = {
   provider: 'instabox'
-  sandboxId: string
+  /** Set once the machine exists. */
+  sandboxId?: string
   state: BoxState
-  /** Why `state` is `error`. */
-  error?: string
-  updatedAt?: string
 }
 
 /** One of the signed-in user's devices; `box` is set when Nuphos hosts it. */

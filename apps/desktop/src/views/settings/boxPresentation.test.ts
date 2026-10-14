@@ -1,16 +1,28 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { BOX_BADGE, anyCreating, boxActions, boxAgents, boxes } from './boxPresentation.ts'
+import {
+  BOX_BADGE,
+  anyCreating,
+  boxActions,
+  boxAgents,
+  boxState,
+  boxes,
+} from './boxPresentation.ts'
 
 import type { AgentDevice } from '../../api/device-types.ts'
 import type { RuntimeInstance } from '../../types/runtime.ts'
 
-const box = (deviceId: string, state: NonNullable<AgentDevice['box']>['state']): AgentDevice => ({
+const box = (
+  deviceId: string,
+  state: NonNullable<AgentDevice['box']>['state'],
+  online = state === 'running',
+) => ({
   deviceId,
   label: deviceId,
   platform: 'linux',
-  box: { provider: 'instabox', sandboxId: `sb-${deviceId}`, state },
+  online,
+  box: { provider: 'instabox' as const, sandboxId: `sb-${deviceId}`, state },
 })
 
 test('each Box state has a badge', () => {
@@ -43,6 +55,7 @@ test('lists only Boxes and knows when one is being created', () => {
   )
   assert.equal(anyCreating([laptop, box('a', 'running')]), false)
   assert.equal(anyCreating([box('a', 'running'), box('b', 'creating')]), true)
+  assert.equal(anyCreating([box('a', 'running', false)]), true)
 })
 
 const agent = (id: string, kind: RuntimeInstance['kind'], deviceId?: string) =>
@@ -55,4 +68,10 @@ test("a Box's agents are the team's local agents on that device", () => {
     ),
     ['1'],
   )
+})
+
+test('a running machine whose agent is not connected yet still shows as creating', () => {
+  assert.equal(boxState(box('a', 'running', false)), 'creating')
+  assert.equal(boxState(box('a', 'running')), 'running')
+  assert.equal(boxState(box('a', 'paused', false)), 'paused')
 })

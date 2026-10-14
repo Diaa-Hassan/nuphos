@@ -14,6 +14,7 @@ import {
   BOX_CREATING_POLL_MS,
   anyCreating,
   boxActions,
+  boxState,
   boxAgents,
   boxes,
 } from './boxPresentation'
@@ -142,8 +143,7 @@ export function BoxSection({
 }
 
 function boxDetail(device: BoxDevice, agents: RuntimeInstance[]) {
-  if (device.box.state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
-  if (device.box.state === 'error' && device.box.error) return device.box.error
+  if (boxState(device) === 'creating') return 'Starting the computer, usually 10–30 seconds…'
   if (agents.length === 0) return device.platform
 
   return agents.map((agent) => AGENT_PROVIDER[agent.provider].label).join(' · ')
@@ -163,7 +163,7 @@ function BoxRow({
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [signingIn, setSigningIn] = useState<RuntimeInstance | null>(null)
-  const { state } = device.box
+  const state = boxState(device)
   const badge = BOX_BADGE[state]
   const actions = boxActions(state)
   const run = async (title: string, action: () => Promise<unknown>) => {
@@ -189,15 +189,7 @@ function BoxRow({
           <div className="truncate text-[13px] font-medium text-main" title={device.label}>
             {device.label}
           </div>
-          <div
-            className={clsx(
-              'line-clamp-2 text-[12px]',
-              state === 'error' ? 'text-error' : 'text-tertiary',
-            )}
-            title={boxDetail(device, agents)}
-          >
-            {boxDetail(device, agents)}
-          </div>
+          <div className="truncate text-[12px] text-tertiary">{boxDetail(device, agents)}</div>
         </div>
       </div>
       <span
