@@ -132,6 +132,7 @@ export function WorkspaceSidebarPanel({ ws, user }: { ws: WorkspaceController; u
           currentTeam ? () => openSettingsSection(MY_PREFERENCES_DEFAULT_SECTION) : undefined
         }
         onOpenUserSettings={() => openSettingsSection(USER_SETTINGS_DEFAULT_SECTION)}
+        onSearch={() => ws.setSessionSearchOpen(true)}
         onOpenShortcutsHelp={() => setShortcutsHelpOpen(true)}
         onCreateTeam={openCreateTeam}
         pendingInvitations={pendingInvitations}

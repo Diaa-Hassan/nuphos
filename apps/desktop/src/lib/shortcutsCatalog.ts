@@ -32,6 +32,7 @@ export const SHORTCUT_GROUPS: ShortcutGroup[] = [
   {
     title: 'App',
     entries: [
+      { label: 'Search sessions and people', combos: ['mod+k'] },
       { label: 'User settings', combos: ['mod+,'] },
       { label: 'Team settings', combos: ['mod+shift+,'] },
       { label: 'Toggle sidebar', combos: ['mod+b'] },

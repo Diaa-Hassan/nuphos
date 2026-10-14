@@ -1,15 +1,15 @@
 import { readLocalStorage, writeLocalStorage } from '../../app/localStorage'
 import {} from '../../components/agent/AgentPanel'
-import { emptyNavigation } from '../../lib/appRoutes'
-import { selectScope } from './store/workspaceState'
 import { track } from '../../lib/analytics'
+import { emptyNavigation } from '../../lib/appRoutes'
+
+import { selectScope } from './store/workspaceState'
 
 import {} from '../../views/SettingsPage'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
-import { useWorkspacePane } from './WorkspacePaneContext'
-
 import { useWorkspaceStore } from './store/useWorkspaceStore'
+import { useWorkspacePane } from './WorkspacePaneContext'
 
 import type { PersistedWorkspaceTab } from '../../app/workspacePersistence'
 import type { AccountSet, AgentPromptSeed } from '../../app/workspaceTabState'
@@ -29,6 +29,7 @@ import type {
   LkeCluster,
   TeamInvitation,
 } from '../../types'
+import type { SetStateAction } from 'react'
 
 export function useWorkspaceShellState() {
   const [teams, setTeams] = useState<AtlasTeam[]>([])
@@ -118,6 +119,13 @@ export function useWorkspaceShellState() {
   const [slackBindRequested, setSlackBindRequested] = useState(false)
   const handleSlackBindRequested = useCallback(() => setSlackBindRequested(false), [])
   const pane = useWorkspacePane()
+
+  const sessionSearchOpen = pane?.sessionSearchOpen ?? false
+  const sharedSetSearchOpen = pane?.setSessionSearchOpen
+  const setSessionSearchOpen = useCallback(
+    (open: SetStateAction<boolean>) => sharedSetSearchOpen?.(open),
+    [sharedSetSearchOpen],
+  )
   const [localSidebarCollapsed, setLocalSidebarCollapsed] = useState<boolean>(
     () => readLocalStorage('nuphos.sidebarCollapsed') === '1',
   )
@@ -216,6 +224,8 @@ export function useWorkspaceShellState() {
     settingsInitialSection,
     setSettingsInitialSection,
     openSettingsSection,
+    sessionSearchOpen,
+    setSessionSearchOpen,
     shortcutsHelpOpen,
     setShortcutsHelpOpen,
     closedTabSnapshotsRef,

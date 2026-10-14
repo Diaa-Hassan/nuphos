@@ -10,8 +10,11 @@ import { useWorkspacePane } from './WorkspacePaneContext'
 
 import type { WorkspaceShellStateResult } from './useWorkspaceShellState'
 import type { WorkspaceTabSyncResult } from './useWorkspaceTabSync'
+import type { WorkspaceTakeoverResult } from './useWorkspaceTakeover'
 
-type Args = WorkspaceShellStateResult & WorkspaceTabSyncResult
+type Args = WorkspaceShellStateResult &
+  WorkspaceTabSyncResult &
+  Pick<WorkspaceTakeoverResult, 'invitationTakeoverOpen'>
 
 /**
  * App-level keyboard shortcuts beyond tab open/close (which live in
@@ -27,12 +30,14 @@ export function useWorkspaceShortcuts(a: Args) {
     workspaceActions,
     settingsOpen,
     setSettingsOpen,
+    setSessionSearchOpen,
     setSettingsInitialSection,
     shortcutsHelpOpen,
     setShortcutsHelpOpen,
     toggleSidebarCollapsed,
     createOrJoinOpen,
     onboardingActive,
+    invitationTakeoverOpen,
     closedTabSnapshotsRef,
   } = a
 
@@ -74,7 +79,13 @@ export function useWorkspaceShortcuts(a: Args) {
       // Overlay-opening shortcuts are suppressed while a takeover owns the
       // window: the onboarding branch returns before SettingsPage renders, and
       // CreateOrJoinTeamView stacks above it in DOM order.
-      if (onboardingActive || createOrJoinOpen) return
+      if (onboardingActive || createOrJoinOpen || invitationTakeoverOpen) return
+      if (action === 'search-sessions') {
+        setSettingsOpen(false)
+        setSessionSearchOpen((open) => !open)
+
+        return
+      }
       if (action === 'new-chat') {
         setSettingsOpen(false)
         workspaceActions.selectSession(null)
@@ -103,10 +114,12 @@ export function useWorkspaceShortcuts(a: Args) {
     settingsOpen,
     shortcutsHelpOpen,
     onboardingActive,
+    invitationTakeoverOpen,
     createOrJoinOpen,
     toggleSidebarCollapsed,
     reopenLastClosedTab,
     setSettingsOpen,
+    setSessionSearchOpen,
     setSettingsInitialSection,
     setShortcutsHelpOpen,
   ])

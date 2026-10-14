@@ -3,6 +3,7 @@ import { useState } from 'react'
 
 import { useSuspendTitlebarDrag } from '../../hooks/useSuspendTitlebarDrag'
 import { RenameConversationDialog } from '../agent/panel/ConversationTitleEditor'
+import { SidebarSearchButton } from '../session-search/SidebarSearchButton'
 import { SIDEBAR_PANEL_PADDING_CLASS } from '../SidebarNavItem'
 
 import { sharedChatSection, withChatSections } from './chat-sections'
@@ -13,9 +14,9 @@ import {
   SidebarUserEntry,
 } from './header'
 import { SidebarHelpMenu } from './help-menu'
+import { SidebarItemContextMenu } from './item-context-menu'
 import { SidebarBackControl, SidebarNavStack } from './nav-stack'
 import { SidebarIdentitySelector, SidebarInvitations } from './parts'
-import { SidebarItemContextMenu } from './item-context-menu'
 import { SidebarSectionList } from './sections-list'
 import { teamSections } from './sections-services'
 import { settingsBackTarget } from './types'
@@ -56,6 +57,7 @@ export function Sidebar({
   onOpenMyPreferences,
   onOpenUserSettings,
   onOpenShortcutsHelp,
+  onSearch,
   onCreateTeam,
   pendingInvitations = [],
   onAcceptInvitation,
@@ -80,9 +82,7 @@ export function Sidebar({
   })
   const { sharedChatItems } = useSidebarSharedChats({ teamId, agentSessionId, chatShown })
 
-  // Keep the small, fixed workspace shortcut group above Chats. Favorites and
-  // connected-resource groups live in New Tab while split. Expanded workspace
-  // mode restores the original scope-specific navigation.
+  // Expanded mode restores scope-specific navigation; split mode keeps Chats.
   const teamScope = { kind: 'team' as const, teamId }
   const navigationScope = dynamicNavigation ? scope : teamScope
   const customResourceTypeSections = useSidebarCrdSections({
@@ -215,6 +215,7 @@ export function Sidebar({
           />
         )}
 
+        <SidebarSearchButton onSearch={onSearch} />
         <nav
           onScroll={chrome.handleNavScroll}
           className={clsx(

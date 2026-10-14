@@ -11,6 +11,7 @@ import type { PortForwardEvent, PortForwardInfo } from '../types/navigation.ts'
 
 /** Mirrors the AppShortcut union in electron/main/windows.ts. */
 export type AppShortcutAction =
+  | 'search-sessions'
   | 'new-chat'
   | 'new-tab'
   | 'close-tab'

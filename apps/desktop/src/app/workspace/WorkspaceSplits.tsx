@@ -5,6 +5,7 @@ import { isMac } from '../../lib/platform'
 import { readLocalStorage, writeLocalStorage } from '../localStorage'
 
 import {
+  focusPaneState,
   isSplitShortcut,
   paneRects,
   removePane,
@@ -23,7 +24,7 @@ import type { SplitLayout } from './splitLayout'
 import type { WorkspaceState } from './store/workspaceState'
 import type { WorkspaceStore } from './store/workspaceStore'
 import type { WorkspaceProps } from './workspaceProps'
-import type { ComponentType } from 'react'
+import type { ComponentType, SetStateAction } from 'react'
 
 export function WorkspaceSplits({
   Pane,
@@ -40,7 +41,19 @@ export function WorkspaceSplits({
   }, [sidebarCollapsed])
 
   const [layout, setLayout] = useState<SplitLayout>({ id: 'primary' })
-  const [activeId, setActiveId] = useState('primary')
+  const [{ activeId, sessionSearchOpen }, setWindowState] = useState({
+    activeId: 'primary',
+    sessionSearchOpen: false,
+  })
+  const setActiveId = useCallback((id: string) => {
+    setWindowState((previous) => focusPaneState(previous, id))
+  }, [])
+  const setSessionSearchOpen = useCallback((open: SetStateAction<boolean>) => {
+    setWindowState((previous) => ({
+      ...previous,
+      sessionSearchOpen: typeof open === 'function' ? open(previous.sessionSearchOpen) : open,
+    }))
+  }, [])
   const [sidebarHost, setSidebarHost] = useState<HTMLDivElement | null>(null)
   const [focusSurfaces] = useState(() => new Map<string, string>())
   const [stores] = useState(() => new Map<string, WorkspaceStore>())
@@ -66,7 +79,7 @@ export function WorkspaceSplits({
 
       return false
     },
-    [activeId, focusSurfaces, stores],
+    [activeId, focusSurfaces, stores, setActiveId],
   )
   const split = useCallback(
     (
@@ -94,7 +107,7 @@ export function WorkspaceSplits({
 
       return id
     },
-    [activeId, seeds, stores],
+    [activeId, seeds, stores, setActiveId],
   )
   // ⌘-click on a session link: focus it where it is already open, else show it
   // in the pane the last ⌘-click filled, else split one off to the right.
@@ -117,7 +130,7 @@ export function WorkspaceSplits({
 
       return true
     },
-    [focusSession, focusSurfaces, split, stores],
+    [focusSession, focusSurfaces, split, stores, setActiveId],
   )
 
   useEffect(() => {
@@ -167,7 +180,7 @@ export function WorkspaceSplits({
       document.removeEventListener('focus', onFocus, true)
       window.removeEventListener('blur', onBlur)
     }
-  }, [focusSurfaces])
+  }, [focusSurfaces, setActiveId])
 
   const rects = paneRects(layout)
   const multiple = rects.length > 1
@@ -229,6 +242,8 @@ export function WorkspaceSplits({
             <WorkspacePaneContext.Provider
               key={rect.id}
               value={{
+                sessionSearchOpen,
+                setSessionSearchOpen,
                 focusSession,
                 openSessionBeside: (sessionId, teamId) =>
                   openSessionBeside(rect.id, sessionId, teamId),
