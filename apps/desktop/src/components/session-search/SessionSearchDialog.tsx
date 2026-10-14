@@ -5,6 +5,7 @@ import { useRef, useState } from 'react'
 
 import { useSuspendTitlebarDrag } from '../../hooks/useSuspendTitlebarDrag'
 import { useDebouncedValue } from '../agent/panel/historyPageHooks'
+import { InputGroup, InputGroupInput } from '../ui/input-group'
 import { Kbd } from '../ui/kbd'
 
 import { SearchResults } from './SearchResults'
@@ -60,9 +61,9 @@ export function SessionSearchDialog({ teamId, teamName, userId, onClose, onOpen 
             }}
           >
             <Dialog.Title className="sr-only">Search sessions and people</Dialog.Title>
-            <div className="flex h-[76px] shrink-0 items-center gap-3.5 border-b border-[#3C3D40] px-6">
+            <InputGroup className="flex h-[76px] shrink-0 items-center gap-3.5 border-b border-[#3C3D40] px-6 ring-inset">
               <Search size={22} className="shrink-0 text-[#C5C5CD]" />
-              <input
+              <InputGroupInput
                 ref={inputRef}
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
@@ -80,7 +81,7 @@ export function SessionSearchDialog({ teamId, teamName, userId, onClose, onOpen 
               >
                 <Kbd combo="esc" />
               </Dialog.Close>
-            </div>
+            </InputGroup>
             <div className="flex h-[58px] shrink-0 items-center gap-1.5 border-b border-[#3C3D40] px-4">
               {(['sessions', 'people'] as const).map((value) => {
                 const Icon = value === 'people' ? Users : MessageSquare
