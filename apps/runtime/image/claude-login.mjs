@@ -48,10 +48,20 @@ export async function runClaudeLogin({
   emit = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`),
   signal,
 } = {}) {
+  // A runtime with its own config dir (a Box, a desktop's local agent) signs in there.
+  const configDir = process.env.CLAUDE_CONFIG_DIR
   const child = spawn(executable, [...args, 'auth', 'login', '--claudeai'], {
     // Not the gateway's environment: no transport keys, and no CLAUDE_CODE_OAUTH_TOKEN,
     // which would shadow the login this writes.
-    env: { HOME: home, PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', TERM: 'dumb' },
+    env: {
+      HOME: home,
+      PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+      TERM: 'dumb',
+      ...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
+      ...(process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR !== undefined
+        ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR }
+        : {}),
+    },
     stdio: ['pipe', 'pipe', 'ignore'],
     detached: process.platform !== 'win32',
   })
@@ -104,9 +114,14 @@ export async function runClaudeLogin({
 
     if (failure) throw failure
     if (code !== 0) throw new LoginError('failed')
-    const credential = await stat(join(home, '.claude', '.credentials.json')).catch(() => null)
+    // macOS keeps the login in the Keychain, so only a file-backed login is checked.
+    if (process.platform !== 'darwin') {
+      const credential = await stat(
+        join(configDir ?? join(home, '.claude'), '.credentials.json'),
+      ).catch(() => null)
 
-    if (!credential?.isFile() || credential.size === 0) throw new LoginError('failed')
+      if (!credential?.isFile() || credential.size === 0) throw new LoginError('failed')
+    }
     emit({ type: 'authenticated' })
   } finally {
     lines.removeAllListeners('close')

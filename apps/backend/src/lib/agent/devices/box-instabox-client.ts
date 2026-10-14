@@ -29,7 +29,7 @@ export const BOX_INSTALL_COMMAND = [
  * a foreground run would wait for the host, which never exits on its own.
  */
 export const AGENT_COMMAND =
-  'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; pgrep -x nuphos >/dev/null || exec setsid nuphos agent >> "$HOME/nuphos-agent.log" 2>&1 < /dev/null'
+  'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; pgrep -f "[h]ost.mjs" >/dev/null || exec setsid nuphos agent >> "$HOME/nuphos-agent.log" 2>&1 < /dev/null'
 
 export function connection(timeoutMs: number) {
   const box = config.box.instabox

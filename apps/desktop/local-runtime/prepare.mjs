@@ -168,6 +168,8 @@ export async function prepare({ targets, openab, skipOpenab, require }) {
         filter: (path) => !path.endsWith('.complete'),
       })
     cpSync(join(RUNTIME_DIR, ATTACHMENT_JOB), join(out, 'attachment-job.mjs'))
+    // Claude's sign-in wrapper openab runs on request from Nuphos, the one the runtime image ships.
+    cpSync(join(RUNTIME_DIR, 'claude-login.mjs'), join(out, 'claude-login.mjs'))
     if (target.startsWith('darwin')) {
       const arch = target.endsWith('arm64') ? 'arm64' : 'x86_64'
 

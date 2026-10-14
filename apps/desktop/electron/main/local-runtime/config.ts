@@ -141,12 +141,17 @@ export function openabConfigToml(launch: LocalRuntimeLaunch): string {
  * a CLI path with a space cannot be expressed; such a computer keeps signing in
  * from its own UI.
  */
-export function agentLoginEnv(launch: AgentCliLaunch): Record<string, string> {
-  if (/\s/u.test(launch.cliPath)) return {}
+export function agentLoginEnv(launch: LocalRuntimeLaunch): Record<string, string> {
+  // Codex's wrapper still assumes the runtime image's paths; its sign-in over the tunnel comes later.
+  if (launch.provider !== 'claude-code') return {}
+  const wrapper = path.join(launch.bundle.root, 'claude-login.mjs')
+
+  if (/\s/u.test(launch.nodeExecPath + wrapper)) return {}
 
   return {
     ...providerEnv(launch),
-    OPENAB_RUNTIME_LOGIN_COMMAND: [launch.cliPath, ...agentSignInArgs(launch.provider)].join(' '),
+    // The wrapper turns the agent's own sign-in into the frames Nuphos shows (URL, code).
+    OPENAB_RUNTIME_LOGIN_COMMAND: `${launch.nodeExecPath} ${wrapper}`,
   }
 }
 

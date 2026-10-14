@@ -98,7 +98,6 @@ const deviceCredential = await deviceCredentialFor({
   joinToken: process.env.NUPHOS_JOIN_TOKEN?.trim() || undefined,
   headers: { 'x-atlas-client': clientVersion },
 })
-// A joined computer is the device the backend registered for it.
 const deviceId = deviceCredential?.deviceId ?? device.deviceId
 const token = deviceCredential ? null : currentToken()
 const owner = deviceCredential?.userId ?? (token ? unverifiedTokenSubject(token) : undefined)
@@ -139,7 +138,6 @@ const controller: LocalRuntimeController = new LocalRuntimeController({
   },
   onChange: report,
   prepareAgentHome,
-  // Joining already registered it.
   registerDevice: async () => {
     if (deviceCredential) return
     await callJson('PUT', '/agent/devices', {
@@ -208,7 +206,10 @@ const controller: LocalRuntimeController = new LocalRuntimeController({
         ])
       },
       status,
-      onChange,
+      onChange: (connected, superseded) => {
+        onChange(connected, superseded)
+        if (superseded) stop('Another Nuphos app on this computer took over the local agent.')
+      },
     }),
   log,
 })
@@ -280,21 +281,20 @@ if (!deviceCredential)
     if (!stopping && (!fresh || unverifiedTokenSubject(fresh) !== owner))
       stop('Signed out of Nuphos; stopping the local agents.')
   }, 2_000)
-// A closed terminal or a dropped SSH session stops them too.
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => stop())
 console.log(`Running this computer's agents for Nuphos as "${device.label}". Press Ctrl-C to stop.`)
 console.log(
   'Conversations you move onto this computer can be continued by anyone in that team, and their messages run commands here.',
 )
 await controller.setUser(owner)
-// A sign-in made through Nuphos (openab runs it over the tunnel) is not seen by
-// this process until the agent is probed again, so signed-out agents are re-probed.
 setInterval(() => {
   const { agents } = controller.state()
-  const signedOut = LOCAL_AGENT_PROVIDERS.filter(
-    (p) => agents[p].cli?.installed && !agents[p].cli.loggedIn,
-  )
+  const signedOut = LOCAL_AGENT_PROVIDERS.filter((p) => {
+    const { online, cli } = agents[p]
 
-  if (!stopping && signedOut.length) void controller.refresh(true, signedOut)
+    return online && cli?.installed === true && !cli.loggedIn
+  })
+
+  if (!stopping && signedOut.length) void controller.refresh(false, signedOut)
 }, 30_000)
 await signInClaude(owner)
