@@ -51,6 +51,8 @@ const CREATE_WINDOW_MS = 10 * 60_000
 const JOIN_TOKEN_TTL_SEC = 60 * 60
 /** How long a resume may take before the tunnel is back. */
 const WAKE_TIMEOUT_MS = 60_000
+/** How long a fresh machine may take to join after its host was started. */
+const JOIN_TIMEOUT_MS = 3 * 60_000
 
 /** What a client sees; `error` means instabox could not say, or the machine is gone. */
 export type BoxState = 'creating' | 'running' | 'paused' | 'error'
@@ -176,6 +178,9 @@ async function order(
       envs: { NUPHOS_JOIN_TOKEN: token, NUPHOS_API_URL: url },
       timeoutMs: QUICK_TIMEOUT_MS,
     })
+    // Setup is done when the machine is actually here, not when its commands returned.
+    if (!(await present(userId, deviceId, JOIN_TIMEOUT_MS)))
+      throw new Error('The machine did not join within the time allowed')
     logEvent('info', 'agent.box.provisioned', { user_id: userId, device_id: deviceId })
   } catch (error) {
     logError('agent.box.provision_failed', error, { user_id: userId, device_id: deviceId })
@@ -256,7 +261,13 @@ export async function wakeBox(userId: string, deviceId: string): Promise<boolean
 
   if (!device?.box?.sandboxId) return false
   await resumeBox(userId, deviceId)
-  const deadline = Date.now() + WAKE_TIMEOUT_MS
+
+  return present(userId, deviceId, WAKE_TIMEOUT_MS)
+}
+
+/** Polls the device's presence until it is here or the time is up. */
+async function present(userId: string, deviceId: string, timeoutMs: number): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs
 
   while (Date.now() < deadline) {
     if (await isDevicePresent(userId, deviceId)) return true
