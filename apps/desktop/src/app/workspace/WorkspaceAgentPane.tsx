@@ -5,6 +5,7 @@ import { connectedResourceLabels } from '../../app/accountScopes'
 import { AgentPanel } from '../../components/agent/AgentPanel'
 import { EditableConversationTitle } from '../../components/agent/panel/ConversationTitleEditor'
 import { AgentProviderIcon } from '../../components/agent/panel/icons'
+import { SessionArchiveButton } from '../../components/agent/SessionArchiveButton'
 import { SessionParticipants } from '../../components/agent/SessionParticipants'
 import { SessionTitlebarResources } from '../../components/agent/SessionTitlebarResources'
 import { teamCanUseAgent } from '../../lib/agentAccess'
@@ -59,6 +60,7 @@ export function WorkspaceAgentPane({
     sessionId: string | null
     title: string
     canRename?: boolean
+    canArchive?: boolean
     runtime: AgentProvider | null
     runtimeId?: string
   }>({ sessionId: null, title: 'Agent', runtime: null })
@@ -116,10 +118,12 @@ export function WorkspaceAgentPane({
       agentRuntime?: AgentProvider,
       canRename?: boolean,
       runtimeId?: string,
+      canArchive?: boolean,
     ) => {
       setHeading({
         sessionId,
         canRename,
+        canArchive,
         runtimeId,
         title: nextTitle || 'Agent',
         runtime: runtimeAttached ? (agentRuntime ?? 'claude-code') : null,
@@ -227,6 +231,14 @@ export function WorkspaceAgentPane({
               warnLocalAgent={
                 currentHeading.canRename === true && isLocalAgentRuntime(currentHeading.runtimeId)
               }
+            />
+          )}
+          {selectedSessionId && currentHeading.canArchive === true && (
+            <SessionArchiveButton
+              key={`archive-${selectedSessionId}`}
+              sessionId={selectedSessionId}
+              teamId={teamId}
+              title={currentHeading.title}
             />
           )}
         </div>

@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 
 import { resolveSessionSync } from '../../../lib/agentSessionSync'
+import { onChatArchived } from '../../../lib/chatArchiveEvents'
 import { onChatTitleChanged } from '../../../lib/chatTitleEvents'
 
 import { HOME_TAB_ID } from './model'
@@ -47,6 +48,45 @@ export function usePanelSessionBridge(acc: Acc) {
     tabsRef,
     uploadingTabsRef,
   } = acc
+
+  // Subscribed once and read through refs: a closure over `activeTab` can lag
+  // a just-finished open in this split and miss the archive.
+  useEffect(
+    () =>
+      onChatArchived((change) => {
+        if (change.teamId !== teamId) return
+        const archivedTabIds = new Set(
+          tabsRef.current.filter((t) => t.sessionId === change.sessionId).map((t) => t.id),
+        )
+
+        if (pendingOpenRef.current === change.sessionId) {
+          openGenerationRef.current += 1
+          pendingOpenRef.current = null
+          setOpeningConversation(null)
+        }
+        if (archivedTabIds.size === 0) return
+        // Drop the idle copy so an unarchive and reopen refetches it rather than
+        // showing this cached tab; a still-running turn keeps its tab.
+        setTabs((prev) =>
+          prev.filter(
+            (t) =>
+              !archivedTabIds.has(t.id) ||
+              retainBackgroundTabs([t], uploadingTabsRef.current).length > 0,
+          ),
+        )
+        setActiveId((id) => (archivedTabIds.has(id) ? HOME_TAB_ID : id))
+      }),
+    [
+      teamId,
+      tabsRef,
+      pendingOpenRef,
+      openGenerationRef,
+      uploadingTabsRef,
+      setOpeningConversation,
+      setTabs,
+      setActiveId,
+    ],
+  )
 
   useEffect(
     () =>

@@ -4,7 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { api } from '../../api'
 import { useAgentRuntimeStates } from '../../lib/agentRuntimeStates'
 import { useAgentUnreadSessions } from '../../lib/agentUnreadSessions'
-import { onChatUnarchived } from '../../lib/chatArchiveEvents'
+import { archiveChat as archiveChatRequest } from '../../lib/archiveChat'
+import { announceChatArchived } from '../../lib/chatArchiveEvents'
 import { onChatTitleChanged } from '../../lib/chatTitleEvents'
 import { customResourceNavigationKey } from '../../lib/customResourceNavigation'
 import { readSwrCache, writeSwrCache } from '../../lib/swrCache'
@@ -19,6 +20,7 @@ import {
   crdCacheKey,
   resizeDurationMs,
 } from './state'
+import { useSidebarArchiveEvents } from './use-sidebar-archive-events'
 
 import type { Item, Section } from './types'
 import type { AgentConversation } from '../../api'
@@ -188,16 +190,16 @@ export function useSidebarChats({
     }
   }, [refreshSessions, agentSessionId, teamId])
 
-  useEffect(
-    () =>
-      onChatUnarchived((sessionId) => {
-        locallyArchivedRef.current.delete(sessionId)
-        void refreshSessions()
-      }),
-    [refreshSessions],
-  )
-
   const [archivingIds, setArchivingIds] = useState<ReadonlySet<string>>(() => new Set())
+
+  useSidebarArchiveEvents({
+    teamId,
+    locallyArchivedRef,
+    refreshSeqRef,
+    setSessions: setAgentSessions,
+    refresh: refreshSessions,
+    onArchived,
+  })
   const archiveChat = useCallback(
     async (sessionId: string) => {
       // Re-entrancy guard: a second click while the first archive is in
@@ -212,7 +214,7 @@ export function useSidebarChats({
       let ok = false
 
       try {
-        await api.agentSetConversationArchived(sessionId, true, teamId)
+        await archiveChatRequest(sessionId, teamId)
         ok = true
       } catch {
         // Handled below once the collapse finished.
@@ -228,14 +230,12 @@ export function useSidebarChats({
         return next
       })
       if (ok) {
-        setAgentSessions((prev) => prev.filter((c) => c.sessionId !== sessionId))
-        onArchived?.(sessionId)
-        void refreshSessions()
+        announceChatArchived({ sessionId, teamId })
       } else {
         toast.error('Could not archive chat')
       }
     },
-    [teamId, refreshSessions, onArchived],
+    [teamId],
   )
 
   const unlinkChat = useCallback(
