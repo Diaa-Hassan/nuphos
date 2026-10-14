@@ -5,7 +5,7 @@ import { useState } from 'react'
 import { Menu, MenuCheckboxItem, MenuContent, MenuTrigger } from '../../ui/menu'
 
 import { allCredentialAccess, emptyCredentialAccess } from './credentialAccess'
-import { buildDeviceCredentialSections, shownDevices, usableDeviceIds } from './credentialSections'
+import { buildDeviceCredentialSections, selectAllDevices, shownDevices } from './credentialSections'
 import { countSelectedCredentials, countTotalCredentials } from './credentialSelectorButtonCounts'
 import { useCredentialSections } from './credentialSelectorButtonHooks'
 import { CredentialSelectorSectionList } from './credentialSelectorButtonSections'
@@ -52,7 +52,7 @@ function SelectionButton({
 
     onChange(
       devices
-        ? { ...value, deviceIds: select ? usableDeviceIds(options.devices) : [] }
+        ? { ...value, deviceIds: select ? selectAllDevices(value.deviceIds, options.devices) : [] }
         : { ...next, deviceIds: value.deviceIds },
     )
   }

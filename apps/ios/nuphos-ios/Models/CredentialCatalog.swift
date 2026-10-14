@@ -88,7 +88,7 @@ struct CredentialCatalog: Equatable, Sendable {
                 guard provider.optionsKey == "devices" else { return Item(provider: provider, id: id, label: label, detail: detail) }
                 let platform = detail.map(Self.platformName)
                 let offline = row["available"]?.boolValue == false
-                return Item(provider: provider, id: id, label: label, detail: offline ? [platform, "Offline"].compactMap { $0 }.joined(separator: " · ") : platform, offline: offline)
+                return Item(provider: provider, id: id, label: label, detail: offline ? [platform, "Unavailable"].compactMap { $0 }.joined(separator: " · ") : platform, offline: offline)
             }
             return items.isEmpty ? nil : (provider, items)
         }
