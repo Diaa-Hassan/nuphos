@@ -30,6 +30,8 @@ export type LocalRuntimeSummary = {
   usage?: unknown
   /** When that computer read the usage above. */
   usageAt?: string
+  /** Present when the computer is a Box Nuphos made, rather than someone's own machine. */
+  box?: { provider: 'instabox' }
 }
 
 export type LocalRuntimeInstance = {
@@ -95,6 +97,7 @@ export async function listOwnLocalRuntimes(
               deviceId: device.deviceId,
               deviceLabel: device.label,
               signedIn: reported?.cli.loggedIn ?? null,
+              ...(device.box ? { box: { provider: device.box.provider } } : {}),
               ...(reported?.usage !== undefined
                 ? {
                     usage: reported.usage,

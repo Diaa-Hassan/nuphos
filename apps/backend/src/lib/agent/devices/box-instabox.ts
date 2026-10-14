@@ -9,8 +9,9 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { InstaboxError, Sandbox } from '@insforge/instabox-sdk'
+import { Sandbox } from '@insforge/instabox-sdk'
 
+import { config } from '@/config'
 import { AppError } from '@/lib/errors'
 import { logError, logEvent } from '@/lib/observability'
 
@@ -40,6 +41,8 @@ import {
 import type { AgentDevice, AgentDeviceBox } from './store'
 
 export { boxBackendUrl, boxesAvailable, boxesEnabled } from './box-instabox-client'
+export { boxState } from './box-instabox-state'
+export type { BoxState } from './box-instabox-state'
 
 export const BOX_TEMPLATE = 'universal'
 /** Machines one team may have at a time, on the deployment's own key. */
@@ -49,15 +52,10 @@ export const MAX_CREATES_PER_WINDOW = 3
 const CREATE_WINDOW_MS = 10 * 60_000
 /** The machine joins within this; a token left unused expires with it. */
 const JOIN_TOKEN_TTL_SEC = 60 * 60
-/** A state read for a listing: an outage must not stall the devices page. */
-const READ_TIMEOUT_MS = 5_000
 /** How long a resume may take before the tunnel is back. */
 const WAKE_TIMEOUT_MS = 60_000
 /** How long a fresh machine may take to join after its host was started. */
 const JOIN_TIMEOUT_MS = 3 * 60_000
-
-/** What a client sees; `error` means instabox could not say, or the machine is gone. */
-export type BoxState = 'creating' | 'running' | 'paused' | 'error'
 
 type BoxDevice = AgentDevice & { box: AgentDeviceBox }
 
@@ -71,6 +69,11 @@ function requireMachine(device: BoxDevice): string {
   if (!device.box.sandboxId) throw new AppError(409, 'box_state', 'The Box is still being created')
 
   return device.box.sandboxId
+}
+
+/** The CLI and its runtime bundle come from the release, or from a mirror in development. */
+function downloadEnv(): Record<string, string> {
+  return config.box.downloadUrl ? { NUPHOS_DOWNLOAD_URL: config.box.downloadUrl } : {}
 }
 
 function backendUrl(): string {
@@ -90,26 +93,6 @@ async function killByDevice(deviceId: string): Promise<void> {
   const machines = await Sandbox.list({ ...connection(QUICK_TIMEOUT_MS), metadata: { deviceId } })
 
   for (const machine of machines) await kill(machine.sandboxId)
-}
-
-/**
- * The machine's state as instabox reports it, for a Box that is not present.
- * `gone` means instabox no longer has the machine, so the row should go too.
- */
-export async function boxState(device: AgentDevice, online: boolean): Promise<BoxState | 'gone'> {
-  if (!device.box?.sandboxId) return 'creating'
-  if (online) return 'running'
-  try {
-    const sandbox = await Sandbox.connect(device.box.sandboxId, {
-      ...connection(READ_TIMEOUT_MS),
-      resume: false,
-    })
-    const { state } = await sandbox.getInfo()
-
-    return state === 'running' || state === 'starting' ? 'running' : 'paused'
-  } catch (error) {
-    return error instanceof InstaboxError && error.status === 404 ? 'gone' : 'error'
-  }
 }
 
 const recentCreates = new Map<string, number[]>()
@@ -183,10 +166,13 @@ async function order(
       expiresInSec: JOIN_TOKEN_TTL_SEC,
     })
 
-    await sandbox.commands.run(BOX_INSTALL_COMMAND, { timeoutMs: INSTALL_TIMEOUT_MS })
+    await sandbox.commands.run(BOX_INSTALL_COMMAND, {
+      envs: downloadEnv(),
+      timeoutMs: INSTALL_TIMEOUT_MS,
+    })
     // The token rides in the environment of this one command: not on disk, not in argv.
     await sandbox.commands.run(AGENT_COMMAND, {
-      envs: { NUPHOS_JOIN_TOKEN: token, NUPHOS_API_URL: url },
+      envs: { ...downloadEnv(), NUPHOS_JOIN_TOKEN: token, NUPHOS_API_URL: url },
       timeoutMs: QUICK_TIMEOUT_MS,
     })
     // Setup is done when the machine is actually here, not when its commands returned.
@@ -239,7 +225,7 @@ export async function resumeBox(userId: string, deviceId: string): Promise<Agent
     })
 
     await sandbox.commands.run(AGENT_COMMAND, {
-      envs: { NUPHOS_API_URL: url },
+      envs: { ...downloadEnv(), NUPHOS_API_URL: url },
       timeoutMs: QUICK_TIMEOUT_MS,
     })
   } catch (error) {

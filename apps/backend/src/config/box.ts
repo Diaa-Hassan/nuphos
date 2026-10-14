@@ -7,12 +7,17 @@ import { optional } from './env'
  */
 export type BoxConfig = {
   instabox: { apiKey: string; apiUrl?: string } | null
+  /** Where a Box downloads the CLI and its runtime bundle; unset means the GitHub release. */
+  downloadUrl?: string
 }
 
 export function boxConfig(): BoxConfig {
   const apiKey = optional('INSTABOX_API_KEY')
 
   return {
+    ...(optional('NUPHOS_BOX_DOWNLOAD_URL')
+      ? { downloadUrl: optional('NUPHOS_BOX_DOWNLOAD_URL') }
+      : {}),
     instabox: apiKey
       ? {
           apiKey,
