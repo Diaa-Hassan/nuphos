@@ -20,7 +20,7 @@ import { createPreviewRunState, createPreviewToolLog } from './chat-preview-run'
 import { handlePreviewToolUpdate } from './chat-preview-tool-update'
 import { appendAgentRunError, appendAgentRunPhase } from './run-frames'
 
-import type { PreviewChatTurnArgs } from './chat-preview-run'
+import type { PreviewChatTurnArgs, TurnEnd } from './chat-preview-run'
 import type { PreviewDecision } from '@/lib/claude-code-preview/decision-waiter'
 import type { OpenAbPermissionHandler } from '@/lib/claude-code-preview/openab-acp-session'
 import type { UIMessage } from 'ai'
@@ -50,7 +50,7 @@ import { RunHandoff } from '@/lib/lifecycle'
 
 export type { PreviewChatTurnArgs } from './chat-preview-run'
 
-export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): Promise<void> {
+export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): Promise<TurnEnd> {
   const { run, sessionId, teamId, userId } = args
   const actorUserId = args.actorUserId ?? userId
   const requestId = run.trace?.requestId ?? randomUUID()
@@ -240,7 +240,7 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
       await clearActiveTurn()
       state.finish()
 
-      return
+      return 'connection-lost'
     }
     if (args.clientResendsRefusal && isRuntimeRefusal(err))
       await requeueCarried(userId, sessionId, prepared.carried)

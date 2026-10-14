@@ -34,13 +34,14 @@ export async function executeConversationTurn(...args: TurnArgs): Promise<void> 
 
 /**
  * Hands the message to the target: 'started' when it took the run (`run` settles
- * with the turn), 'delivered' when it went to the target's active turn instead.
+ * with the turn's finish reason), 'delivered' when it went to the target's active
+ * turn instead.
  */
 export async function startConversationTurn(
   ...[data, target, renderedText, source, metadata]: TurnArgs
-): Promise<{ status: 'started' | 'delivered'; run: Promise<void> }> {
+): Promise<{ status: 'started' | 'delivered'; run: Promise<string | undefined> }> {
   // Also the answer for a redelivery already accepted, not only for a busy target.
-  const delivered = { status: 'delivered' as const, run: Promise.resolve() }
+  const delivered = { status: 'delivered' as const, run: Promise.resolve(undefined) }
 
   // A stalled queue delivery may have reached an active turn before its ACK.
   if (await hasPendingUserMessage(data.userId, data.targetSessionId, data.messageId))
@@ -74,7 +75,7 @@ export async function startConversationTurn(
   if (claim.mode === 'dropped') throw new Error('Thread message could not be queued.')
   if (claim.mode === 'queued') return delivered
 
-  const run = async (): Promise<void> => {
+  const run = async (): Promise<string | undefined> => {
     try {
       // Read after taking the claim so a just-finished turn cannot be overwritten.
       const history = await getConversationWithMessages(
@@ -121,6 +122,8 @@ export async function startConversationTurn(
 
       if (outcome.status === 'failed')
         throw new Error('Thread run failed; inspect the target conversation.')
+
+      return outcome.finishReason
     } finally {
       claim.release()
     }
