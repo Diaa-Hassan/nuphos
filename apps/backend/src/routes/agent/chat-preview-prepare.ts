@@ -18,6 +18,7 @@ import {
   drainPendingUserMessages,
   enqueuePendingUserMessage,
   renderInjectedUserMessages,
+  TRANSCRIPT_SOURCES,
 } from '@/lib/agent/pending-messages'
 import { previewHistoryPreamble } from '@/lib/claude-code-preview/preview-history-preamble'
 import { buildPreviewSystemPrompt } from '@/lib/claude-code-preview/preview-prompt'
@@ -208,7 +209,7 @@ export async function preparePreviewTurn(
       return undefined
     }),
     previewCompactionSummary(sessionId, userId),
-    drainPendingUserMessages(userId, sessionId, actorUserId),
+    drainTurnQueue(userId, sessionId, actorUserId, args.channelTurn),
   ])
   // A channel that syncs its thread into the transcript may already hold a queued message.
   const carried = drained.filter((entry) => !args.messages.some((m) => m.id === entry.id))
@@ -257,6 +258,21 @@ export async function preparePreviewTurn(
         traceAgentChatError('agent.chat.prompt_suggestion_open.error', err, args.run.trace, {})
       }),
   }
+}
+
+/** A channel message is answered in its channel, so only a turn there takes it. */
+export function drainTurnQueue(
+  userId: string,
+  sessionId: string,
+  actorUserId: string,
+  channelTurn?: boolean,
+) {
+  return drainPendingUserMessages(
+    userId,
+    sessionId,
+    actorUserId,
+    channelTurn ? undefined : TRANSCRIPT_SOURCES,
+  )
 }
 
 /** The carried queue as transcript messages (empty when nothing was queued). */
