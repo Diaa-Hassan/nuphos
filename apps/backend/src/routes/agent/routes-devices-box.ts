@@ -19,8 +19,16 @@ const boxCreateSchema = z.object({
 })
 
 /** What a client sees of a device: never the credential hash. */
+/** Null when the Box's machine no longer exists; the row is dropped with it. */
 async function deviceView(deps: AgentDeviceRouteDependencies, device: AgentDevice) {
   const online = await deps.isOnline(device.userId, device.deviceId)
+  const state = device.box && deps.box ? await deps.box.state(device, online) : undefined
+
+  if (state === 'gone') {
+    await deps.deleteDevice(device.userId, device.deviceId)
+
+    return null
+  }
 
   return {
     deviceId: device.deviceId,
@@ -29,12 +37,12 @@ async function deviceView(deps: AgentDeviceRouteDependencies, device: AgentDevic
     allowLocalExec: device.allowLocalExec,
     online,
     createdAt: device.createdAt.toISOString(),
-    ...(device.box && deps.box
+    ...(device.box && state
       ? {
           box: {
             provider: device.box.provider,
             ...(device.box.sandboxId ? { sandboxId: device.box.sandboxId } : {}),
-            state: await deps.box.state(device, online),
+            state,
           },
         }
       : {}),
@@ -43,6 +51,13 @@ async function deviceView(deps: AgentDeviceRouteDependencies, device: AgentDevic
 
 export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   const routes = new Hono<{ Variables: AuthVariables }>()
+  const viewOrGone = async (device: AgentDevice) => {
+    const view = await deviceView(deps, device)
+
+    if (!view) throw new AppError(404, 'not_found', 'This Box no longer exists')
+
+    return view
+  }
   const requireBoxes = () => {
     if (!deps.box)
       throw new AppError(503, 'box_unavailable', 'Boxes are not enabled on this deployment')
@@ -57,7 +72,9 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
 
     return c.json({
       boxAvailable: deps.box?.available() ?? false,
-      devices: await Promise.all(devices.map((device) => deviceView(deps, device))),
+      devices: (await Promise.all(devices.map((device) => deviceView(deps, device)))).filter(
+        (view) => view !== null,
+      ),
     })
   })
 
@@ -70,21 +87,21 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
     if (!teamId) throw new AppError(400, 'team_required', 'A Box is made inside one of your teams')
     const device = await box.create(c.get('userId'), teamId, label)
 
-    return c.json(await deviceView(deps, device), 201)
+    return c.json(await viewOrGone(device), 201)
   })
 
   routes.post('/devices/:deviceId/box/pause', zv('param', deviceParam), async (c) => {
     const userId = c.get('userId')
     const device = await requireBoxes().pause(userId, c.req.valid('param').deviceId)
 
-    return c.json(await deviceView(deps, device))
+    return c.json(await viewOrGone(device))
   })
 
   routes.post('/devices/:deviceId/box/resume', zv('param', deviceParam), async (c) => {
     const userId = c.get('userId')
     const device = await requireBoxes().resume(userId, c.req.valid('param').deviceId)
 
-    return c.json(await deviceView(deps, device))
+    return c.json(await viewOrGone(device))
   })
 
   // Deletes the machine, revokes its credential and forgets the device.

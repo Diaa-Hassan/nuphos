@@ -9,7 +9,7 @@
 
 import { randomUUID } from 'node:crypto'
 
-import { Sandbox } from '@insforge/instabox-sdk'
+import { InstaboxError, Sandbox } from '@insforge/instabox-sdk'
 
 import { AppError } from '@/lib/errors'
 import { logError, logEvent } from '@/lib/observability'
@@ -49,6 +49,8 @@ export const MAX_CREATES_PER_WINDOW = 3
 const CREATE_WINDOW_MS = 10 * 60_000
 /** The machine joins within this; a token left unused expires with it. */
 const JOIN_TOKEN_TTL_SEC = 60 * 60
+/** A state read for a listing: an outage must not stall the devices page. */
+const READ_TIMEOUT_MS = 5_000
 /** How long a resume may take before the tunnel is back. */
 const WAKE_TIMEOUT_MS = 60_000
 /** How long a fresh machine may take to join after its host was started. */
@@ -84,20 +86,29 @@ function backendUrl(): string {
   return url
 }
 
-/** The machine's state as instabox reports it, for a Box that is not present. */
-export async function boxState(device: AgentDevice, online: boolean): Promise<BoxState> {
+async function killByDevice(deviceId: string): Promise<void> {
+  const machines = await Sandbox.list({ ...connection(QUICK_TIMEOUT_MS), metadata: { deviceId } })
+
+  for (const machine of machines) await kill(machine.sandboxId)
+}
+
+/**
+ * The machine's state as instabox reports it, for a Box that is not present.
+ * `gone` means instabox no longer has the machine, so the row should go too.
+ */
+export async function boxState(device: AgentDevice, online: boolean): Promise<BoxState | 'gone'> {
   if (!device.box?.sandboxId) return 'creating'
   if (online) return 'running'
   try {
     const sandbox = await Sandbox.connect(device.box.sandboxId, {
-      ...connection(QUICK_TIMEOUT_MS),
+      ...connection(READ_TIMEOUT_MS),
       resume: false,
     })
     const { state } = await sandbox.getInfo()
 
     return state === 'running' || state === 'starting' ? 'running' : 'paused'
-  } catch {
-    return 'error'
+  } catch (error) {
+    return error instanceof InstaboxError && error.status === 404 ? 'gone' : 'error'
   }
 }
 
@@ -185,7 +196,9 @@ async function order(
   } catch (error) {
     logError('agent.box.provision_failed', error, { user_id: userId, device_id: deviceId })
     // Nothing half-made stays: no machine to bill, no row to confuse, no token to find.
-    if (sandbox) await kill(sandbox.sandboxId).catch(() => undefined)
+    // A create that timed out on our side may still have produced a machine: it is
+    // found by the device id in its metadata.
+    await (sandbox ? kill(sandbox.sandboxId) : killByDevice(deviceId)).catch(() => undefined)
     await deleteDeviceJoinTokens(deviceId).catch(() => undefined)
     await deleteAgentDevice(userId, deviceId).catch(() => undefined)
   }

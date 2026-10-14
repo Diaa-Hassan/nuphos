@@ -91,7 +91,7 @@ export type AgentDeviceRouteDependencies = {
     destroy: (userId: string, deviceId: string) => Promise<void>
     /** Whether Boxes can be ordered here: a provider and a public URL for the machine to dial. */
     available: () => boolean
-    state: (device: AgentDevice, online: boolean) => Promise<BoxState>
+    state: (device: AgentDevice, online: boolean) => Promise<BoxState | 'gone'>
   } | null
 }
 
