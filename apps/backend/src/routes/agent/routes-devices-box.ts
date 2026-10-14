@@ -19,7 +19,9 @@ const boxCreateSchema = z.object({
 })
 
 /** What a client sees of a device: never the credential hash. */
-function deviceView(device: AgentDevice, online: boolean) {
+async function deviceView(deps: AgentDeviceRouteDependencies, device: AgentDevice) {
+  const online = await deps.isOnline(device.userId, device.deviceId)
+
   return {
     deviceId: device.deviceId,
     label: device.label,
@@ -27,14 +29,12 @@ function deviceView(device: AgentDevice, online: boolean) {
     allowLocalExec: device.allowLocalExec,
     online,
     createdAt: device.createdAt.toISOString(),
-    ...(device.box
+    ...(device.box && deps.box
       ? {
           box: {
             provider: device.box.provider,
-            sandboxId: device.box.sandboxId,
-            state: device.box.state,
-            ...(device.box.error ? { error: device.box.error } : {}),
-            updatedAt: device.box.updatedAt.toISOString(),
+            ...(device.box.sandboxId ? { sandboxId: device.box.sandboxId } : {}),
+            state: await deps.box.state(device, online),
           },
         }
       : {}),
@@ -50,17 +50,14 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
     return deps.box
   }
 
-  // The caller's own devices, online or not; Boxes carry their machine state.
+  // The caller's own devices, online or not; a Box carries its machine's state.
   routes.get('/devices', async (c) => {
     const userId = c.get('userId')
     const devices = await deps.listDevices(userId)
 
     return c.json({
-      devices: await Promise.all(
-        devices.map(async (device) =>
-          deviceView(device, await deps.isOnline(userId, device.deviceId)),
-        ),
-      ),
+      boxAvailable: deps.box?.available() ?? false,
+      devices: await Promise.all(devices.map((device) => deviceView(deps, device))),
     })
   })
 
@@ -73,21 +70,21 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
     if (!teamId) throw new AppError(400, 'team_required', 'A Box is made inside one of your teams')
     const device = await box.create(c.get('userId'), teamId, label)
 
-    return c.json(deviceView(device, false), 201)
+    return c.json(await deviceView(deps, device), 201)
   })
 
   routes.post('/devices/:deviceId/box/pause', zv('param', deviceParam), async (c) => {
     const userId = c.get('userId')
     const device = await requireBoxes().pause(userId, c.req.valid('param').deviceId)
 
-    return c.json(deviceView(device, await deps.isOnline(userId, device.deviceId)))
+    return c.json(await deviceView(deps, device))
   })
 
   routes.post('/devices/:deviceId/box/resume', zv('param', deviceParam), async (c) => {
     const userId = c.get('userId')
     const device = await requireBoxes().resume(userId, c.req.valid('param').deviceId)
 
-    return c.json(deviceView(device, await deps.isOnline(userId, device.deviceId)))
+    return c.json(await deviceView(deps, device))
   })
 
   // Deletes the machine, revokes its credential and forgets the device.

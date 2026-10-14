@@ -7,6 +7,8 @@ import {
   listDeviceExecAudit,
 } from '@/lib/agent/devices/audit'
 import {
+  boxState,
+  boxesAvailable,
   boxesEnabled,
   createBox,
   destroyBox,
@@ -36,6 +38,7 @@ import { createAgentDeviceBoxRoutes } from './routes-devices-box'
 
 import type { DeviceExecAuditPage } from '@/lib/agent/devices/audit'
 import type { HolderMessage } from '@/lib/agent/devices/local-runtime/protocol'
+import type { BoxState } from '@/lib/agent/devices/box-instabox'
 import type { AgentDevice, AgentDeviceRegistration } from '@/lib/agent/devices/store'
 import type { AuthVariables } from '@/middleware/auth'
 
@@ -86,6 +89,9 @@ export type AgentDeviceRouteDependencies = {
     pause: (userId: string, deviceId: string) => Promise<AgentDevice>
     resume: (userId: string, deviceId: string) => Promise<AgentDevice>
     destroy: (userId: string, deviceId: string) => Promise<void>
+    /** Whether Boxes can be ordered here: a provider and a public URL for the machine to dial. */
+    available: () => boolean
+    state: (device: AgentDevice, online: boolean) => Promise<BoxState>
   } | null
 }
 
@@ -106,7 +112,14 @@ const defaultDependencies: AgentDeviceRouteDependencies = {
   isOnline: isDevicePresent,
   deleteDevice: deleteAgentDevice,
   box: boxesEnabled()
-    ? { create: createBox, pause: pauseBox, resume: resumeBox, destroy: destroyBox }
+    ? {
+        create: createBox,
+        pause: pauseBox,
+        resume: resumeBox,
+        destroy: destroyBox,
+        available: boxesAvailable,
+        state: boxState,
+      }
     : null,
 }
 

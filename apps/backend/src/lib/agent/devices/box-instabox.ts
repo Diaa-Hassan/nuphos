@@ -2,74 +2,60 @@
 // that person's device with a one-time token and then behaves like any other
 // computer of theirs. One partner key for the deployment; every machine is
 // created with `vault: false`, so none of the account's secrets reach it.
+//
+// The row stores only which machine it is. Its state comes from instabox and
+// from the device's presence, so a machine that instabox paused on its own is
+// seen, and woken, like one Nuphos paused.
 
 import { randomUUID } from 'node:crypto'
 
-import { InstaboxError, Sandbox } from '@insforge/instabox-sdk'
+import { Sandbox } from '@insforge/instabox-sdk'
 
-import { config } from '@/config'
-import { publicBackendUrl } from '@/lib/claude-code-preview/runtime-backend-url'
 import { AppError } from '@/lib/errors'
 import { logError, logEvent } from '@/lib/observability'
 
-import { issueDeviceJoinToken } from './join-tokens'
+import {
+  AGENT_COMMAND,
+  BOX_INSTALL_COMMAND,
+  CREATE_TIMEOUT_MS,
+  INSTALL_TIMEOUT_MS,
+  QUICK_TIMEOUT_MS,
+  boxBackendUrl,
+  connection,
+  kill,
+  unavailable,
+} from './box-instabox-client'
+
+import { deleteDeviceJoinTokens, issueDeviceJoinToken } from './join-tokens'
 import { isDevicePresent } from './presence'
 import {
   countAgentDeviceBoxes,
+  countTeamBoxes,
+  deleteAgentDevice,
   getAgentDevice,
   insertBoxAgentDevice,
   setAgentDeviceBoxSandbox,
-  setAgentDeviceBoxState,
 } from './store'
 
 import type { AgentDevice, AgentDeviceBox } from './store'
 
+export { boxBackendUrl, boxesAvailable, boxesEnabled } from './box-instabox-client'
+
 export const BOX_TEMPLATE = 'universal'
-/** Machines one person may have at a time, on the deployment's own key. */
-export const MAX_BOXES_PER_USER = 2
+/** Machines one team may have at a time, on the deployment's own key. */
+export const MAX_BOXES_PER_TEAM = 3
+/** Orders one person may place in `CREATE_WINDOW_MS`. */
+export const MAX_CREATES_PER_WINDOW = 3
+const CREATE_WINDOW_MS = 10 * 60_000
 /** The machine joins within this; a token left unused expires with it. */
 const JOIN_TOKEN_TTL_SEC = 60 * 60
-/** Installing the CLI and the agents on a fresh machine. */
-const INSTALL_TIMEOUT_MS = 9 * 60_000
-/** Ordering a machine, in the background. */
-const CREATE_TIMEOUT_MS = 3 * 60_000
-/** Anything on a turn's path: an instabox outage must not stall a conversation for long. */
-const QUICK_TIMEOUT_MS = 30_000
 /** How long a resume may take before the tunnel is back. */
-const WAKE_TIMEOUT_MS = 45_000
+const WAKE_TIMEOUT_MS = 60_000
 
-/** Node 22 and the agents, then the CLI; idempotent, so a resume can run it again. */
-export const BOX_INSTALL_COMMAND = [
-  'set -e',
-  'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"',
-  'if ! node -e "process.exit(+process.versions.node.split(\'.\')[0] >= 22 ? 0 : 1)" 2>/dev/null; then',
-  '  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs',
-  'fi',
-  'npm config set prefix "$HOME/.npm-global" && npm i -g @anthropic-ai/claude-code @openai/codex',
-  'command -v nuphos >/dev/null || curl -fsSL https://nuphos.ai/install | sh',
-].join('\n')
-
-/** Starts the host detached from the command session; it keeps the Box's own credential. */
-const AGENT_COMMAND =
-  'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; pgrep -x nuphos >/dev/null || setsid nohup nuphos agent >> "$HOME/nuphos-agent.log" 2>&1 < /dev/null &'
+/** What a client sees; `error` means instabox could not say, or the machine is gone. */
+export type BoxState = 'creating' | 'running' | 'paused' | 'error'
 
 type BoxDevice = AgentDevice & { box: AgentDeviceBox }
-
-function connection(timeoutMs: number) {
-  const box = config.box.instabox
-
-  if (!box) throw new AppError(503, 'box_unavailable', 'Boxes are not enabled on this deployment')
-
-  return { ...box, requestTimeoutMs: timeoutMs, operationTimeoutMs: timeoutMs }
-}
-
-export function boxesEnabled(): boolean {
-  return config.box.instabox !== null
-}
-
-const reason = (error: unknown) => (error instanceof Error ? error.message : String(error))
-const unavailable = (what: string, error: unknown) =>
-  new AppError(503, 'box_unavailable', `${what}: ${reason(error)}`)
 
 function requireBox(device: AgentDevice | null, deviceId: string): BoxDevice {
   if (!device?.box) throw new AppError(404, 'not_found', `No Box ${deviceId}`)
@@ -78,16 +64,13 @@ function requireBox(device: AgentDevice | null, deviceId: string): BoxDevice {
 }
 
 function requireMachine(device: BoxDevice): string {
-  if (device.box.state === 'creating' || !device.box.sandboxId)
-    throw new AppError(409, 'box_state', 'The Box is still being created')
-  if (device.box.state === 'error')
-    throw new AppError(409, 'box_state', 'The Box failed to set up; delete it and make a new one')
+  if (!device.box.sandboxId) throw new AppError(409, 'box_state', 'The Box is still being created')
 
   return device.box.sandboxId
 }
 
 function backendUrl(): string {
-  const url = publicBackendUrl()
+  const url = boxBackendUrl()
 
   if (!url)
     throw new AppError(
@@ -99,36 +82,53 @@ function backendUrl(): string {
   return url
 }
 
-/** Deletes a machine, treating one that is already gone as deleted. */
-async function kill(sandboxId: string): Promise<void> {
+/** The machine's state as instabox reports it, for a Box that is not present. */
+export async function boxState(device: AgentDevice, online: boolean): Promise<BoxState> {
+  if (!device.box?.sandboxId) return 'creating'
+  if (online) return 'running'
   try {
-    await Sandbox.kill(sandboxId, connection(QUICK_TIMEOUT_MS))
-  } catch (error) {
-    if (error instanceof InstaboxError && error.status === 404) return
-    throw error
+    const sandbox = await Sandbox.connect(device.box.sandboxId, {
+      ...connection(QUICK_TIMEOUT_MS),
+      resume: false,
+    })
+    const { state } = await sandbox.getInfo()
+
+    return state === 'running' || state === 'starting' ? 'running' : 'paused'
+  } catch {
+    return 'error'
   }
 }
 
+const recentCreates = new Map<string, number[]>()
+
+function checkCreateRate(userId: string): void {
+  const now = Date.now()
+  const recent = (recentCreates.get(userId) ?? []).filter((at) => now - at < CREATE_WINDOW_MS)
+
+  if (recent.length >= MAX_CREATES_PER_WINDOW)
+    throw new AppError(429, 'box_rate_limited', 'Too many Boxes ordered recently; try again later')
+  recentCreates.set(userId, [...recent, now])
+}
+
 /**
- * Registers the device row at once (state `creating`) and returns; ordering,
- * installing and joining run in the background. The row turns `running` when the
- * host joins, or `error` with the reason, and a machine whose setup failed is
- * deleted again.
+ * Registers the device row at once and returns; ordering, installing and
+ * joining run in the background. The row shows `creating` until the host joins.
+ * If any step fails, the machine, the row and its token are removed again.
  */
 export async function createBox(
   userId: string,
   teamId: string,
   label: string,
 ): Promise<AgentDevice> {
-  connection(QUICK_TIMEOUT_MS)
   const url = backendUrl()
 
-  if ((await countAgentDeviceBoxes(userId)) >= MAX_BOXES_PER_USER)
+  if ((await countTeamBoxes(teamId)) >= MAX_BOXES_PER_TEAM)
     throw new AppError(
       409,
       'box_limit',
-      `You already have ${String(MAX_BOXES_PER_USER)} Boxes; delete one first`,
+      `This team already has ${String(MAX_BOXES_PER_TEAM)} Boxes; delete one first`,
     )
+  checkCreateRate(userId)
   const deviceId = randomUUID()
   const now = new Date()
   const registration = {
@@ -136,7 +136,7 @@ export async function createBox(
     label,
     platform: 'linux',
     allowLocalExec: true,
-    box: { provider: 'instabox' as const, state: 'creating' as const, updatedAt: now },
+    box: { provider: 'instabox' as const, teamId },
   }
 
   await insertBoxAgentDevice(userId, registration)
@@ -162,11 +162,8 @@ async function order(
       vault: false,
     })
     // Deleted while it was being ordered: the machine must not outlive the row.
-    if (!(await setAgentDeviceBoxSandbox(userId, deviceId, sandbox.sandboxId))) {
-      await kill(sandbox.sandboxId)
-
-      return
-    }
+    if (!(await setAgentDeviceBoxSandbox(userId, deviceId, sandbox.sandboxId)))
+      throw new Error('The Box was deleted while it was being created')
     const { token } = await issueDeviceJoinToken(userId, {
       label,
       deviceId,
@@ -182,9 +179,10 @@ async function order(
     logEvent('info', 'agent.box.provisioned', { user_id: userId, device_id: deviceId })
   } catch (error) {
     logError('agent.box.provision_failed', error, { user_id: userId, device_id: deviceId })
-    await setAgentDeviceBoxState(userId, deviceId, 'error', reason(error).slice(0, 500))
-    // A machine that never joined would otherwise run, and bill, until someone notices.
+    // Nothing half-made stays: no machine to bill, no row to confuse, no token to find.
     if (sandbox) await kill(sandbox.sandboxId).catch(() => undefined)
+    await deleteDeviceJoinTokens(deviceId).catch(() => undefined)
+    await deleteAgentDevice(userId, deviceId).catch(() => undefined)
   }
 }
 
@@ -202,15 +200,14 @@ export async function pauseBox(userId: string, deviceId: string): Promise<AgentD
   } catch (error) {
     throw unavailable('Could not pause the Box', error)
   }
-  await setAgentDeviceBoxState(userId, deviceId, 'paused')
 
-  return requireBox(await getAgentDevice(userId, deviceId), deviceId)
+  return device
 }
 
 /**
  * Resumes the machine, whatever paused it (Nuphos, or instabox after 30 idle
  * minutes), and makes sure the host runs: a machine resumed from a stop has lost
- * its processes. The real state comes from instabox, not from the row.
+ * its processes.
  */
 export async function resumeBox(userId: string, deviceId: string): Promise<AgentDevice> {
   const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
@@ -230,15 +227,15 @@ export async function resumeBox(userId: string, deviceId: string): Promise<Agent
   } catch (error) {
     throw unavailable('Could not resume the Box', error)
   }
-  await setAgentDeviceBoxState(userId, deviceId, 'running')
 
-  return requireBox(await getAgentDevice(userId, deviceId), deviceId)
+  return device
 }
 
 /** Deletes the machine and its disks; the caller removes the device row. A row without a machine, or whose machine is already gone, just goes. */
 export async function destroyBox(userId: string, deviceId: string): Promise<void> {
   const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
 
+  await deleteDeviceJoinTokens(deviceId)
   if (!device.box.sandboxId) return
   try {
     await kill(device.box.sandboxId)
@@ -251,14 +248,13 @@ export async function destroyBox(userId: string, deviceId: string): Promise<void
 /**
  * An offline Box that a turn or a command needs is resumed first, and this waits
  * for its tunnel. True once the Box is present; false when it did not come back in
- * time. A Box still being created, or broken, is not woken.
+ * time. A Box still being created is not woken.
  */
 export async function wakeBox(userId: string, deviceId: string): Promise<boolean> {
   if (await isDevicePresent(userId, deviceId)) return true
   const device = await getAgentDevice(userId, deviceId)
 
-  if (!device?.box?.sandboxId || device.box.state === 'creating' || device.box.state === 'error')
-    return false
+  if (!device?.box?.sandboxId) return false
   await resumeBox(userId, deviceId)
   const deadline = Date.now() + WAKE_TIMEOUT_MS
 

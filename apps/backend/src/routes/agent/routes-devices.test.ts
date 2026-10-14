@@ -242,58 +242,64 @@ describe('agent device routes', () => {
     expect(credentials.has(key('user-2', 'd1'))).toBe(true)
   })
 
-  function boxDevice(userId: string, deviceId: string, state: 'creating' | 'running' | 'paused') {
+  function boxDevice(userId: string, deviceId: string) {
     return {
       userId,
       deviceId,
       label: 'Box',
       platform: 'linux',
       allowLocalExec: true,
-      box: {
-        provider: 'instabox' as const,
-        sandboxId: `m_${deviceId}`,
-        state,
-        updatedAt: new Date(),
-      },
+      box: { provider: 'instabox' as const, sandboxId: `m_${deviceId}`, teamId: 't1' },
       createdAt: new Date(),
       updatedAt: new Date(),
     }
   }
 
+  let machineState: 'running' | 'paused' = 'paused'
+
   function fakeBox(calls: string[]): BoxDeps {
     return {
       create: async (userId, teamId, label) => {
         calls.push(`create ${teamId} ${label}`)
-        devices[key(userId, 'b1')] = { ...boxDevice(userId, 'b1', 'creating'), label }
+        devices[key(userId, 'b1')] = { ...boxDevice(userId, 'b1'), label }
 
         return devices[key(userId, 'b1')]!
       },
       pause: async (userId, deviceId) => {
         calls.push(`pause ${deviceId}`)
+        machineState = 'paused'
 
-        return boxDevice(userId, deviceId, 'paused')
+        return boxDevice(userId, deviceId)
       },
       resume: async (userId, deviceId) => {
         calls.push(`resume ${deviceId}`)
+        machineState = 'running'
 
-        return boxDevice(userId, deviceId, 'running')
+        return boxDevice(userId, deviceId)
       },
       destroy: async (_userId, deviceId) => {
         calls.push(`destroy ${deviceId}`)
       },
+      available: () => true,
+      state: async (device, online) =>
+        !device.box?.sandboxId ? 'creating' : online ? 'running' : machineState,
     }
   }
 
   test('GET /devices lists the caller devices with their Box state and never the credential', async () => {
     devices[key('user-1', 'b1')] = {
-      ...boxDevice('user-1', 'b1', 'paused'),
+      ...boxDevice('user-1', 'b1'),
       credentialHash: 'secret-hash',
     }
-    devices[key('user-2', 'b2')] = boxDevice('user-2', 'b2', 'running')
-    const response = await buildApp().request('/agent/devices')
-    const body = (await response.json()) as { devices: Record<string, unknown>[] }
+    devices[key('user-2', 'b2')] = boxDevice('user-2', 'b2')
+    const response = await buildApp(fakeBox([])).request('/agent/devices')
+    const body = (await response.json()) as {
+      boxAvailable: boolean
+      devices: Record<string, unknown>[]
+    }
 
     expect(response.status).toBe(200)
+    expect(body.boxAvailable).toBe(true)
     expect(body.devices).toHaveLength(1)
     expect(body.devices[0]).toMatchObject({
       deviceId: 'b1',
@@ -301,6 +307,11 @@ describe('agent device routes', () => {
       box: { state: 'paused' },
     })
     expect(JSON.stringify(body)).not.toContain('secret-hash')
+    const plain = (await (await buildApp().request('/agent/devices')).json()) as {
+      boxAvailable: boolean
+    }
+
+    expect(plain.boxAvailable).toBe(false)
   })
 
   test('POST /devices/boxes is 503 without a Box provider', async () => {
@@ -329,7 +340,7 @@ describe('agent device routes', () => {
     const calls: string[] = []
     const app = buildApp(fakeBox(calls))
 
-    devices[key('user-1', 'b1')] = boxDevice('user-1', 'b1', 'running')
+    devices[key('user-1', 'b1')] = boxDevice('user-1', 'b1')
     credentials.add(key('user-1', 'b1'))
     const paused = await app.request('/agent/devices/b1/box/pause', { method: 'POST' })
 

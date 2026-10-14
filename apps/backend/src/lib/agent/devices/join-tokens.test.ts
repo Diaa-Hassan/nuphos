@@ -132,7 +132,7 @@ describe('device join tokens', () => {
   })
 
   test('a token made for a Box claims that Box row, once, and never a device in use', async () => {
-    const box = { provider: 'instabox', sandboxId: 'm_1', state: 'creating', updatedAt: new Date() }
+    const box = { provider: 'instabox', sandboxId: 'm_1', teamId: 't1' }
 
     await collection('agent_devices').insertOne({
       userId: 'u1',
@@ -150,7 +150,6 @@ describe('device join tokens', () => {
       expect.objectContaining({
         deviceId: 'box-1',
         credentialHash: hashDeviceSecret(joined?.credential ?? ''),
-        'box.state': 'running',
       }),
     ])
     // A second token for the same row finds a credential already there and gives nothing.

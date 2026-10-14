@@ -38,6 +38,11 @@ export async function setupDeviceJoinTokenIndexes(): Promise<void> {
   )
 }
 
+/** Forgets the tokens made for a Box that is being removed. */
+export async function deleteDeviceJoinTokens(deviceId: string): Promise<void> {
+  await joinTokens().deleteMany({ deviceId })
+}
+
 export function hashDeviceSecret(secret: string): string {
   return createHash('sha256').update(secret).digest('base64url')
 }

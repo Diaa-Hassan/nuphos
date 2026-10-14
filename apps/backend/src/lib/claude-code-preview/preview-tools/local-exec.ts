@@ -37,7 +37,7 @@ export async function resolveAvailableLocalExecDevices(
     .filter((device) => selected.has(device.deviceId))
     .flatMap((device) => {
       if (device.available) return [{ deviceId: device.deviceId, label: device.label }]
-      if (!device.box || device.box.state === 'creating' || device.box.state === 'error') return []
+      if (!device.box?.ready) return []
 
       return [
         {

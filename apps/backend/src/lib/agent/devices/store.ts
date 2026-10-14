@@ -4,18 +4,13 @@ import { db } from '@/lib/db'
 
 import type { Collection } from 'mongodb'
 
-/** `running` and `paused` are what Nuphos last did; the machine itself may have idled into a pause since. */
-export type AgentDeviceBoxState = 'creating' | 'running' | 'paused' | 'error'
-
-/** A cloud machine Nuphos created for this device; absent for a person's own computer. */
+/** A cloud machine Nuphos created for this device; absent for a person's own computer. Its state is never stored: instabox and presence know it. */
 export type AgentDeviceBox = {
   provider: 'instabox'
-  /** Set once the machine is ordered; a row in `creating` may not have one yet. */
+  /** Set once the machine is ordered; a row without one is still being created. */
   sandboxId?: string
-  state: AgentDeviceBoxState
-  /** Why `state` is `error`, for the person who created it. */
-  error?: string
-  updatedAt: Date
+  /** The team it was ordered in, for the per-team cap. */
+  teamId: string
 }
 
 export type AgentDevice = {
@@ -111,15 +106,7 @@ export async function claimBoxAgentDevice(
   const result = await agentDevices().updateOne(
     { userId, deviceId, box: { $exists: true }, credentialHash: { $exists: false } },
     {
-      $set: {
-        platform,
-        credentialHash,
-        credentialIssuedAt: now,
-        'box.state': 'running',
-        'box.updatedAt': now,
-        updatedAt: now,
-      },
-      $unset: { 'box.error': '' },
+      $set: { platform, credentialHash, credentialIssuedAt: now, updatedAt: now },
     },
   )
 
@@ -155,28 +142,6 @@ export async function listAgentDevicesForUser(userId: string): Promise<AgentDevi
   return agentDevices().find({ userId }).toArray()
 }
 
-export async function setAgentDeviceBoxState(
-  userId: string,
-  deviceId: string,
-  state: AgentDeviceBoxState,
-  error?: string,
-): Promise<void> {
-  const now = new Date()
-
-  await agentDevices().updateOne(
-    { userId, deviceId, box: { $exists: true } },
-    {
-      $set: {
-        'box.state': state,
-        'box.updatedAt': now,
-        updatedAt: now,
-        ...(error ? { 'box.error': error } : {}),
-      },
-      ...(error ? {} : { $unset: { 'box.error': '' } }),
-    },
-  )
-}
-
 export async function setAgentDeviceBoxSandbox(
   userId: string,
   deviceId: string,
@@ -184,7 +149,7 @@ export async function setAgentDeviceBoxSandbox(
 ): Promise<boolean> {
   const result = await agentDevices().updateOne(
     { userId, deviceId, box: { $exists: true } },
-    { $set: { 'box.sandboxId': sandboxId, 'box.updatedAt': new Date(), updatedAt: new Date() } },
+    { $set: { 'box.sandboxId': sandboxId, updatedAt: new Date() } },
   )
 
   return result.matchedCount > 0
@@ -192,6 +157,10 @@ export async function setAgentDeviceBoxSandbox(
 
 export async function countAgentDeviceBoxes(userId: string): Promise<number> {
   return agentDevices().countDocuments({ userId, box: { $exists: true } })
+}
+
+export async function countTeamBoxes(teamId: string): Promise<number> {
+  return agentDevices().countDocuments({ 'box.teamId': teamId })
 }
 
 export async function deleteAgentDevice(userId: string, deviceId: string): Promise<boolean> {
