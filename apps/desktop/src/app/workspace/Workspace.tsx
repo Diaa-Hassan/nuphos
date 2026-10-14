@@ -86,6 +86,14 @@ function WorkspacePane({ user, onLogout, onUserUpdated }: WorkspaceProps) {
     }
   }, [user.id, scope?.teamId, ws.selectedSessionId, ws.mainPageOpen, pane?.active])
 
+  const searchBlocked =
+    settingsOpen || createOrJoinOpen || invitationTakeoverOpen || onboardingActive || !scope
+  const { setSessionSearchOpen } = ws
+
+  useEffect(() => {
+    if ((pane?.active ?? true) && searchBlocked) setSessionSearchOpen(false)
+  }, [pane?.active, searchBlocked, setSessionSearchOpen])
+
   // Full-screen "Create or join team" page (workspace picker). Rendered in the
   // no-scope shell too, where the picker's entry is also reachable.
   const createOrJoinOverlay = createOrJoinOpen ? (

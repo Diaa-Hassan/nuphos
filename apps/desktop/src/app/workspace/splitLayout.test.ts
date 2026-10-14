@@ -1,7 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { paneRects, removePane, reusableBesidePane, splitPane } from './splitLayout.ts'
+import {
+  focusPaneState,
+  paneRects,
+  removePane,
+  reusableBesidePane,
+  splitPane,
+} from './splitLayout.ts'
 
 test('repeated horizontal splits produce three equal panes', () => {
   const layout = splitPane(splitPane({ id: 'a' }, 'a', 'b', 'row'), 'b', 'c', 'row')
@@ -68,4 +74,17 @@ test('a Cmd-click reuses the last beside pane only while it still shows that cha
   // The user opened another chat there, or closed the pane.
   assert.equal(reusableBesidePane(last, 'a', shown({ b: 's2' })), null)
   assert.equal(reusableBesidePane(last, 'a', shown({})), null)
+})
+
+test('changing panes closes search permanently while focusing the current pane preserves it', () => {
+  const open = { activeId: 'primary', sessionSearchOpen: true }
+
+  assert.equal(focusPaneState(open, 'primary'), open)
+  const beside = focusPaneState(open, 'beside')
+
+  assert.equal(beside.sessionSearchOpen, false)
+  assert.deepEqual(focusPaneState(beside, 'primary'), {
+    activeId: 'primary',
+    sessionSearchOpen: false,
+  })
 })

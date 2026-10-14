@@ -1,5 +1,8 @@
 import { useEffect, useId, useState } from 'react'
 
+import { isMac } from '../../lib/platform'
+import { searchKeyAction } from '../../lib/searchKeyboard'
+import { searchMatch } from '../../lib/searchMatch'
 import { relativeTimeFromNow } from '../agent/panel/textUtils'
 import { Avatar } from '../Avatar'
 
@@ -18,6 +21,7 @@ export function SearchResults({
   owner,
   inputRef,
   pending,
+  loadPeople,
   onChoosePerson,
   onOpen,
 }: {
@@ -29,10 +33,11 @@ export function SearchResults({
   owner: TeamMember | null
   inputRef: RefObject<HTMLInputElement | null>
   pending: boolean
+  loadPeople: () => Promise<TeamMember[]>
   onChoosePerson: (person: TeamMember) => void
   onOpen: (sessionId: string, beside: boolean) => void
 }) {
-  const results = useSearchResults(teamId, userId, mode, query, owner?.id)
+  const results = useSearchResults(teamId, userId, mode, query, loadPeople, owner?.id)
   const [selected, setSelected] = useState(0)
   const listId = useId()
   const count = mode === 'people' ? results.people.length : results.sessions.length
@@ -49,19 +54,14 @@ export function SearchResults({
     else input.removeAttribute('aria-activedescendant')
     document.getElementById(activeId ?? '')?.scrollIntoView({ block: 'nearest' })
     function onKey(event: KeyboardEvent) {
-      if (event.isComposing || busy || count === 0) return
-      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        event.preventDefault()
-        setSelected((previous) => (previous + (event.key === 'ArrowDown' ? 1 : -1) + count) % count)
-      } else if (event.key === 'Enter') {
-        event.preventDefault()
-        if (mode === 'people') onChoosePerson(results.people[selectedIndex])
-        else
-          onOpen(
-            results.sessions[selectedIndex].conversation.sessionId,
-            event.metaKey || event.ctrlKey,
-          )
-      }
+      const action = searchKeyAction(event, busy, count, isMac)
+
+      if (!action) return
+      event.preventDefault()
+      if (action === 'next' || action === 'previous') {
+        setSelected((previous) => (previous + (action === 'next' ? 1 : -1) + count) % count)
+      } else if (mode === 'people') onChoosePerson(results.people[selectedIndex])
+      else onOpen(results.sessions[selectedIndex].conversation.sessionId, action === 'beside')
     }
     input.addEventListener('keydown', onKey)
 
@@ -95,10 +95,10 @@ export function SearchResults({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto scrollbar-thin">
-      <div className="flex h-11 items-center justify-between gap-3 px-6 text-xs text-[#BFC0C9]">
+      <div className="flex h-11 items-center justify-between gap-3 px-6 text-xs text-secondary">
         <span className="truncate font-medium">{heading}</span>
         {!busy && (
-          <span className="shrink-0 text-[#AFAFB8]">
+          <span className="shrink-0 text-secondary">
             {count}
             {results.hasMore ? '+' : ''}{' '}
             {mode === 'people'
@@ -146,6 +146,13 @@ export function SearchResults({
             <SearchResultRow
               key={conversation.sessionId}
               id={`${listId}-${index}`}
+              preview={
+                conversation.title &&
+                !searchMatch(conversation.title, query) &&
+                searchMatch(conversation.firstMessage, query)
+                  ? conversation.firstMessage
+                  : undefined
+              }
               title={conversation.title || conversation.firstMessage || 'Untitled session'}
               subtitle={`${conversation.owner?.name || conversation.owner?.email || 'Unknown member'} · ${openedAt ? 'Opened' : 'Updated'} ${relativeTimeFromNow(openedAt ? new Date(openedAt).toISOString() : conversation.lastActiveAt)}`}
               query={query}
@@ -155,7 +162,7 @@ export function SearchResults({
             />
           ))}
       </div>
-      <div role="status" className="px-6 text-sm text-[#B1B2BD]">
+      <div role="status" className="px-6 text-sm text-secondary">
         {busy && <p className="py-8">Searching…</p>}
         {!busy && !results.error && count === 0 && (
           <p className="py-8">
@@ -177,7 +184,7 @@ export function SearchResults({
       </div>
       {!busy && results.hasMore && (
         <button
-          className="mb-3 w-full py-2 text-xs text-[#C4C5CF] hover:text-white disabled:opacity-50"
+          className="mb-3 w-full py-2 text-xs text-secondary hover:text-main disabled:opacity-50"
           disabled={results.loadingMore}
           onClick={() => void results.loadMore()}
         >
@@ -185,7 +192,7 @@ export function SearchResults({
         </button>
       )}
       {!busy && mode === 'people' && count > 0 && (
-        <p className="px-6 pb-5 text-xs text-[#B2B3BD]">
+        <p className="px-6 pb-5 text-xs text-secondary">
           Choose a teammate, then search within their sessions.
         </p>
       )}

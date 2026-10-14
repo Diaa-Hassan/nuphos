@@ -83,3 +83,11 @@ export function reusableBesidePane(
 ): string | null {
   return last && last.pane !== source && shownIn(last.pane) === last.sessionId ? last.pane : null
 }
+
+/** A window's search belongs to its current focus, never to a hidden pane. */
+export function focusPaneState(
+  previous: { activeId: string; sessionSearchOpen: boolean },
+  activeId: string,
+) {
+  return previous.activeId === activeId ? previous : { activeId, sessionSearchOpen: false }
+}

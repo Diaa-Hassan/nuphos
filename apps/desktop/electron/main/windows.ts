@@ -243,7 +243,11 @@ export function createWindow(): BrowserWindow {
     if (input.shift && key === 'n') {
       event.preventDefault()
       createWindow()
-    } else if (!input.shift && key === 'k') {
+    } else if (
+      !input.shift &&
+      key === 'k' &&
+      (process.platform === 'darwin' ? input.meta && !input.control : input.control && !input.meta)
+    ) {
       sendShortcut('search-sessions')
     } else if (!input.shift && key === 'n') {
       sendShortcut('new-chat')

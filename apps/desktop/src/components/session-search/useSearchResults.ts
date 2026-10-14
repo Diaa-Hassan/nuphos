@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 
-import { api, parseAtlasError } from '../../api'
-import { readSessionHistory } from '../../lib/sessionHistory'
+import { api, parseAtlasError } from '../../api.ts'
+import { readSessionHistory } from '../../lib/sessionHistory.ts'
 
-import type { AgentConversation } from '../../api'
+import type { AgentConversation } from '../../api.ts'
 import type { TeamMember } from '../../types'
 
 export type SessionResult = { conversation: AgentConversation; openedAt?: number }
@@ -14,6 +14,7 @@ export function useSearchResults(
   userId: string,
   mode: 'sessions' | 'people',
   query: string,
+  loadPeople: () => Promise<TeamMember[]>,
   ownerId?: string,
 ) {
   const [sessions, setSessions] = useState<SessionResult[]>([])
@@ -33,7 +34,7 @@ export function useSearchResults(
     mounted.current = true
     async function load() {
       if (mode === 'people') {
-        const members = await api.atlasListTeamMembers(teamId)
+        const members = await loadPeople()
 
         if (!cancelled)
           setPeople(
@@ -103,7 +104,7 @@ export function useSearchResults(
       cancelled = true
       mounted.current = false
     }
-  }, [teamId, userId, mode, query, ownerId, recent, retry])
+  }, [teamId, userId, mode, query, ownerId, recent, retry, loadPeople])
 
   async function loadMore() {
     if (!cursor || moreInFlight.current) return

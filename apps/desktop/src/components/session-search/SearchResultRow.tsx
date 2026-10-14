@@ -1,20 +1,24 @@
 import clsx from 'clsx'
 import { CornerDownLeft, MessageSquare } from 'lucide-react'
 
+import { linkClickMode } from '../../lib/linkClickMode'
+import { isMac } from '../../lib/platform'
+import { searchMatch } from '../../lib/searchMatch'
+
 import type { ReactNode } from 'react'
 
 export function Highlight({ text, query }: { text: string; query: string }) {
-  const at = query ? text.toLocaleLowerCase().indexOf(query.toLocaleLowerCase()) : -1
+  const match = searchMatch(text, query)
 
-  if (at < 0) return <>{text}</>
+  if (!match) return <>{text}</>
 
   return (
     <>
-      {text.slice(0, at)}
-      <mark className="rounded-sm bg-[#6F5987]/35 text-[#E8DCF9]">
-        {text.slice(at, at + query.length)}
+      {text.slice(0, match.start)}
+      <mark className="rounded-sm bg-zViolet-500/25 text-main">
+        {text.slice(match.start, match.end)}
       </mark>
-      {text.slice(at + query.length)}
+      {text.slice(match.end)}
     </>
   )
 }
@@ -23,6 +27,7 @@ export function SearchResultRow({
   id,
   title,
   subtitle,
+  preview,
   query,
   selected,
   avatar,
@@ -32,6 +37,7 @@ export function SearchResultRow({
   id: string
   title: string
   subtitle: string
+  preview?: string
   query: string
   selected: boolean
   avatar?: ReactNode
@@ -45,21 +51,30 @@ export function SearchResultRow({
       aria-selected={selected}
       onMouseMove={onSelect}
       onMouseDown={(event) => event.preventDefault()}
-      onClick={(event) => onOpen(event.metaKey || event.ctrlKey)}
+      onClick={(event) => {
+        const mode = linkClickMode(event, isMac)
+
+        if (mode) onOpen(mode === 'beside')
+      }}
       className={clsx(
         'flex min-h-[72px] cursor-pointer items-center gap-3.5 rounded-[7px] px-3 py-3',
-        selected ? 'bg-[#38393C]' : 'hover:bg-[#303134]',
+        selected ? 'bg-zGray-750' : 'hover:bg-zGray-800',
       )}
     >
-      {avatar ?? <MessageSquare size={19} className="shrink-0 text-[#B7B8C2]" />}
+      {avatar ?? <MessageSquare size={19} className="shrink-0 text-secondary" />}
       <div className="min-w-0 flex-1">
-        <div className="truncate text-[15px] font-medium text-[#E6E7EC]">
+        <div className="truncate text-[15px] font-medium text-main">
           <Highlight text={title} query={query} />
         </div>
-        <div className="mt-1.5 truncate text-xs text-[#B1B2BD]">{subtitle}</div>
+        {preview && (
+          <div className="mt-1 truncate text-xs text-secondary">
+            <Highlight text={preview} query={query} />
+          </div>
+        )}
+        <div className="mt-1.5 truncate text-xs text-secondary">{subtitle}</div>
       </div>
       {selected && (
-        <span className="flex shrink-0 items-center gap-2 text-xs text-[#C4C5CF]">
+        <span className="flex shrink-0 items-center gap-2 text-xs text-secondary">
           <span className="hidden sm:inline">{avatar ? 'View sessions' : 'Open'}</span>
           <CornerDownLeft size={15} />
         </span>
