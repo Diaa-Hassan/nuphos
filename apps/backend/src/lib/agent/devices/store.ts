@@ -4,12 +4,25 @@ import { db } from '@/lib/db'
 
 import type { Collection } from 'mongodb'
 
+export type AgentDeviceBoxState = 'creating' | 'running' | 'paused' | 'stopped' | 'error'
+
+/** A cloud machine Nuphos created for this device; absent for a person's own computer. */
+export type AgentDeviceBox = {
+  provider: 'instabox'
+  sandboxId: string
+  state: AgentDeviceBoxState
+  /** Why `state` is `error`, for the person who created it. */
+  error?: string
+  updatedAt: Date
+}
+
 export type AgentDevice = {
   userId: string
   deviceId: string
   label: string
   platform: string
   allowLocalExec: boolean
+  box?: AgentDeviceBox
   /** sha256 of the credential a join token issued; absent for devices signed in as their owner. */
   credentialHash?: string
   credentialIssuedAt?: Date
@@ -72,6 +85,45 @@ export async function insertJoinedAgentDevice(
   })
 }
 
+/** A Box's device row exists from the moment the machine is ordered, so the UI can show it. */
+export async function insertBoxAgentDevice(
+  userId: string,
+  device: AgentDeviceRegistration & { box: AgentDeviceBox },
+): Promise<void> {
+  const now = new Date()
+
+  await agentDevices().insertOne({ ...device, userId, createdAt: now, updatedAt: now })
+}
+
+/**
+ * The join token made for a Box claims that Box's row, and nothing else: the row
+ * must still have no credential, so a token can never take over a device in use.
+ */
+export async function claimBoxAgentDevice(
+  userId: string,
+  deviceId: string,
+  platform: string,
+  credentialHash: string,
+): Promise<boolean> {
+  const now = new Date()
+  const result = await agentDevices().updateOne(
+    { userId, deviceId, box: { $exists: true }, credentialHash: { $exists: false } },
+    {
+      $set: {
+        platform,
+        credentialHash,
+        credentialIssuedAt: now,
+        'box.state': 'running',
+        'box.updatedAt': now,
+        updatedAt: now,
+      },
+      $unset: { 'box.error': '' },
+    },
+  )
+
+  return result.matchedCount > 0
+}
+
 export async function findAgentDeviceByCredentialHash(
   credentialHash: string,
 ): Promise<AgentDevice | null> {
@@ -99,6 +151,34 @@ export async function getAgentDevice(
 
 export async function listAgentDevicesForUser(userId: string): Promise<AgentDevice[]> {
   return agentDevices().find({ userId }).toArray()
+}
+
+export async function setAgentDeviceBoxState(
+  userId: string,
+  deviceId: string,
+  state: AgentDeviceBoxState,
+  error?: string,
+): Promise<void> {
+  const now = new Date()
+
+  await agentDevices().updateOne(
+    { userId, deviceId, box: { $exists: true } },
+    {
+      $set: {
+        'box.state': state,
+        'box.updatedAt': now,
+        updatedAt: now,
+        ...(error ? { 'box.error': error } : {}),
+      },
+      ...(error ? {} : { $unset: { 'box.error': '' } }),
+    },
+  )
+}
+
+export async function deleteAgentDevice(userId: string, deviceId: string): Promise<boolean> {
+  const result = await agentDevices().deleteOne({ userId, deviceId })
+
+  return result.deletedCount > 0
 }
 
 type TeamMembershipDoc = {
