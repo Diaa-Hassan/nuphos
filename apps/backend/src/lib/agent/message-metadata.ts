@@ -85,9 +85,14 @@ export function parseMessageMetadata(value: unknown): MessageMetadata | undefine
 
 /** Called only at the model boundary; never store this prefix in message parts. */
 export function renderAttributedMessage(id: string, text: string, metadata: unknown): string {
+  return [attributionHeader(id, metadata), text].filter(Boolean).join('\n\n')
+}
+
+/** Everything before one message body: its metadata block and any fenced replied-to message. */
+export function attributionHeader(id: string, metadata: unknown): string {
   const attribution = parseMessageMetadata(metadata)
 
-  if (!attribution) return text
+  if (!attribution) return ''
   const { replyTo, ...trusted } = attribution
   const { avatarURL: _avatarURL, ...sender } = attribution.sender
   const json = JSON.stringify({
@@ -111,7 +116,7 @@ export function renderAttributedMessage(id: string, text: string, metadata: unkn
   const envelope = `<nuphos_message_metadata>\n${json}\n</nuphos_message_metadata>`
   const quoted = replyTo && `${replyTo.authorName}: ${replyTo.text}`
 
-  return [envelope, quoted && fenceUntrusted('replied-message', quoted, REPLY_NOTE), text]
+  return [envelope, quoted && fenceUntrusted('replied-message', quoted, REPLY_NOTE)]
     .filter(Boolean)
     .join('\n\n')
 }
