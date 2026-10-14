@@ -13,8 +13,6 @@ import {
 } from '@/lib/agent/devices/store'
 import { AppError } from '@/lib/errors'
 
-import { publicBackendUrl } from './runtime-backend-url'
-
 import type { RuntimeModelCatalog } from './runtime-models'
 import type { PreviewRuntimeStatus } from './runtime-status'
 import type { TeamRuntimeEndpoint } from './team-openab-runtime'
@@ -48,7 +46,7 @@ export type LocalRuntimeCatalogDeps = {
   listDevices: (userId: string) => Promise<AgentDevice[]>
   isMember: (userId: string, teamId: string) => Promise<boolean>
   getPresence: (userId: string, deviceId: string) => Promise<LocalRuntimePresence | null>
-  /** Resumes a paused Box and returns its presence once it is back; undefined otherwise. */
+  /** Resumes an offline Box and returns its presence once it is back; undefined otherwise. */
   wakeDevice: (userId: string, deviceId: string) => Promise<LocalRuntimePresence | undefined>
 }
 
@@ -56,14 +54,10 @@ const defaultDeps: LocalRuntimeCatalogDeps = {
   listDevices: (userId) => listAgentDevicesForUser(userId),
   isMember: (userId, teamId) => isActiveTeamMember(userId, teamId),
   getPresence: (userId, deviceId) => runtimePresenceStore().get(userId, deviceId),
-  wakeDevice: async (userId, deviceId) => {
-    const [device, backendUrl] = [await getAgentDevice(userId, deviceId), publicBackendUrl()]
-
-    if (!device?.box || !backendUrl || !(await wakeBox(device, backendUrl).catch(() => false)))
-      return
-
-    return (await runtimePresenceStore().get(userId, deviceId)) ?? undefined
-  },
+  wakeDevice: async (userId, deviceId) =>
+    (await wakeBox(userId, deviceId))
+      ? ((await runtimePresenceStore().get(userId, deviceId)) ?? undefined)
+      : undefined,
 }
 
 const PROVIDER_LABEL: Record<LocalAgentProvider, string> = {

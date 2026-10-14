@@ -4,12 +4,14 @@ import { db } from '@/lib/db'
 
 import type { Collection } from 'mongodb'
 
-export type AgentDeviceBoxState = 'creating' | 'running' | 'paused' | 'stopped' | 'error'
+/** `running` and `paused` are what Nuphos last did; the machine itself may have idled into a pause since. */
+export type AgentDeviceBoxState = 'creating' | 'running' | 'paused' | 'error'
 
 /** A cloud machine Nuphos created for this device; absent for a person's own computer. */
 export type AgentDeviceBox = {
   provider: 'instabox'
-  sandboxId: string
+  /** Set once the machine is ordered; a row in `creating` may not have one yet. */
+  sandboxId?: string
   state: AgentDeviceBoxState
   /** Why `state` is `error`, for the person who created it. */
   error?: string
@@ -173,6 +175,23 @@ export async function setAgentDeviceBoxState(
       ...(error ? {} : { $unset: { 'box.error': '' } }),
     },
   )
+}
+
+export async function setAgentDeviceBoxSandbox(
+  userId: string,
+  deviceId: string,
+  sandboxId: string,
+): Promise<boolean> {
+  const result = await agentDevices().updateOne(
+    { userId, deviceId, box: { $exists: true } },
+    { $set: { 'box.sandboxId': sandboxId, 'box.updatedAt': new Date(), updatedAt: new Date() } },
+  )
+
+  return result.matchedCount > 0
+}
+
+export async function countAgentDeviceBoxes(userId: string): Promise<number> {
+  return agentDevices().countDocuments({ userId, box: { $exists: true } })
 }
 
 export async function deleteAgentDevice(userId: string, deviceId: string): Promise<boolean> {

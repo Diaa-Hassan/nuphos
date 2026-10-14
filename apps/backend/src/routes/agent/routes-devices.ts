@@ -28,7 +28,6 @@ import {
   revokeAgentDeviceCredential,
   upsertAgentDevice,
 } from '@/lib/agent/devices/store'
-import { publicBackendUrl } from '@/lib/claude-code-preview/runtime-backend-url'
 import { AppError } from '@/lib/errors'
 import { zv } from '@/lib/validate'
 
@@ -83,18 +82,11 @@ export type AgentDeviceRouteDependencies = {
   deleteDevice: (userId: string, deviceId: string) => Promise<boolean>
   /** Null when this deployment has no Box provider. */
   box: {
-    create: (
-      userId: string,
-      teamId: string,
-      label: string,
-      backendUrl: string,
-    ) => Promise<AgentDevice>
+    create: (userId: string, teamId: string, label: string) => Promise<AgentDevice>
     pause: (userId: string, deviceId: string) => Promise<AgentDevice>
-    resume: (userId: string, deviceId: string, backendUrl: string) => Promise<AgentDevice>
+    resume: (userId: string, deviceId: string) => Promise<AgentDevice>
     destroy: (userId: string, deviceId: string) => Promise<void>
   } | null
-  /** Where a Box dials this backend from the internet. */
-  backendUrl: () => string | undefined
 }
 
 const defaultDependencies: AgentDeviceRouteDependencies = {
@@ -116,7 +108,6 @@ const defaultDependencies: AgentDeviceRouteDependencies = {
   box: boxesEnabled()
     ? { create: createBox, pause: pauseBox, resume: resumeBox, destroy: destroyBox }
     : null,
-  backendUrl: publicBackendUrl,
 }
 
 export function createAgentDeviceRoutes(deps: AgentDeviceRouteDependencies = defaultDependencies) {

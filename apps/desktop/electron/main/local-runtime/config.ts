@@ -133,16 +133,19 @@ export function openabConfigToml(launch: LocalRuntimeLaunch): string {
   ].join('\n')
 }
 
-/** openab listens on loopback only; the backend reaches it through the desktop's tunnel. */
 /**
- * `OPENAB_RUNTIME_LOGIN_COMMAND` is whitespace-split argv, so a CLI path with a
- * space cannot be expressed; such a computer keeps signing in from its own UI.
+ * The agent's own sign-in, run by openab when Nuphos asks (the same dialog as a
+ * cloud agent). openab's child inherits openab's env, so this carries only the
+ * command and the provider's config-dir variables, so the login lands in the
+ * runtime's own login. `OPENAB_RUNTIME_LOGIN_COMMAND` is whitespace-split argv, so
+ * a CLI path with a space cannot be expressed; such a computer keeps signing in
+ * from its own UI.
  */
 export function agentLoginEnv(launch: AgentCliLaunch): Record<string, string> {
   if (/\s/u.test(launch.cliPath)) return {}
 
   return {
-    ...agentCliEnv(launch),
+    ...providerEnv(launch),
     OPENAB_RUNTIME_LOGIN_COMMAND: [launch.cliPath, ...agentSignInArgs(launch.provider)].join(' '),
   }
 }
@@ -154,11 +157,9 @@ export function agentSignInArgs(provider: LocalAgentProvider): string[] {
     : ['auth', 'login', '--claudeai']
 }
 
+/** openab listens on loopback only; the backend reaches it through the desktop's tunnel. */
 export function openabEnv(launch: LocalRuntimeLaunch): Record<string, string> {
   return {
-    // The agent's own sign-in, run by openab on request from Nuphos (the same dialog
-    // as a cloud agent) into the runtime's own login: openab's child inherits this env.
-    // openab's own HOME below wins over the agent's.
     ...agentLoginEnv(launch),
     PATH: launch.env.PATH ?? process.env.PATH ?? '',
     ...(launch.env.USER ? { USER: launch.env.USER } : {}),

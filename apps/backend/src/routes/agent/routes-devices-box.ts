@@ -49,18 +49,6 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
 
     return deps.box
   }
-  const requireBackendUrl = () => {
-    const url = deps.backendUrl()
-
-    if (!url)
-      throw new AppError(
-        503,
-        'box_unavailable',
-        'This deployment has no public URL for a Box to reach',
-      )
-
-    return url
-  }
 
   // The caller's own devices, online or not; Boxes carry their machine state.
   routes.get('/devices', async (c) => {
@@ -79,12 +67,11 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   // A Box: a cloud machine made for this user, joined with its own one-time token.
   routes.post('/devices/boxes', zv('json', boxCreateSchema), async (c) => {
     const box = requireBoxes()
-    const backendUrl = requireBackendUrl()
     const { label, teamId: requestedTeamId } = c.req.valid('json')
     const teamId = await resolveVerifiedTeamId(c, readTeamIdCandidate(c, requestedTeamId))
 
     if (!teamId) throw new AppError(400, 'team_required', 'A Box is made inside one of your teams')
-    const device = await box.create(c.get('userId'), teamId, label, backendUrl)
+    const device = await box.create(c.get('userId'), teamId, label)
 
     return c.json(deviceView(device, false), 201)
   })
@@ -98,11 +85,7 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
 
   routes.post('/devices/:deviceId/box/resume', zv('param', deviceParam), async (c) => {
     const userId = c.get('userId')
-    const device = await requireBoxes().resume(
-      userId,
-      c.req.valid('param').deviceId,
-      requireBackendUrl(),
-    )
+    const device = await requireBoxes().resume(userId, c.req.valid('param').deviceId)
 
     return c.json(deviceView(device, await deps.isOnline(userId, device.deviceId)))
   })

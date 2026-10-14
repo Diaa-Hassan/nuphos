@@ -30,6 +30,8 @@ export async function resolveDeviceOptions(
       label: device.label,
       platform: device.platform,
       available: device.allowLocalExec && (await isDevicePresent(userId, device.deviceId)),
+      // A Box can be woken when it is offline; a person's computer cannot.
+      ...(device.box ? { box: { state: device.box.state } } : {}),
     })),
   )
 }

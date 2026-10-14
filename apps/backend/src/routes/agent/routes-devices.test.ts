@@ -2,12 +2,10 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 
 import { errorHandler } from '@/lib/errors'
-import {
-  createAgentDeviceRoutes,
-  type AgentDeviceRouteDependencies,
-} from '@/routes/agent/routes-devices'
+import { createAgentDeviceRoutes } from '@/routes/agent/routes-devices'
 
 import type { DeviceExecAuditEntry } from '@/lib/agent/devices/audit'
+import type { AgentDeviceRouteDependencies } from '@/routes/agent/routes-devices'
 import type { AgentDeviceRegistration, AgentDevice } from '@/lib/agent/devices/store'
 import type { AuthVariables } from '@/middleware/auth'
 
@@ -25,10 +23,7 @@ function key(userId: string, deviceId: string): string {
 
 type BoxDeps = NonNullable<AgentDeviceRouteDependencies['box']>
 
-function buildApp(
-  box: BoxDeps | null = null,
-  backendUrl: string | undefined = 'https://api.example.test',
-) {
+function buildApp(box: BoxDeps | null = null) {
   const app = new Hono<{ Variables: AuthVariables }>()
 
   app.use('*', async (c, next) => {
@@ -52,7 +47,6 @@ function buildApp(
       isOnline: async () => false,
       deleteDevice: async (userId, deviceId) => delete devices[key(userId, deviceId)],
       box,
-      backendUrl: () => backendUrl,
       listDeviceExecAudit: async (ownerUserId, deviceId, options) => {
         auditQueries.push({ ownerUserId, deviceId, ...options })
         const entries = auditEntries.filter(
@@ -279,8 +273,8 @@ describe('agent device routes', () => {
 
         return boxDevice(userId, deviceId, 'paused')
       },
-      resume: async (userId, deviceId, backendUrl) => {
-        calls.push(`resume ${deviceId} ${backendUrl}`)
+      resume: async (userId, deviceId) => {
+        calls.push(`resume ${deviceId}`)
 
         return boxDevice(userId, deviceId, 'running')
       },
@@ -347,16 +341,8 @@ describe('agent device routes', () => {
     const removed = await app.request('/agent/devices/b1/box', { method: 'DELETE' })
 
     expect(removed.status).toBe(200)
-    expect(calls).toEqual(['pause b1', 'resume b1 https://api.example.test', 'destroy b1'])
+    expect(calls).toEqual(['pause b1', 'resume b1', 'destroy b1'])
     expect(disconnected).toEqual([key('user-1', 'b1')])
     expect(devices[key('user-1', 'b1')]).toBeUndefined()
-  })
-
-  test('Box resume is 503 when the deployment has no public URL for the machine to dial', async () => {
-    const response = await buildApp(fakeBox([]), '').request('/agent/devices/b1/box/resume', {
-      method: 'POST',
-    })
-
-    expect(response.status).toBe(503)
   })
 })
