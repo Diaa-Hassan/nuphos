@@ -4,7 +4,12 @@ import path from 'node:path'
 
 import { app } from 'electron'
 
-import { defaultDeviceLabel, parseDeviceIdentity } from './device-identity-core.ts'
+import {
+  defaultDeviceLabel,
+  parseDeviceIdentity,
+  readMachineKey,
+  stableDeviceId,
+} from './device-identity-core.ts'
 
 import type { DeviceIdentity } from './device-identity-core.ts'
 
@@ -16,9 +21,15 @@ function filePath(): string {
   return path.join(app.getPath('userData'), FILE_NAME)
 }
 
+function stableId(): string | null {
+  const key = readMachineKey()
+
+  return key ? stableDeviceId(key, 'desktop') : null
+}
+
 function freshIdentity(): DeviceIdentity {
   return {
-    deviceId: randomUUID(),
+    deviceId: stableId() ?? randomUUID(),
     label: defaultDeviceLabel(),
     createdAt: new Date().toISOString(),
   }
@@ -34,7 +45,7 @@ function persist(identity: DeviceIdentity): void {
   }
 }
 
-/** Reads (or mints and persists) this install's stable device identity. Cached
+/** Reads (or mints and persists) this machine's Desktop device identity. Cached
  *  after the first read for the life of the process. */
 export function readDeviceIdentity(): DeviceIdentity {
   if (cached) return cached

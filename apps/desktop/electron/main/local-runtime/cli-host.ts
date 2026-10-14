@@ -14,7 +14,12 @@ import { callJson } from '../../agent/http.ts'
 import { apiUrl } from '../../api-endpoint.ts'
 import { unverifiedTokenSubject } from '../../auth-status.ts'
 import { CLI_CONFIG_PATH } from '../../cli-config-path.ts'
-import { defaultDeviceLabel, parseDeviceIdentity } from '../device-identity-core.ts'
+import {
+  defaultDeviceLabel,
+  parseDeviceIdentity,
+  readMachineKey,
+  stableDeviceId,
+} from '../device-identity-core.ts'
 
 import { LOCAL_AGENT_PROVIDERS, findAgentCli, probeAgentCli, readAgentUsage } from './agent-cli.ts'
 import { prepareAgentHome } from './agent-home.ts'
@@ -30,7 +35,8 @@ import type { DeviceIdentity } from '../device-identity-core.ts'
 import type { AgentCliStatus, LocalAgentProvider } from './agent-cli.ts'
 
 const bundleRoot = process.env.NUPHOS_LOCAL_RUNTIME_DIR ?? path.dirname(process.argv[1] ?? '.')
-// Apart from the desktop's, so both can run on one computer as two devices.
+// Apart from the desktop's, so both can run on one computer as two devices, each
+// with its own runtime tunnel; the device id itself comes from the machine.
 const dataDir =
   process.env.NUPHOS_AGENT_HOME ?? path.join(os.homedir(), '.local', 'share', 'nuphos', 'agent')
 const clientVersion = `nuphos-cli/${process.env.NUPHOS_CLI_VERSION ?? 'dev'}`
@@ -46,8 +52,9 @@ function deviceIdentity(): DeviceIdentity {
   } catch {
     // None yet.
   }
+  const key = readMachineKey()
   const identity = {
-    deviceId: randomUUID(),
+    deviceId: key ? stableDeviceId(key, 'cli') : randomUUID(),
     label: defaultDeviceLabel(),
     createdAt: new Date().toISOString(),
   }
