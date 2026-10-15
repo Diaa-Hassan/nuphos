@@ -8,7 +8,6 @@ import {
   boxSetupPhase,
   boxSetupProblem,
   boxes,
-  boxDetail,
   boxPollMs,
   boxState,
   machineLine,
@@ -122,15 +121,10 @@ test('a creating Box that drops out of the list is reported once', () => {
   assert.deepEqual(vanishedBoxes([box('a', 'creating')], [box('a', 'running')]), [])
 })
 
-test('a machine reads as its OS and model, then its agents', () => {
+test('a machine reads as its OS and model', () => {
   const mac: AgentDevice = { deviceId: 'm', label: 'Mac', platform: 'darwin', model: 'MacBook Pro' }
-  const claude = agent('1', 'local', 'm')
 
   assert.equal(machineLine(mac), 'macOS · MacBook Pro')
   assert.equal(machineLine({ ...mac, model: undefined }), 'macOS')
   assert.equal(machineLine(box('a', 'running')), 'Linux · instabox')
-  assert.match(boxDetail('creating', [], 'linux'), /10–30 seconds/)
-  assert.equal(boxDetail('running', [], 'linux'), 'Connecting agents…')
-  assert.equal(boxDetail('paused', [], 'linux'), 'linux')
-  assert.equal(boxDetail('running', [claude, claude], 'darwin'), '2 agents')
 })

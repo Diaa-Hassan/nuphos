@@ -1,10 +1,10 @@
 import clsx from 'clsx'
-import { Ellipsis, Loader2 } from 'lucide-react'
+import { Ellipsis } from 'lucide-react'
 import { useState } from 'react'
 
 import { api } from '../../api'
+import { AgentProviderIcon } from '../../components/agent/panel/icons'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
-import { Button } from '../../components/ui/button'
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu'
 import { toast } from '../../components/ui/toast'
 import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
@@ -12,13 +12,12 @@ import { emptyNavigation, pageLocationForNavigation } from '../../lib/appRoutes'
 import { AGENT_PROVIDER } from '../../types/runtime'
 
 import { MachineIcon } from './BoxParts'
-import { BOX_BADGE, boxActions, boxDetail, boxState, machineLine } from './boxPresentation'
+import { BOX_BADGE, boxActions, boxState, machineLine } from './boxPresentation'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
-import { STATUS_DOT } from './runtimePresentation'
 import { inputClasses } from './styles'
 
 import type { AgentDevice } from '../../api'
-import type { RuntimeInstance } from '../../types/runtime'
+import type { RuntimeInstance, RuntimeQuota } from '../../types/runtime'
 
 /** One machine in the Boxes list: its state, its agents and what can be done to it. */
 export function BoxRow({
@@ -26,6 +25,7 @@ export function BoxRow({
   teamId,
   device,
   agents,
+  quotas,
   onChanged,
   onSignIn,
 }: {
@@ -33,6 +33,7 @@ export function BoxRow({
   teamId: string
   device: AgentDevice
   agents: RuntimeInstance[]
+  quotas: ReadonlyMap<string, RuntimeQuota>
   onChanged: () => void
   /** A sign-in dialog opened or closed. */
   onSignIn: (open: boolean) => void
@@ -58,81 +59,51 @@ export function BoxRow({
     }
   }
 
-  return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-      <div className="flex min-w-0 flex-1 basis-52 items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zGray-800/70 bg-main">
-          <MachineIcon device={device} />
-        </div>
-        <div className="min-w-0">
-          {renaming === null ? (
-            <div className="flex min-w-0 items-center gap-1.5">
-              <span className="truncate text-[13px] font-medium text-main" title={device.label}>
-                {device.label}
-              </span>
-              {thisComputer && (
-                <span className="shrink-0 rounded border border-zGray-700 px-1 text-[10.5px] text-secondary">
-                  This Computer
-                </span>
-              )}
-            </div>
-          ) : (
-            <input
-              autoFocus
-              aria-label="Box name"
-              value={renaming}
-              maxLength={200}
-              className={clsx(inputClasses, 'h-7 text-[13px]')}
-              onChange={(event) => setRenaming(event.target.value)}
-              onBlur={() => setRenaming(null)}
-              onKeyDown={(event) => {
-                if (event.key === 'Escape') setRenaming(null)
-                if (event.key !== 'Enter') return
-                const label = renaming.trim()
+  const dim = state === 'paused' || state === 'stopped'
+  const starting = state === 'creating' || (state === 'running' && agents.length === 0)
 
-                setRenaming(null)
-                // This computer keeps its name locally and re-registers with it, so rename it there.
-                if (label && label !== device.label)
-                  void run('Could not rename Box', () =>
-                    thisComputer
-                      ? api.deviceSetLabel(label)
-                      : api.boxRename(device.deviceId, label),
-                  )
-              }}
-            />
-          )}
-          <div className="truncate text-[12px] text-tertiary">
-            {machineLine(device)} · {boxDetail(state, agents, device.platform)}
-          </div>
-        </div>
-      </div>
-      <span
-        role="status"
-        className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-secondary"
-      >
-        {state === 'creating' ? (
-          <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
-        ) : (
-          <span className={clsx('h-1.5 w-1.5 rounded-full', STATUS_DOT[badge.tone])} />
-        )}
-        {badge.label}
-      </span>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {actions.resume && (
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => void run('Could not resume Box', () => api.boxResume(device.deviceId))}
+  return (
+    <li className="flex h-[220px] w-[248px] shrink-0 flex-col rounded-xl border border-zGray-800/70 p-3">
+      <div className="flex items-center gap-2">
+        <MachineIcon device={device} />
+        {renaming === null ? (
+          <span
+            className="min-w-0 flex-1 truncate text-[13px] font-medium text-main"
+            title={device.label}
           >
-            {state === 'error' ? 'Retry' : 'Resume'}
-          </Button>
+            {device.label}
+          </span>
+        ) : (
+          <input
+            autoFocus
+            aria-label="Box name"
+            value={renaming}
+            maxLength={200}
+            className={clsx(inputClasses, 'h-7 min-w-0 flex-1 text-[13px]')}
+            onChange={(event) => setRenaming(event.target.value)}
+            onBlur={() => setRenaming(null)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') setRenaming(null)
+              if (event.key !== 'Enter') return
+              const label = renaming.trim()
+
+              setRenaming(null)
+              // This computer keeps its name locally and re-registers with it, so rename it there.
+              if (label && label !== device.label)
+                void run('Could not rename Box', () =>
+                  thisComputer ? api.deviceSetLabel(label) : api.boxRename(device.deviceId, label),
+                )
+            }}
+          />
         )}
+        <span role="status" className="shrink-0 text-[11px] text-tertiary">
+          {badge.label}
+        </span>
         <Menu>
           <MenuTrigger
             aria-label={`Manage ${device.label}`}
             disabled={busy}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-tertiary hover:bg-zGray-800/60 hover:text-main"
+            className="-mr-1 flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-tertiary hover:bg-zGray-800/60 hover:text-main"
           >
             <Ellipsis className="h-4 w-4" />
           </MenuTrigger>
@@ -156,6 +127,15 @@ export function BoxRow({
               </MenuItem>
             )}
             <MenuItem onClick={() => setRenaming(device.label)}>Rename</MenuItem>
+            {actions.resume && (
+              <MenuItem
+                onClick={() =>
+                  void run('Could not resume Box', () => api.boxResume(device.deviceId))
+                }
+              >
+                {state === 'error' ? 'Retry' : 'Resume'}
+              </MenuItem>
+            )}
             {actions.pause && (
               <MenuItem
                 onClick={() => void run('Could not pause Box', () => api.boxPause(device.deviceId))}
@@ -174,31 +154,26 @@ export function BoxRow({
           </MenuContent>
         </Menu>
       </div>
-      {state === 'running' && agents.length > 0 && (
-        <ul className="basis-full space-y-1 pl-12">
-          {agents.map((agent) => (
-            <li key={agent.id} className="flex items-center gap-3 text-[12.5px]">
-              <span className="min-w-0 flex-1 truncate text-main">
-                {AGENT_PROVIDER[agent.provider].label}
-              </span>
-              {agent.local?.signedIn === true ? (
-                <span className="text-[11.5px] text-tertiary">Signed in</span>
-              ) : (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  onClick={() => {
-                    setSigningIn(agent)
-                    onSignIn(true)
-                  }}
-                >
-                  Sign in
-                </Button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
+      <div className={clsx('mt-1 truncate text-[11.5px] text-tertiary', dim && 'opacity-50')}>
+        {[thisComputer && 'This Computer', machineLine(device)].filter(Boolean).join(' · ')}
+      </div>
+      <ul className={clsx('mt-auto flex gap-2 overflow-x-auto pb-1', dim && 'opacity-50')}>
+        {starting
+          ? [0, 1].map((slot) => (
+              <li key={slot} className="h-[68px] w-[68px] shrink-0 rounded-lg bg-zGray-800/30" />
+            ))
+          : agents.map((agent) => (
+              <AgentTile
+                key={agent.id}
+                agent={agent}
+                quota={quotas.get(agent.id)}
+                onSignIn={() => {
+                  setSigningIn(agent)
+                  onSignIn(true)
+                }}
+              />
+            ))}
+      </ul>
       <ConfirmDialog
         open={confirmDelete}
         title={`Delete ${device.label}?`}
@@ -218,6 +193,46 @@ export function BoxRow({
             window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
           }}
         />
+      )}
+    </li>
+  )
+}
+
+/** One agent on a Box: its plan's first window, or what it still needs. */
+function AgentTile({
+  agent,
+  quota,
+  onSignIn,
+}: {
+  agent: RuntimeInstance
+  quota: RuntimeQuota | undefined
+  onSignIn: () => void
+}) {
+  const window = quota?.available ? quota.windows[0] : undefined
+  const atLimit = quota?.available && quota.windows.some((w) => w.usedPercent >= 100)
+
+  return (
+    <li className="flex h-[68px] w-[68px] shrink-0 flex-col items-center justify-center gap-0.5 rounded-lg bg-zGray-800/40 px-1">
+      <AgentProviderIcon provider={agent.provider} className="h-4 w-4" />
+      <span className="w-full truncate text-center text-[10.5px] text-main">
+        {AGENT_PROVIDER[agent.provider].label}
+      </span>
+      {agent.local?.signedIn !== true ? (
+        <button
+          type="button"
+          onClick={onSignIn}
+          className="text-[10px] text-zViolet-400 hover:underline"
+        >
+          Sign in
+        </button>
+      ) : atLimit ? (
+        <span className="rounded-full bg-zOrangered-500/10 px-1.5 text-[10px] text-zOrangered-400">
+          At limit
+        </span>
+      ) : (
+        <span className="text-[10px] text-tertiary">
+          {window ? `${window.label} ${String(Math.round(window.usedPercent))}%` : '—'}
+        </span>
       )}
     </li>
   )

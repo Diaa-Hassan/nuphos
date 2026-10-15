@@ -8,21 +8,24 @@ import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
 import { useThisComputer } from '../../hooks/useThisComputer'
 
 import { JoinDialog } from './BoxParts'
-import { BoxRow } from './BoxRow'
 import { boxAgents, boxPollMs, machines, vanishedBoxes } from './boxPresentation'
+import { BoxRow } from './BoxRow'
+import { PanelHeading } from './RuntimePanel'
 import { useAgentDevices } from './useAgentDevices'
 
 import type { BoxJoin } from './BoxParts'
 import type { AgentDevice, AgentDeviceList } from '../../api'
-import type { RuntimeInstance } from '../../types/runtime'
+import type { RuntimeInstance, RuntimeQuota } from '../../types/runtime'
 
 /** The signed-in user's own Boxes, above the team's agents. Hidden when the backend has no Box provider. */
 export function BoxSection({
   teamId,
   instances,
+  quotas,
 }: {
   teamId: string
   instances: RuntimeInstance[]
+  quotas: ReadonlyMap<string, RuntimeQuota>
 }) {
   const thisComputer = useThisComputer()
   const [creating, setCreating] = useState(false)
@@ -66,47 +69,44 @@ export function BoxSection({
 
   return (
     <section aria-label="Boxes" className="mx-auto w-full max-w-5xl px-5 pt-5 lg:px-8">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[14px] font-semibold text-main">Boxes</h2>
-          <p className="mt-0.5 text-[12px] text-tertiary">
-            Every computer your agents run on: cloud Boxes and your own Macs.
-          </p>
-        </div>
-        <form
-          className="flex items-center gap-2"
-          onSubmit={(event) => {
-            event.preventDefault()
-            void create()
-          }}
-        >
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            onClick={() =>
-              void api
-                .boxJoinToken()
-                .then(setJoin, (error: unknown) =>
-                  toast.apiError('Could not make a join command', error),
-                )
-            }
+      <PanelHeading
+        title="Boxes"
+        right={
+          <form
+            className="flex items-center gap-2"
+            onSubmit={(event) => {
+              event.preventDefault()
+              void create()
+            }}
           >
-            Connect external Box
-          </Button>
-          <Button type="submit" size="sm" disabled={creating}>
-            {creating ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Box className="h-3.5 w-3.5" />
-            )}
-            New Box
-          </Button>
-        </form>
-      </div>
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              onClick={() =>
+                void api
+                  .boxJoinToken()
+                  .then(setJoin, (error: unknown) =>
+                    toast.apiError('Could not make a join command', error),
+                  )
+              }
+            >
+              Connect external Box
+            </Button>
+            <Button type="submit" size="sm" variant="secondary" disabled={creating}>
+              {creating ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Box className="h-3.5 w-3.5" />
+              )}
+              New Box
+            </Button>
+          </form>
+        }
+      />
       {join && <JoinDialog join={join} onClose={() => setJoin(null)} />}
       {owned.length > 0 && (
-        <ul className="mt-3 divide-y divide-zGray-800/60 rounded-xl border border-zGray-800/70">
+        <ul className="flex gap-3 overflow-x-auto pb-2">
           {owned.map((device) => (
             <BoxRow
               thisComputer={thisComputer?.deviceId === device.deviceId}
@@ -114,6 +114,7 @@ export function BoxSection({
               teamId={teamId}
               device={device}
               agents={boxAgents(device.deviceId, instances)}
+              quotas={quotas}
               onChanged={reload}
               onSignIn={watchSignIn}
             />

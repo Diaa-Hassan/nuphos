@@ -76,13 +76,6 @@ export function machineLine(device: AgentDevice): string {
   return device.model ? `${os} · ${device.model}` : os
 }
 
-export function boxDetail(state: MachineState, agents: RuntimeInstance[], platform: string) {
-  if (state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
-  if (agents.length === 0) return state === 'running' ? 'Connecting agents…' : platform
-
-  return `${String(agents.length)} agent${agents.length === 1 ? '' : 's'}`
-}
-
 /** Boxes that were creating and are gone: #355 drops a Box whose machine could not be made. */
 export function vanishedBoxes(previous: AgentDevice[], next: AgentDevice[]): BoxDevice[] {
   const ids = new Set(next.map((device) => device.deviceId))

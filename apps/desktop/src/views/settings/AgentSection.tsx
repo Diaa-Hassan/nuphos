@@ -1,21 +1,21 @@
 import './agents.css'
-import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent } from 'react'
-import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { usePageAside } from '../../hooks/usePageAside'
 import { useRuntimeInstances } from '../../hooks/useRuntimeInstances'
 import { useRuntimeQuotas } from '../../hooks/useRuntimeQuotas'
-
-import { AddAgentDialog } from './AddAgentDialog'
-import { BoxSection } from './BoxSection'
-import { RuntimeInstanceCard } from './RuntimeInstanceCard'
-import { AgentUsageSkeleton } from './AgentUsageSkeleton'
-import { RuntimeQuotaHistory } from './RuntimeQuotaHistory'
-
 import { useToolbarPrimaryAction } from '../../hooks/useToolbarPrimaryAction'
 import { useWorkspaceTab } from '../../hooks/useWorkspaceTab'
+
+import { AddAgentDialog } from './AddAgentDialog'
+import { AgentUsageSkeleton } from './AgentUsageSkeleton'
+import { BoxSection } from './BoxSection'
+import { RuntimeInstanceCard } from './RuntimeInstanceCard'
+import { RuntimeQuotaHistory } from './RuntimeQuotaHistory'
+
+import type { CSSProperties, KeyboardEvent } from 'react'
 
 const PANEL_WIDTH = 'min(560px,48cqw)'
 // Matches .t-agent-panel's width transition in agents.css.
@@ -109,7 +109,7 @@ export function AgentSection({
           </button>
         </div>
       )}
-      <BoxSection teamId={teamId} instances={catalog.instances} />
+      <BoxSection teamId={teamId} instances={catalog.instances} quotas={quotas} />
       {catalog.loading && instances.length === 0 && (
         <div className="min-h-0 flex-1 overflow-hidden p-5 lg:p-8">
           <div className="mx-auto w-full max-w-5xl">
