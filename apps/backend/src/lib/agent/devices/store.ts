@@ -155,14 +155,6 @@ export async function setAgentDeviceBoxSandbox(
   return result.matchedCount > 0
 }
 
-export async function countAgentDeviceBoxes(userId: string): Promise<number> {
-  return agentDevices().countDocuments({ userId, box: { $exists: true } })
-}
-
-export async function countTeamBoxes(teamId: string): Promise<number> {
-  return agentDevices().countDocuments({ 'box.teamId': teamId })
-}
-
 export async function deleteAgentDevice(userId: string, deviceId: string): Promise<boolean> {
   const result = await agentDevices().deleteOne({ userId, deviceId })
 
