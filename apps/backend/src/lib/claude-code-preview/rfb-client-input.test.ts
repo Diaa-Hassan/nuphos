@@ -58,3 +58,15 @@ test('a paste, or a backlog, beyond 256 KiB ends the stream', () => {
   backlog.push(handshake, true)
   expect(backlog.push(Buffer.alloc(256 * 1024 + 1, 0), true)).toBeNull()
 })
+
+test('a fence passes while view-only, even split across frames; resize and xvp wait like input', () => {
+  const filter = clientInputFilter()
+  const resize = Buffer.concat([Buffer.from([251, 0, 0, 0, 5, 0, 1, 0]), Buffer.alloc(16, 1)])
+  const xvp = Buffer.from([252, 0, 1, 2])
+
+  filter.push(handshake, false)
+  expect(filter.push(fence.subarray(0, 4), false)).toEqual(Buffer.alloc(0))
+  expect(filter.push(fence.subarray(4, 10), false)).toEqual(Buffer.alloc(0))
+  expect(filter.push(Buffer.concat([fence.subarray(10), resize, xvp]), false)).toEqual(fence)
+  expect(filter.push(Buffer.concat([resize, xvp]), true)).toEqual(Buffer.concat([resize, xvp]))
+})
