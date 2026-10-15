@@ -91,8 +91,13 @@ export function BoxRow({
                 const label = renaming.trim()
 
                 setRenaming(null)
+                // This computer keeps its name locally and re-registers with it, so rename it there.
                 if (label && label !== device.label)
-                  void run('Could not rename Box', () => api.boxRename(device.deviceId, label))
+                  void run('Could not rename Box', () =>
+                    thisComputer
+                      ? api.deviceSetLabel(label)
+                      : api.boxRename(device.deviceId, label),
+                  )
               }}
             />
           )}
