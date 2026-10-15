@@ -1,5 +1,5 @@
 import { AppError } from '@/lib/errors'
-import { getTeamMembership } from '@/lib/identity/teams'
+import { getTeamMembership } from '@/lib/identity'
 
 import { getAgentDevice, listAgentDevicesForUser, listTeamBoxes } from './store'
 
@@ -14,9 +14,9 @@ export type DeviceAccessDeps = {
   role: (actorId: string, teamId: string) => Promise<NuphosTeamRole | null>
 }
 export const deviceAccessDeps: DeviceAccessDeps = {
-  getDevice: getAgentDevice,
-  listDevices: listAgentDevicesForUser,
-  listBoxes: listTeamBoxes,
+  getDevice: (owner, id) => getAgentDevice(owner, id),
+  listDevices: (owner) => listAgentDevicesForUser(owner),
+  listBoxes: (team) => listTeamBoxes(team),
   role: async (actorId, teamId) => (await getTeamMembership(actorId, teamId))?.role ?? null,
 }
 
