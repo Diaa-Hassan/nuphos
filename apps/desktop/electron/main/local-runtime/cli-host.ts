@@ -288,3 +288,13 @@ console.log(
 )
 await controller.setUser(owner)
 await signInClaude(owner)
+// A sign-in from Nuphos's dialog lands in the agent's own home; notice it without a restart.
+setInterval(() => {
+  const { agents } = controller.state()
+
+  if (
+    !stopping &&
+    Object.values(agents).some((agent) => agent.cli?.installed && !agent.cli.loggedIn)
+  )
+    void controller.refresh(false)
+}, 2_000)

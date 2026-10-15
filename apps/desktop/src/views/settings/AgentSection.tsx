@@ -1,21 +1,19 @@
 import './agents.css'
-import { useEffect, useRef, useState } from 'react'
-import type { CSSProperties, KeyboardEvent } from 'react'
-import { createPortal } from 'react-dom'
 import { X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { usePageAside } from '../../hooks/usePageAside'
 import { useRuntimeInstances } from '../../hooks/useRuntimeInstances'
 import { useRuntimeQuotas } from '../../hooks/useRuntimeQuotas'
+import { useWorkspaceTab } from '../../hooks/useWorkspaceTab'
 
 import { AddAgentDialog } from './AddAgentDialog'
 import { BoxSection } from './BoxSection'
 import { RuntimeInstanceCard } from './RuntimeInstanceCard'
-import { AgentUsageSkeleton } from './AgentUsageSkeleton'
 import { RuntimeQuotaHistory } from './RuntimeQuotaHistory'
 
-import { useToolbarPrimaryAction } from '../../hooks/useToolbarPrimaryAction'
-import { useWorkspaceTab } from '../../hooks/useWorkspaceTab'
+import type { CSSProperties, KeyboardEvent } from 'react'
 
 const PANEL_WIDTH = 'min(560px,48cqw)'
 // Matches .t-agent-panel's width transition in agents.css.
@@ -73,7 +71,6 @@ export function AgentSection({
   const { isActive } = useWorkspaceTab()
   const panelShown = isActive && aside !== null && selected !== undefined
 
-  useToolbarPrimaryAction(isActive && isAdmin ? 'Add agent' : null, () => setAdding(true))
   useEffect(() => {
     onCount(instances.length)
   }, [instances.length, onCount])
@@ -110,22 +107,6 @@ export function AgentSection({
         </div>
       )}
       <BoxSection teamId={teamId} instances={catalog.instances} />
-      {catalog.loading && instances.length === 0 && (
-        <div className="min-h-0 flex-1 overflow-hidden p-5 lg:p-8">
-          <div className="mx-auto w-full max-w-5xl">
-            <AgentUsageSkeleton />
-          </div>
-        </div>
-      )}
-      {!catalog.loading && !catalog.error && instances.length === 0 && (
-        <p className="m-6 rounded-xl border border-dashed border-zGray-800 p-8 text-center text-sm text-tertiary">
-          {filter.trim()
-            ? 'No matching agents.'
-            : isAdmin
-              ? 'Add your first agent to start a conversation.'
-              : 'Ask a workspace administrator to add an agent.'}
-        </p>
-      )}
       {instances.length > 0 && (
         <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:p-8">
           <div className="t-agents-reveal mx-auto w-full max-w-5xl">

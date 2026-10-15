@@ -4,7 +4,7 @@ import { api } from '../../api'
 import { toast } from '../../components/ui/toast'
 import { RUNTIME_INSTANCES_CHANGED, useRuntimeInstances } from '../../hooks/useRuntimeInstances'
 
-import { boxAgents, boxSetupPhase } from './boxPresentation'
+import { BOX_CREATING_POLL_MS, boxAgents, boxSetupPhase } from './boxPresentation'
 import { useAgentDevices } from './useAgentDevices'
 
 /**
@@ -20,7 +20,8 @@ export function useBoxSetup(
   const { instances } = useRuntimeInstances(teamId)
   const agents = deviceId ? boxAgents(deviceId, instances) : []
   const { list } = useAgentDevices(
-    (next) => boxSetupPhase(deviceId, next.devices, agents) === 'starting',
+    (next) =>
+      boxSetupPhase(deviceId, next.devices, agents) === 'starting' ? BOX_CREATING_POLL_MS : false,
     deviceId ?? '',
   )
   const devices = deviceId ? (list?.devices ?? null) : null

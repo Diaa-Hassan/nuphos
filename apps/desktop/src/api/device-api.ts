@@ -24,4 +24,7 @@ export const deviceApi = {
   boxPause: (deviceId: string) => window.api.boxPause(deviceId),
   boxResume: (deviceId: string) => window.api.boxResume(deviceId),
   boxDelete: (deviceId: string) => window.api.boxDelete(deviceId),
+  boxDesktop: (deviceId: string) => window.api.boxDesktop(deviceId),
+  boxJoinToken: () => window.api.boxJoinToken(),
+  boxRename: (deviceId: string, label: string) => window.api.boxRename(deviceId, label),
 }

@@ -37,4 +37,7 @@ export const deviceApi = {
   boxPause: (deviceId: string) => ipcRenderer.invoke('box:pause', deviceId),
   boxResume: (deviceId: string) => ipcRenderer.invoke('box:resume', deviceId),
   boxDelete: (deviceId: string) => ipcRenderer.invoke('box:delete', deviceId),
+  boxDesktop: (deviceId: string) => ipcRenderer.invoke('box:desktop', deviceId),
+  boxJoinToken: () => ipcRenderer.invoke('box:join-token'),
+  boxRename: (deviceId: string, label: string) => ipcRenderer.invoke('box:rename', deviceId, label),
 }

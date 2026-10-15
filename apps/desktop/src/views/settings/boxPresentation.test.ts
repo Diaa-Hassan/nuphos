@@ -3,14 +3,15 @@ import { test } from 'node:test'
 
 import {
   BOX_BADGE,
-  anyCreating,
   boxActions,
   boxAgents,
   boxSetupPhase,
   boxSetupProblem,
   boxes,
-  machineDetail,
-  machineKind,
+  boxDetail,
+  boxPollMs,
+  boxState,
+  machineLine,
   machines,
   vanishedBoxes,
 } from './boxPresentation.ts'
@@ -36,33 +37,40 @@ test('each Box state has a badge', () => {
   assert.deepEqual(
     Object.fromEntries(Object.entries(BOX_BADGE).map(([state, view]) => [state, view.label])),
     {
-      creating: 'Creating',
+      creating: 'Starting',
       running: 'Running',
       paused: 'Paused',
-      error: 'Error',
+      stopped: 'Offline',
+      error: "Didn't start",
     },
   )
   assert.equal(BOX_BADGE.running.tone, 'online')
   assert.equal(BOX_BADGE.error.tone, 'error')
 })
 
-test('only a running Box pauses; a paused or unanswered one resumes', () => {
-  assert.deepEqual(boxActions('running'), { pause: true, resume: false })
-  assert.deepEqual(boxActions('paused'), { pause: false, resume: true })
-  assert.deepEqual(boxActions('error'), { pause: false, resume: true })
-  assert.deepEqual(boxActions('creating'), { pause: false, resume: false })
+test('only a running Box pauses; a paused or failed one resumes; a starting one cannot be deleted', () => {
+  assert.deepEqual(boxActions('running'), { pause: true, resume: false, remove: true })
+  assert.deepEqual(boxActions('paused'), { pause: false, resume: true, remove: true })
+  assert.deepEqual(boxActions('error'), { pause: false, resume: true, remove: true })
+  assert.deepEqual(boxActions('creating'), { pause: false, resume: false, remove: false })
 })
 
-test('lists only Boxes and knows when one is being created', () => {
-  const laptop: AgentDevice = { deviceId: 'mac', label: 'Mac', platform: 'darwin' }
+test('lists every cloud Box and each computer while its agents are connected', () => {
+  const laptop: AgentDevice = { deviceId: 'mac', label: 'Mac', platform: 'darwin', online: true }
+  const away: AgentDevice = { deviceId: 'old', label: 'Mac', platform: 'darwin', online: false }
+  const ids = (devices: AgentDevice[]) => devices.map((device) => device.deviceId)
 
-  assert.deepEqual(
-    boxes([laptop, box('a', 'running')]).map((device) => device.deviceId),
-    ['a'],
-  )
-  assert.equal(anyCreating([laptop, box('a', 'running')]), false)
-  assert.equal(anyCreating([box('a', 'running'), box('b', 'creating')]), true)
-  assert.equal(anyCreating([box('a', 'running', false)]), false)
+  assert.deepEqual(ids(boxes([laptop, box('a', 'running')])), ['a'])
+  assert.deepEqual(ids(machines([laptop, away, box('a', 'paused')])), ['mac', 'a'])
+  assert.equal(boxState(laptop), 'running')
+  assert.equal(boxState(away), 'stopped')
+  assert.equal(boxState(box('a', 'paused')), 'paused')
+})
+
+test('polls fast while a cloud Box is starting or its host is away', () => {
+  assert.equal(boxPollMs([box('a', 'running')]), 10_000)
+  assert.equal(boxPollMs([box('a', 'creating')]), 2_000)
+  assert.equal(boxPollMs([box('a', 'paused')]), 2_000)
 })
 
 const agent = (id: string, kind: RuntimeInstance['kind'], deviceId?: string) =>
@@ -112,47 +120,15 @@ test('a creating Box that drops out of the list is reported once', () => {
   assert.deepEqual(vanishedBoxes([box('a', 'creating')], [box('a', 'running')]), [])
 })
 
-test('an offline record shows only when no record of that machine is online, newest first', () => {
-  const mac = (deviceId: string, createdAt: string, online = false): AgentDevice => ({
-    deviceId,
-    label: 'MacBook Pro',
-    platform: 'darwin',
-    online,
-    createdAt,
-  })
-  const ids = (devices: AgentDevice[]) => machines(devices).map((device) => device.deviceId)
+test('a machine reads as its OS and model, then its agents', () => {
+  const mac: AgentDevice = { deviceId: 'm', label: 'Mac', platform: 'darwin', model: 'MacBook Pro' }
+  const claude = agent('1', 'local', 'm')
 
-  assert.deepEqual(ids([mac('old', '2026-01-01'), mac('new', '2026-02-01')]), ['new'])
-  assert.deepEqual(ids([mac('old', '2026-01-01', true), mac('new', '2026-02-01')]), ['old'])
-  // Two live Macs with the same name are two machines.
-  assert.deepEqual(ids([mac('a', '2026-01-01', true), mac('b', '2026-02-01', true)]), ['a', 'b'])
-  assert.deepEqual(
-    ids([
-      mac('m', '2026-01-01'),
-      { ...mac('l', '2026-01-01'), platform: 'linux' },
-      box('a', 'paused'),
-      box('b', 'paused'),
-    ]),
-    ['m', 'l', 'a', 'b'],
-  )
-})
-
-test('a machine shows its kind and a short detail line', () => {
-  const computer = (label: string, platform = 'darwin'): AgentDevice => ({
-    deviceId: label,
-    label,
-    platform,
-  })
-
-  assert.equal(machineKind(box('a', 'running')), 'box')
-  assert.equal(machineKind(computer("Yuanlin's MacBook Pro")), 'laptop')
-  assert.equal(machineKind(computer('Office Mac mini')), 'desktop')
-  assert.equal(machineKind(computer('staging-vm', 'linux')), 'desktop')
-  assert.equal(
-    machineDetail(computer("Yuanlin's MacBook Pro"), 2),
-    'macOS · MacBook Pro · 2 agents',
-  )
-  assert.equal(machineDetail(computer('staging-vm', 'linux'), 0), 'Linux')
-  assert.equal(machineDetail(box('a', 'running'), 1), 'Box · 1 agent')
-  assert.match(machineDetail(box('a', 'creating'), 0), /10–30 seconds/)
+  assert.equal(machineLine(mac), 'macOS · MacBook Pro')
+  assert.equal(machineLine({ ...mac, model: undefined }), 'macOS')
+  assert.equal(machineLine(box('a', 'running')), 'Linux · instabox')
+  assert.match(boxDetail('creating', [], 'linux'), /10–30 seconds/)
+  assert.equal(boxDetail('running', [], 'linux'), 'Connecting agents…')
+  assert.equal(boxDetail('paused', [], 'linux'), 'linux')
+  assert.equal(boxDetail('running', [claude, claude], 'darwin'), '2 agents')
 })

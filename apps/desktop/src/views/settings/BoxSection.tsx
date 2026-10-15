@@ -1,36 +1,22 @@
-import clsx from 'clsx'
-import { Box, Laptop, Loader2, Monitor } from 'lucide-react'
+import { Box, Loader2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { api } from '../../api'
-import { ConfirmDialog } from '../../components/ConfirmDialog'
 import { Button } from '../../components/ui/button'
 import { toast } from '../../components/ui/toast'
 import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
-import { AGENT_PROVIDER } from '../../types/runtime'
+import { useThisComputer } from '../../hooks/useThisComputer'
 
-import {
-  BOX_BADGE,
-  anyCreating,
-  boxActions,
-  boxAgents,
-  machineDetail,
-  machineKind,
-  machines,
-  vanishedBoxes,
-} from './boxPresentation'
-import { RuntimeLoginDialog } from './RuntimeLoginDialog'
-import { STATUS_DOT } from './runtimePresentation'
-import { inputClasses } from './styles'
+import { JoinDialog } from './BoxParts'
+import { BoxRow } from './BoxRow'
+import { boxAgents, boxPollMs, machines, vanishedBoxes } from './boxPresentation'
 import { useAgentDevices } from './useAgentDevices'
 
-import type { RuntimeStatusView } from './runtimePresentation'
+import type { BoxJoin } from './BoxParts'
 import type { AgentDevice, AgentDeviceList } from '../../api'
 import type { RuntimeInstance } from '../../types/runtime'
 
-const pollWhileCreating = (list: AgentDeviceList) => anyCreating(list.devices)
-
-/** Every machine running the signed-in user's agents: their Boxes and their own computers. */
+/** The signed-in user's own Boxes, above the team's agents. Hidden when the backend has no Box provider. */
 export function BoxSection({
   teamId,
   instances,
@@ -38,35 +24,40 @@ export function BoxSection({
   teamId: string
   instances: RuntimeInstance[]
 }) {
-  const { list, reload } = useAgentDevices(pollWhileCreating)
-  const [label, setLabel] = useState('')
+  const thisComputer = useThisComputer()
   const [creating, setCreating] = useState(false)
+  const [join, setJoin] = useState<BoxJoin | null>(null)
+  const instancesRef = useRef(instances)
   const previous = useRef<AgentDevice[]>([])
-  const [thisDeviceId, setThisDeviceId] = useState<string | null>(null)
 
   useEffect(() => {
-    void api.deviceGetIdentity().then(
-      (identity) => setThisDeviceId(identity.deviceId),
-      () => {},
+    instancesRef.current = instances
+  })
+
+  // Quickly while a Box is starting or one of its agents is not signed in yet; never while hidden.
+  const { list, reload } = useAgentDevices((next: AgentDeviceList) =>
+    instancesRef.current.some(
+      (instance) => instance.kind === 'local' && instance.local?.signedIn !== true,
     )
-  }, [])
+      ? 1_500
+      : boxPollMs(next.devices),
+  )
 
   useEffect(() => {
     if (!list) return
+    // The agents under each Box come from the runtime catalog: refresh it with the list.
+    window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
     for (const device of vanishedBoxes(previous.current, list.devices))
       toast.error('Box setup failed', `${device.label} could not start and was removed.`)
     previous.current = list.devices
   }, [list])
 
-  const owned = machines(list?.devices ?? [])
-
-  if (!list?.boxAvailable && owned.length === 0) return null
+  if (!list?.boxAvailable) return null
 
   const create = async () => {
     setCreating(true)
     try {
-      await api.boxCreate(teamId, label.trim() || undefined)
-      setLabel('')
+      await api.boxCreate(teamId)
       reload()
     } catch (error) {
       toast.apiError('Could not create Box', error)
@@ -74,6 +65,7 @@ export function BoxSection({
       setCreating(false)
     }
   }
+  const owned = machines(list.devices)
 
   return (
     <section aria-label="Boxes" className="mx-auto w-full max-w-5xl px-5 pt-5 lg:px-8">
@@ -81,183 +73,55 @@ export function BoxSection({
         <div className="min-w-0">
           <h2 className="text-[14px] font-semibold text-main">Boxes</h2>
           <p className="mt-0.5 text-[12px] text-tertiary">
-            Every machine that runs your agents: cloud Boxes Nuphos runs for you, and your own
-            computers. Only you can use them.
+            Every computer your agents run on: cloud Boxes and your own Macs.
           </p>
         </div>
-        {list?.boxAvailable && (
-          <form
-            className="flex items-center gap-2"
-            onSubmit={(event) => {
-              event.preventDefault()
-              void create()
-            }}
+        <form
+          className="flex items-center gap-2"
+          onSubmit={(event) => {
+            event.preventDefault()
+            void create()
+          }}
+        >
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            onClick={() =>
+              void api
+                .boxJoinToken()
+                .then(setJoin, (error: unknown) =>
+                  toast.apiError('Could not make a join command', error),
+                )
+            }
           >
-            <input
-              type="text"
-              maxLength={200}
-              value={label}
-              placeholder="Name (optional)"
-              aria-label="Box name"
-              onChange={(event) => setLabel(event.target.value)}
-              className={clsx(inputClasses, 'h-8 w-44')}
-            />
-            <Button type="submit" size="sm" disabled={creating}>
-              {creating ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              ) : (
-                <Box className="h-3.5 w-3.5" />
-              )}
-              New Box
-            </Button>
-          </form>
-        )}
+            Connect external Box
+          </Button>
+          <Button type="submit" size="sm" disabled={creating}>
+            {creating ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Box className="h-3.5 w-3.5" />
+            )}
+            New Box
+          </Button>
+        </form>
       </div>
+      {join && <JoinDialog join={join} onClose={() => setJoin(null)} />}
       {owned.length > 0 && (
         <ul className="mt-3 divide-y divide-zGray-800/60 rounded-xl border border-zGray-800/70">
           {owned.map((device) => (
-            <MachineRow
+            <BoxRow
+              thisComputer={thisComputer?.deviceId === device.deviceId}
               key={device.deviceId}
               teamId={teamId}
               device={device}
               agents={boxAgents(device.deviceId, instances)}
-              isThisComputer={device.deviceId === thisDeviceId}
               onChanged={reload}
             />
           ))}
         </ul>
       )}
     </section>
-  )
-}
-
-const COMPUTER_BADGE: Record<'online' | 'offline', RuntimeStatusView> = {
-  online: { label: 'Online', tone: 'online' },
-  offline: { label: 'Offline', tone: 'off' },
-}
-
-const MACHINE_ICON = { box: Box, laptop: Laptop, desktop: Monitor }
-
-function MachineRow({
-  teamId,
-  device,
-  agents,
-  isThisComputer,
-  onChanged,
-}: {
-  teamId: string
-  device: AgentDevice
-  agents: RuntimeInstance[]
-  isThisComputer: boolean
-  onChanged: () => void
-}) {
-  const Icon = MACHINE_ICON[machineKind(device)]
-  const [busy, setBusy] = useState(false)
-  const [confirmDelete, setConfirmDelete] = useState(false)
-  const [signingIn, setSigningIn] = useState<RuntimeInstance | null>(null)
-  const state = device.box?.state
-  const badge = state ? BOX_BADGE[state] : COMPUTER_BADGE[device.online ? 'online' : 'offline']
-  const actions = state ? boxActions(state) : { pause: false, resume: false }
-  const run = async (title: string, action: () => Promise<unknown>) => {
-    setBusy(true)
-    try {
-      await action()
-      onChanged()
-      window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
-    } catch (error) {
-      toast.apiError(title, error)
-    } finally {
-      setBusy(false)
-    }
-  }
-
-  return (
-    <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
-      <div className="flex min-w-0 flex-1 basis-52 items-center gap-3">
-        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zGray-800/70 bg-main">
-          <Icon className="h-4 w-4 text-secondary" />
-        </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-[13px] font-medium text-main" title={device.label}>
-              {device.label}
-            </span>
-            {isThisComputer && (
-              <span className="shrink-0 rounded-full border border-zGray-700 px-1.5 py-px text-[10.5px] text-secondary">
-                This Computer
-              </span>
-            )}
-          </div>
-          <div className="truncate text-[12px] text-tertiary">
-            {machineDetail(device, agents.length)}
-          </div>
-        </div>
-      </div>
-      <span
-        role="status"
-        className="flex shrink-0 items-center gap-1.5 text-[11.5px] text-secondary"
-      >
-        {state === 'creating' ? (
-          <Loader2 className="h-3 w-3 animate-spin text-amber-500" />
-        ) : (
-          <span className={clsx('h-1.5 w-1.5 rounded-full', STATUS_DOT[badge.tone])} />
-        )}
-        {badge.label}
-      </span>
-      <div className="flex shrink-0 items-center gap-1.5">
-        {(device.box ? state === 'running' : device.online) &&
-          agents
-            .filter((agent) => agent.local?.signedIn !== true)
-            .map((agent) => (
-              <Button key={agent.id} size="sm" onClick={() => setSigningIn(agent)}>
-                Sign in {AGENT_PROVIDER[agent.provider].label}
-              </Button>
-            ))}
-        {actions.pause && (
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => void run('Could not pause Box', () => api.boxPause(device.deviceId))}
-          >
-            Pause
-          </Button>
-        )}
-        {actions.resume && (
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={busy}
-            onClick={() => void run('Could not resume Box', () => api.boxResume(device.deviceId))}
-          >
-            Resume
-          </Button>
-        )}
-        {device.box && (
-          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmDelete(true)}>
-            Delete
-          </Button>
-        )}
-      </div>
-      <ConfirmDialog
-        open={confirmDelete}
-        title={`Delete ${device.label}?`}
-        description="This permanently deletes the Box, its files and its agents' sign-ins, and stops conversations running on it. Your conversation history stays in Nuphos."
-        destructive
-        confirmLabel="Delete Box"
-        onConfirm={() => run('Could not delete Box', () => api.boxDelete(device.deviceId))}
-        onClose={() => setConfirmDelete(false)}
-      />
-      {signingIn && (
-        <RuntimeLoginDialog
-          teamId={teamId}
-          instance={signingIn}
-          onClose={() => {
-            setSigningIn(null)
-            window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
-          }}
-        />
-      )}
-    </li>
   )
 }

@@ -4,75 +4,77 @@ import type { RuntimeInstance } from '../../types/runtime'
 
 export type BoxDevice = AgentDevice & { box: BoxStatus }
 
-// Only a Box being set up changes without the user acting: it comes online in 10–30 s.
+// A Box being set up, or a cloud Box whose host is away, changes without the user acting.
 export const BOX_CREATING_POLL_MS = 2_000
+export const BOX_POLL_MS = 10_000
 // A Box still creating after this long will not come up.
 export const BOX_SETUP_TIMEOUT_MS = 5 * 60_000
 
-export const BOX_BADGE: Record<BoxState, RuntimeStatusView> = {
-  creating: { label: 'Creating', tone: 'pending' },
+/** A cloud Box's state, or, for a computer, `stopped` while its agents are not connected. */
+export type MachineState = BoxState | 'stopped'
+
+export const BOX_BADGE: Record<MachineState, RuntimeStatusView> = {
+  creating: { label: 'Starting', tone: 'pending' },
   running: { label: 'Running', tone: 'online' },
   paused: { label: 'Paused', tone: 'off' },
-  error: { label: 'Error', tone: 'error' },
+  stopped: { label: 'Offline', tone: 'off' },
+  error: { label: "Didn't start", tone: 'error' },
 }
 
-/** What can be done to a Box in each state; the backend answers 409 otherwise. */
-export function boxActions(state: BoxState): { pause: boolean; resume: boolean } {
-  return { pause: state === 'running', resume: state === 'paused' || state === 'error' }
+/** What can be done to a Box in each state; a starting Box needs nothing from you. */
+export function boxActions(state: MachineState): {
+  pause: boolean
+  resume: boolean
+  remove: boolean
+} {
+  return {
+    pause: state === 'running',
+    resume: state === 'paused' || state === 'error',
+    remove: state !== 'creating',
+  }
 }
 
+/** The user's cloud Boxes. */
 export function boxes(devices: AgentDevice[]): BoxDevice[] {
   return devices.filter((device): device is BoxDevice => device.box !== undefined)
 }
 
-/**
- * Every machine that runs the user's agents: all Boxes and every online computer. A computer that
- * signed in again leaves its old record behind under the same name; an offline record shows only
- * when no record of that machine is online, and then only the newest.
- */
+/** What the Boxes list shows: a computer while its agents are connected; a cloud Box always, so it can be resumed. */
 export function machines(devices: AgentDevice[]): AgentDevice[] {
-  const key = (device: AgentDevice) => `${device.platform}\n${device.label}`
-  const live = new Set(devices.filter((device) => device.online).map(key))
-  const newest = new Map<string, AgentDevice>()
+  return devices.filter((device) => device.box !== undefined || device.online === true)
+}
 
-  for (const device of devices) {
-    if (device.box || device.online || live.has(key(device))) continue
-    const kept = newest.get(key(device))
+/** Derived, never stored: a cloud Box's state is instabox's; a computer is running while connected. */
+export function boxState(device: AgentDevice): MachineState {
+  if (device.box) return device.box.state
 
-    if (!kept || (device.createdAt ?? '') > (kept.createdAt ?? '')) newest.set(key(device), device)
-  }
+  return device.online ? 'running' : 'stopped'
+}
 
-  return devices.filter(
-    (device) => device.box || device.online || newest.get(key(device)) === device,
+export function boxPollMs(devices: AgentDevice[]): number {
+  return devices.some(
+    (device) => device.box !== undefined && (device.box.state === 'creating' || !device.online),
   )
+    ? BOX_CREATING_POLL_MS
+    : BOX_POLL_MS
 }
 
-export type MachineKind = 'box' | 'laptop' | 'desktop'
+const OS_LABEL: Record<string, string> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }
 
-const MAC_MODEL = /MacBook (?:Pro|Air)|MacBook|Mac mini|Mac Studio|Mac Pro|iMac/i
-const PLATFORM_NAME: Record<string, string> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }
+/** "macOS · MacBook Pro", "Linux · instabox". */
+export function machineLine(device: AgentDevice): string {
+  const os = OS_LABEL[device.platform] ?? device.platform
 
-export function machineKind(device: AgentDevice): MachineKind {
-  if (device.box) return 'box'
-  const model = MAC_MODEL.exec(device.label)?.[0] ?? ''
+  if (device.box) return `${os} · instabox`
 
-  return /MacBook/i.test(model) || (!model && device.platform !== 'linux') ? 'laptop' : 'desktop'
+  return device.model ? `${os} · ${device.model}` : os
 }
 
-/** "macOS · MacBook Pro · 2 agents"; a Box being made says how long it takes instead. */
-export function machineDetail(device: AgentDevice, agentCount: number): string {
-  if (device.box?.state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
-  const parts = device.box
-    ? ['Box']
-    : [PLATFORM_NAME[device.platform] ?? device.platform, MAC_MODEL.exec(device.label)?.[0]]
+export function boxDetail(state: MachineState, agents: RuntimeInstance[], platform: string) {
+  if (state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
+  if (agents.length === 0) return state === 'running' ? 'Connecting agents…' : platform
 
-  if (agentCount > 0) parts.push(`${agentCount} agent${agentCount === 1 ? '' : 's'}`)
-
-  return parts.filter(Boolean).join(' · ')
-}
-
-export function anyCreating(devices: AgentDevice[]): boolean {
-  return boxes(devices).some((device) => device.box.state === 'creating')
+  return `${String(agents.length)} agent${agents.length === 1 ? '' : 's'}`
 }
 
 /** Boxes that were creating and are gone: #355 drops a Box whose machine could not be made. */
