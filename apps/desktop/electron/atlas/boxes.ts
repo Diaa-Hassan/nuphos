@@ -29,6 +29,12 @@ export function getBoxUsage(teamId: string): Promise<BoxUsage> {
   return call('GET', `/teams/${encodeURIComponent(teamId)}/box-usage`)
 }
 
+/** What the billing service's errors (`{ error }` only) mean to the user. */
+const BILLING_ERRORS: Record<string, string> = {
+  checkout_in_progress: 'A checkout for this team is already in progress; try again shortly',
+  forbidden: 'Only team administrators can change the Box plan',
+}
+
 /**
  * A billing page to open: the portal for a subscribed team, else Checkout for a
  * `vcpus` plan. The billing service is a separate origin whose CORS takes only
@@ -52,19 +58,20 @@ export async function boxBillingPage(teamId: string, vcpus?: number): Promise<{ 
       ? await post('portal')
       : await post('checkout', { plan: `nuphos_box_${String(vcpus)}vcpu_monthly` })
 
-  // Subscribed since the usage was read: change the plan in the portal.
-  if (response.status === 409) response = await post('portal')
-  if (!response.ok) {
-    const failure = (await response.json().catch(() => ({}))) as {
-      error?: string
-      message?: string
-    }
+  const failure = async () =>
+    response.ok ? undefined : ((await response.json().catch(() => ({}))) as { error?: string })
+  let error = (await failure())?.error
 
-    throw buildAtlasError(
-      failure.message ?? `Billing answered ${String(response.status)}`,
-      failure.error ?? 'billing_error',
-    )
+  // Subscribed since the usage was read: change the plan in the portal.
+  if (error === 'already_subscribed') {
+    response = await post('portal')
+    error = (await failure())?.error
   }
+  if (!response.ok)
+    throw buildAtlasError(
+      BILLING_ERRORS[error ?? ''] ?? `Billing answered ${String(response.status)}`,
+      error ?? 'billing_error',
+    )
 
   return (await response.json()) as { url: string }
 }
