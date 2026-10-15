@@ -7,6 +7,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 import { pushEvent } from './dev-event-log.ts'
+import { namedTunnelUrlFromConfig } from './dev-tunnel-config.ts'
 import { signalGroup } from './dev-shutdown.ts'
 import { LOG_ROOT } from './dev-workspace.ts'
 
@@ -130,29 +131,6 @@ async function tunnelEdgeAlive(url: string): Promise<boolean> {
   return false
 }
 
-/** Resolve the public hostname whose ingress service targets this worktree's
- * backend port. Read the installed config instead of assuming a hostname
- * convention; named tunnel hostnames have changed over time. */
-export function namedTunnelUrlFromConfig(source: string, port: number): string | null {
-  let hostname: string | null = null
-
-  for (const rawLine of source.split(/\r?\n/)) {
-    const line = rawLine.trim()
-    const hostnameMatch = line.match(/^- hostname:\s*(\S+)$/)
-
-    if (hostnameMatch) {
-      hostname = hostnameMatch[1] ?? null
-      continue
-    }
-    if (line.startsWith('- ') && !line.startsWith('- hostname:')) hostname = null
-    if (hostname && /^service:\s*http:\/\//.test(line) && line.includes(`:${String(port)}`)) {
-      return `https://${hostname}`
-    }
-  }
-
-  return null
-}
-
 function configuredNamedTunnelUrl(port: number): string | null {
   try {
     return namedTunnelUrlFromConfig(readFileSync(NAMED_TUNNEL_CONFIG, 'utf8'), port)
@@ -247,13 +225,7 @@ let quickPort: number | null = null
 export async function setupTunnel(port: number): Promise<string | null> {
   // A backend restart on the same port keeps its quick tunnel: Boxes and runtimes
   // that were handed this URL must still reach the backend afterwards.
-  if (
-    tunnel.kind === 'quick' &&
-    quickPort === port &&
-    tunnel.url &&
-    tunnel.proc &&
-    tunnel.proc.exitCode === null
-  )
+  if (tunnel.kind === 'quick' && quickPort === port && tunnel.proc?.exitCode === null && tunnel.url)
     return tunnel.url
   stopTunnel() // drop any quick tunnel from a previous (port-conflict) attempt
   if (!hasCloudflared()) {
