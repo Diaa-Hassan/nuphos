@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { AppError } from '@/lib/errors'
+
 import { recordDeviceExecAudit } from '../devices/audit'
 import { dispatchLocalExec } from '../devices/dispatch'
 import { isActiveTeamMember } from '../devices/store'
@@ -220,14 +222,22 @@ export function createLocalExecTool(
         // A Box that idled into a pause is resumed now, for this command, not for every turn.
         const wake = devices.find((candidate) => candidate.deviceId === deviceId)?.wake
 
-        if (wake && !(await wake().catch(() => false))) {
+        // A plan refusal (402) is final and says why; anything else may pass.
+        const woke = wake
+          ? await wake().catch((error: unknown) =>
+              error instanceof AppError && error.status === 402 ? error.message : false,
+            )
+          : true
+
+        if (woke !== true) {
           await audit(deviceId, command, requestedAt, {
             outcome: 'rejected',
             reason: 'device_unavailable',
           })
 
           return {
-            error: `Device ${deviceId} is a Box that could not be resumed; try again shortly.`,
+            error:
+              woke || `Device ${deviceId} is a Box that could not be resumed; try again shortly.`,
           }
         }
         const dispatchedAt = new Date()

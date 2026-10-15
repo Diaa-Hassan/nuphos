@@ -32,9 +32,11 @@ import type { RuntimeInstance } from '../../types/runtime'
 /** The signed-in user's own Boxes, above the team's agents. New Box shows only when the backend can make one. */
 export function BoxSection({
   teamId,
+  isAdmin,
   instances,
 }: {
   teamId: string
+  isAdmin: boolean
   instances: RuntimeInstance[]
 }) {
   const [list, setList] = useState<AgentDeviceList | null>(null)
@@ -107,7 +109,7 @@ export function BoxSection({
             Linux computers Nuphos runs for you, with their own agents and local exec. Only you can
             use them.
           </p>
-          {plan?.enabled && <BoxPlanBar teamId={teamId} status={plan} />}
+          {plan?.enabled && <BoxPlanBar teamId={teamId} isAdmin={isAdmin} status={plan} />}
         </div>
         {list?.boxAvailable && (
           <form

@@ -45,6 +45,8 @@ export type NuphosTeamDoc = {
     deletedAt?: Date
   }[]
   billing?: TeamBilling
+  /** Set while a Box starts in this team, so two starts cannot both pass its plan. */
+  boxStartLockUntil?: Date
   createdAt: Date
   updatedAt: Date
   deletedAt?: Date

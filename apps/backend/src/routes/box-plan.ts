@@ -28,14 +28,17 @@ export const boxPlanRoutes = new Hono<{ Variables: TeamAuthVariables }>()
 boxPlanRoutes.get('/', async (c) => {
   const teamId = c.get('teamId')
   const plan = await teamBoxPlan(teamId)
-  const usage = plan !== null && boxesEnabled() ? await teamBoxUsage(teamId) : null
+  // An instabox outage leaves usage unknown rather than failing the whole read.
+  const usage =
+    plan !== null && boxesEnabled() ? await teamBoxUsage(teamId).catch(() => null) : null
 
   return c.json({
     /** False when this deployment sells no plans; Boxes are then not capped. */
     enabled: plan !== null,
     plan: plan ? { id: plan.id, usd: plan.usd, vcpus: plan.vcpus } : null,
     plans: BOX_PLANS.map(({ id, usd, vcpus }) => ({ id, usd, vcpus })),
-    usedVcpus: usage?.usedVcpus ?? 0,
+    /** Null when instabox could not be read. */
+    usedVcpus: usage?.usedVcpus ?? null,
     /** The vCPUs a new Box takes; null when unknown. */
     boxVcpus: usage?.boxVcpus ?? null,
   })

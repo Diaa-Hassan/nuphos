@@ -8,6 +8,8 @@ import { AppError } from '@/lib/errors'
 
 import type { Template } from '@insforge/instabox-sdk'
 
+/** The template every Box is made from. */
+export const BOX_TEMPLATE = 'universal'
 /** Installing the CLI and the agents on a fresh machine. */
 export const INSTALL_TIMEOUT_MS = 9 * 60_000
 /** Ordering a machine, in the background. */

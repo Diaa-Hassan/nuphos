@@ -98,9 +98,14 @@ export async function boxPlanCheckoutUrl(teamId: string, planId: BoxPlanId): Pro
   const price = prices.data[0]
 
   if (!price) throw new AppError(503, 'billing_unavailable', `No Stripe price for ${planId}`)
+  const customer = await ensureCustomer(teamId)
+  // Only one payable Checkout per team: a second click must not buy a second plan.
+  const open = await stripe().checkout.sessions.list({ customer, status: 'open', limit: 100 })
+
+  await Promise.all(open.data.map((stale) => stripe().checkout.sessions.expire(stale.id)))
   const session = await stripe().checkout.sessions.create({
     mode: 'subscription',
-    customer: await ensureCustomer(teamId),
+    customer,
     line_items: [{ price: price.id, quantity: 1 }],
     success_url: RETURN_URL,
     cancel_url: RETURN_URL,

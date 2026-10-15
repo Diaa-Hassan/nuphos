@@ -58,7 +58,11 @@ export function boxSetupPhase(
 export function newBoxBlockedReason(status: BoxPlanStatus | null): string | null {
   if (!status?.enabled) return null
   if (!status.plan) return 'Boxes need a plan. Choose one to start a Box.'
-  if (status.boxVcpus !== null && status.usedVcpus + status.boxVcpus > status.plan.vcpus)
+  if (
+    status.usedVcpus !== null &&
+    status.boxVcpus !== null &&
+    status.usedVcpus + status.boxVcpus > status.plan.vcpus
+  )
     return `Your running Boxes use ${String(status.usedVcpus)} of ${String(status.plan.vcpus)} vCPU, and a new Box needs ${String(status.boxVcpus)}. Pause a Box or upgrade.`
 
   return null

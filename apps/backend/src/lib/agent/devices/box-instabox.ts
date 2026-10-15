@@ -12,13 +12,12 @@ import { randomUUID } from 'node:crypto'
 import { Sandbox } from '@insforge/instabox-sdk'
 
 import { config } from '@/config'
-import { assertWithinPlan, runningVcpus } from '@/lib/billing/box-plans'
-import { teamBoxPlan } from '@/lib/billing/stripe'
 import { AppError } from '@/lib/errors'
 import { logError, logEvent } from '@/lib/observability'
 
 import {
   AGENT_COMMAND,
+  BOX_TEMPLATE,
   BOX_INSTALL_COMMAND,
   CREATE_TIMEOUT_MS,
   INSTALL_TIMEOUT_MS,
@@ -26,15 +25,13 @@ import {
   boxBackendUrl,
   connection,
   kill,
-  teamMachines,
-  templateVcpus,
   unavailable,
 } from './box-instabox-client'
 
+import { startWithinPlan } from './box-instabox-plan'
 import { deleteDeviceJoinTokens, issueDeviceJoinToken } from './join-tokens'
 import { isDevicePresent } from './presence'
 import {
-  countTeamBoxesOrdering,
   deleteAgentDevice,
   getAgentDevice,
   insertBoxAgentDevice,
@@ -43,11 +40,11 @@ import {
 
 import type { AgentDevice, AgentDeviceBox } from './store'
 
-export { boxBackendUrl, boxesAvailable, boxesEnabled } from './box-instabox-client'
+export { BOX_TEMPLATE, boxBackendUrl, boxesAvailable, boxesEnabled } from './box-instabox-client'
+export { teamBoxUsage } from './box-instabox-plan'
 export { boxState } from './box-instabox-state'
 export type { BoxState } from './box-instabox-state'
 
-export const BOX_TEMPLATE = 'universal'
 /** Orders one person may place in `CREATE_WINDOW_MS`. */
 export const MAX_CREATES_PER_WINDOW = 3
 const CREATE_WINDOW_MS = 10 * 60_000
@@ -96,30 +93,6 @@ async function killByDevice(deviceId: string): Promise<void> {
   for (const machine of machines) await kill(machine.sandboxId)
 }
 
-/** vCPUs the team's running Boxes use, Boxes still being ordered included, and a new Box's size. */
-export async function teamBoxUsage(teamId: string) {
-  const [machines, ordering, boxVcpus] = await Promise.all([
-    teamMachines(teamId),
-    countTeamBoxesOrdering(teamId),
-    templateVcpus(BOX_TEMPLATE),
-  ])
-
-  return { machines, boxVcpus, usedVcpus: runningVcpus(machines) + ordering * boxVcpus }
-}
-
-/** Starting a Box, new or `resumed`, must keep the team's running Boxes within its plan. */
-async function assertPlanAllows(teamId: string, resumed?: string): Promise<void> {
-  const plan = await teamBoxPlan(teamId)
-
-  if (plan === null) return
-  const { machines, boxVcpus, usedVcpus } = await teamBoxUsage(teamId)
-  const self = machines.find((machine) => machine.sandboxId === resumed)
-
-  // Already running: resuming starts nothing new.
-  if (self && runningVcpus([self]) > 0) return
-  assertWithinPlan(plan, usedVcpus, self?.vcpus ?? boxVcpus)
-}
-
 const recentCreates = new Map<string, number[]>()
 
 function checkCreateRate(userId: string): void {
@@ -143,7 +116,6 @@ export async function createBox(
 ): Promise<AgentDevice> {
   const url = backendUrl()
 
-  await assertPlanAllows(teamId)
   checkCreateRate(userId)
   const deviceId = randomUUID()
   const now = new Date()
@@ -155,7 +127,7 @@ export async function createBox(
     box: { provider: 'instabox' as const, teamId },
   }
 
-  await insertBoxAgentDevice(userId, registration)
+  await startWithinPlan(teamId, undefined, () => insertBoxAgentDevice(userId, registration))
   void order(userId, teamId, deviceId, label, url)
 
   return { ...registration, userId, createdAt: now, updatedAt: now }
@@ -238,18 +210,17 @@ export async function resumeBox(userId: string, deviceId: string): Promise<Agent
   const sandboxId = requireMachine(device)
   const url = backendUrl()
 
-  await assertPlanAllows(device.box.teamId, sandboxId)
   try {
-    const sandbox = await Sandbox.connect(sandboxId, {
-      ...connection(QUICK_TIMEOUT_MS),
-      resume: true,
-    })
+    const sandbox = await startWithinPlan(device.box.teamId, sandboxId, () =>
+      Sandbox.connect(sandboxId, { ...connection(QUICK_TIMEOUT_MS), resume: true }),
+    )
 
     await sandbox.commands.run(AGENT_COMMAND, {
       envs: { ...downloadEnv(), NUPHOS_API_URL: url },
       background: true,
     })
   } catch (error) {
+    if (error instanceof AppError) throw error
     throw unavailable('Could not resume the Box', error)
   }
 

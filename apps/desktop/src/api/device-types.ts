@@ -136,7 +136,8 @@ export type BoxPlanStatus = {
   enabled: boolean
   plan: BoxPlan | null
   plans: BoxPlan[]
-  usedVcpus: number
+  /** Null when the backend could not read the Boxes' state. */
+  usedVcpus: number | null
   /** The vCPUs a new Box takes; null when unknown. */
   boxVcpus: number | null
 }
