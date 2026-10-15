@@ -1,7 +1,5 @@
-// `nuphos agent`: this computer's local agents without Electron. The CLI runs
-// this bundled file on the user's own Node, next to the staged openab and
-// adapters. It connects either with this computer's own credential, from
-// `nuphos agent --join <token>`, or with the session the CLI and the desktop share.
+// `nuphos agent`: this computer's local agents without Electron, on the user's own Node
+// next to the staged openab and adapters, with the Box's credential or the shared session.
 
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -25,6 +23,7 @@ import { LOCAL_AGENT_PROVIDERS, findAgentCli, probeAgentCli, readAgentUsage } fr
 import { prepareAgentHome } from './agent-home.ts'
 import { agentCliEnv, agentEnv, readBundle } from './config.ts'
 import { LocalRuntimeController } from './controller.ts'
+import { enableDesktopPool } from './desktop-pool.ts'
 import { deviceCredentialFor, exitRevoked, tunnelUrlFor } from './device-credential.ts'
 import { LocalExecStream } from './exec-stream.ts'
 import { LocalFileStream } from './file-stream.ts'
@@ -36,9 +35,6 @@ import type { DeviceIdentity } from '../device-identity-core.ts'
 import type { AgentCliStatus, LocalAgentProvider } from './agent-cli.ts'
 
 const bundleRoot = process.env.NUPHOS_LOCAL_RUNTIME_DIR ?? path.dirname(process.argv[1] ?? '.')
-// Apart from the desktop's, so both can run on one computer as two devices, each
-// with its own runtime tunnel; the device id itself comes from the machine.
-// The CLI sets it, so its default lives in one place (agent.rs).
 const dataDir = process.env.NUPHOS_AGENT_HOME ?? ''
 
 if (!dataDir) {
@@ -91,6 +87,13 @@ function currentToken(): string | null {
   }
 }
 
+// A Linux Box with Xvnc gives every session its own desktop (see desktop-session.mjs).
+const desktopPool = enableDesktopPool(bundleRoot, dataDir)
+
+if (desktopPool)
+  console.log(
+    `Desktops for sessions: up to ${process.env.NUPHOS_DESKTOP_POOL_SIZE ?? '?'} in ${desktopPool}.`,
+  )
 const deviceCredential = await deviceCredentialFor({
   dataDir,
   apiUrl: apiUrl(),
@@ -270,10 +273,7 @@ function stop(message = 'Stopping the local agents…'): void {
   void controller.shutdown().then(() => process.exit(0))
 }
 
-// Signed in with the session, the agents follow it, as the desktop's do: signed
-// out here or in the app (the same cli.yaml), or signed in as someone else, they
-// stop. Logging out does not revoke the token, so an open tunnel would otherwise
-// keep serving. A joined computer stops when its own credential is revoked.
+// With a session the agents follow it (signed out or switched user: stop); a Box stops on revocation.
 if (!deviceCredential)
   setInterval(() => {
     const fresh = currentToken()

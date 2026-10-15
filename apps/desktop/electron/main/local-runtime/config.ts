@@ -61,6 +61,10 @@ const AGENT_ENV_PASSTHROUGH = [
   'SystemRoot',
   'ComSpec',
   'PATHEXT',
+  // A Linux Box with a desktop pool: the adapter adds a per-session computer-use server.
+  'NUPHOS_DESKTOP_SESSION',
+  'NUPHOS_DESKTOP_POOL',
+  'NUPHOS_DESKTOP_POOL_SIZE',
 ]
 
 /** Must match `deriveRuntimeControlKey` in the backend and `nuphos-runtime-start`. */
