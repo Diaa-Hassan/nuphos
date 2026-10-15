@@ -1,0 +1,1245 @@
+diff --git a/apps/backend/src/lib/agent/devices/box-instabox.ts b/apps/backend/src/lib/agent/devices/box-instabox.ts
+index 4110d18..a59db11 100644
+--- a/apps/backend/src/lib/agent/devices/box-instabox.ts
++++ b/apps/backend/src/lib/agent/devices/box-instabox.ts
+@@ -12,12 +12,13 @@ import { AppError } from '@/lib/errors'
+ import { logError, logEvent } from '@/lib/observability'
+ 
+ import { issueDeviceJoinToken } from './join-tokens'
++import { deleteAgentDevice, setAgentDeviceSandbox } from './store'
+ import { isDevicePresent } from './presence'
+ import { getAgentDevice, insertBoxAgentDevice, setAgentDeviceBoxState } from './store'
+ 
+ import type { AgentDevice, AgentDeviceBoxState } from './store'
+ 
+-export const BOX_TEMPLATE = 'universal'
++export const BOX_TEMPLATE = 'agent-browser'
+ /** The machine joins within this; a token left unused expires with it. */
+ const JOIN_TOKEN_TTL_SEC = 60 * 60
+ /** Installing the CLI and the agents on a fresh machine. */
+@@ -32,13 +33,21 @@ export const BOX_INSTALL_COMMAND = [
+   'if ! node -e "process.exit(+process.versions.node.split(\'.\')[0] >= 22 ? 0 : 1)" 2>/dev/null; then',
+   '  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs',
+   'fi',
+-  'npm config set prefix "$HOME/.npm-global" && npm i -g @anthropic-ai/claude-code @openai/codex',
++  'command -v claude >/dev/null && command -v codex >/dev/null || { npm config set prefix "$HOME/.npm-global" && npm i -g @anthropic-ai/claude-code @openai/codex; }',
+   'command -v nuphos >/dev/null || curl -fsSL https://nuphos.ai/install | sh',
++  // So `nuphos` also works in the Box\'s own terminal, not only for the commands we run.
++  'grep -q .local/bin "$HOME/.profile" 2>/dev/null || echo \'export PATH="$HOME/.local/bin:$PATH"\' >> "$HOME/.profile"',
+ ].join('\n')
+ 
+ /** Starts the host detached from the command session; it keeps the Box's own credential. */
+ const AGENT_COMMAND =
+-  'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; pgrep -x nuphos >/dev/null || setsid nohup nuphos agent >> "$HOME/nuphos-agent.log" 2>&1 < /dev/null &'
++  'export PATH="$HOME/.local/bin:$HOME/.npm-global/bin:$PATH"; pgrep -x nuphos >/dev/null || setsid -f nohup nuphos agent >> "$HOME/nuphos-agent.log" 2>&1 < /dev/null'
++
++/** Dev only: a local backend serves the CLI and agent runtime built from its own checkout. */
++const devDownload = (): Record<string, string> =>
++  process.env.BOX_DEV_DOWNLOAD_URL
++    ? { NUPHOS_DOWNLOAD_URL: process.env.BOX_DEV_DOWNLOAD_URL, VERSION: 'dev' }
++    : {}
+ 
+ type BoxConnection = { apiKey: string; apiUrl?: string }
+ 
+@@ -78,42 +87,38 @@ export async function createBox(
+ ): Promise<AgentDevice> {
+   const conn = connection()
+   const deviceId = randomUUID()
+-  let sandbox: Sandbox
+-
+-  try {
+-    sandbox = await Sandbox.create(BOX_TEMPLATE, {
+-      ...conn,
+-      name: `nuphos-${deviceId.slice(0, 8)}`,
+-      metadata: { teamId, deviceId, createdBy: userId },
+-      vault: false,
+-    })
+-  } catch (error) {
+-    logError('agent.box.create_failed', error, { user_id: userId })
+-    throw new AppError(503, 'box_unavailable', `Could not create the Box: ${message(error)}`)
+-  }
+   const now = new Date()
++  // The row exists at once, so the Box shows as starting while instabox boots it.
+   const registration = {
+     deviceId,
+     label,
+     platform: 'linux',
+     allowLocalExec: true,
+-    box: {
+-      provider: 'instabox' as const,
+-      sandboxId: sandbox.sandboxId,
+-      state: 'creating' as const,
+-      updatedAt: now,
+-    },
++    box: { provider: 'instabox' as const, sandboxId: '', state: 'creating' as const, updatedAt: now },
+   }
+   const device: AgentDevice = { ...registration, userId, createdAt: now, updatedAt: now }
+ 
+   await insertBoxAgentDevice(userId, registration)
+-  const { token } = await issueDeviceJoinToken(userId, {
+-    label,
+-    deviceId,
+-    expiresInSec: JOIN_TOKEN_TTL_SEC,
+-  })
+-
+-  void provision(sandbox, userId, deviceId, token, backendUrl)
++  const { token } = await issueDeviceJoinToken(userId, { label, deviceId, expiresInSec: JOIN_TOKEN_TTL_SEC })
++
++  void (async () => {
++    let sandbox: Sandbox
++    try {
++      // Dev: a snapshot with the CLI and agent runtime already in place makes a Box ready in seconds.
++      sandbox = await Sandbox.create(process.env.BOX_SNAPSHOT_ID || BOX_TEMPLATE, {
++        ...conn,
++        name: `nuphos-${deviceId.slice(0, 8)}`,
++        metadata: { teamId, deviceId, createdBy: userId },
++        vault: false,
++      })
++    } catch (error) {
++      logError('agent.box.create_failed', error, { user_id: userId })
++      await deleteAgentDevice(userId, deviceId)
++      return
++    }
++    await setAgentDeviceSandbox(userId, deviceId, sandbox.sandboxId)
++    await provision(sandbox, userId, deviceId, token, backendUrl)
++  })()
+ 
+   return device
+ }
+@@ -126,10 +131,10 @@ async function provision(
+   backendUrl: string,
+ ): Promise<void> {
+   try {
+-    await sandbox.commands.run(BOX_INSTALL_COMMAND, { timeoutMs: INSTALL_TIMEOUT_MS })
++    await sandbox.commands.run(BOX_INSTALL_COMMAND, { envs: devDownload(), timeoutMs: INSTALL_TIMEOUT_MS })
+     // The token rides in the environment of this one command: not on disk, not in argv.
+     await sandbox.commands.run(AGENT_COMMAND, {
+-      envs: { NUPHOS_JOIN_TOKEN: token, NUPHOS_API_URL: backendUrl },
++      envs: { ...devDownload(), NUPHOS_JOIN_TOKEN: token, NUPHOS_API_URL: backendUrl },
+       timeoutMs: 60_000,
+     })
+     logEvent('info', 'agent.box.provisioned', { user_id: userId, device_id: deviceId })
+@@ -150,8 +155,6 @@ async function attach(sandboxId: string, resume: boolean): Promise<Sandbox> {
+ export async function pauseBox(userId: string, deviceId: string): Promise<AgentDevice> {
+   const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
+ 
+-  if (device.box.state === 'creating')
+-    throw new AppError(409, 'box_state', 'The Box is still being created')
+   const sandbox = await attach(device.box.sandboxId, false)
+ 
+   try {
+@@ -172,13 +175,19 @@ export async function resumeBox(
+ ): Promise<AgentDevice> {
+   const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
+ 
+-  if (device.box.state === 'creating')
+-    throw new AppError(409, 'box_state', 'The Box is still being created')
+   const sandbox = await attach(device.box.sandboxId, true)
+ 
+   try {
+-    await sandbox.commands.run(AGENT_COMMAND, {
+-      envs: { NUPHOS_API_URL: backendUrl },
++    // A Box whose host never joined gets a fresh one-time token; a joined one keeps its credential.
++    // Always a fresh one-time token: a host whose credential was for another backend URL rejoins.
++    const rejoin: Record<string, string> = {
++          NUPHOS_JOIN_TOKEN: (
++            await issueDeviceJoinToken(userId, { label: device.label, deviceId, expiresInSec: JOIN_TOKEN_TTL_SEC })
++          ).token,
++        }
++    // Resume restarts the host so it dials the backend's current URL, not one it was started with.
++    await sandbox.commands.run(`pkill -x nuphos || true; sleep 1; ${AGENT_COMMAND}`, {
++      envs: { ...devDownload(), ...rejoin, NUPHOS_API_URL: backendUrl },
+       timeoutMs: 60_000,
+     })
+   } catch (error) {
+@@ -194,7 +203,8 @@ export async function destroyBox(userId: string, deviceId: string): Promise<void
+   const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
+ 
+   try {
+-    await Sandbox.kill(device.box.sandboxId, connection())
++    // A Box still booting has no machine yet; its row is all there is to delete.
++    if (device.box.sandboxId) await Sandbox.kill(device.box.sandboxId, connection())
+   } catch (error) {
+     logError('agent.box.kill_failed', error, { user_id: userId, device_id: deviceId })
+     throw new AppError(503, 'box_unavailable', `Could not delete the Box: ${message(error)}`)
+@@ -219,3 +229,44 @@ export async function wakeBox(device: AgentDevice, backendUrl: string): Promise<
+ }
+ 
+ export type { AgentDeviceBoxState }
++
++/** instabox's own view of each machine: the single source of a Box's state. One call per list. */
++export async function machineStates(): Promise<Map<string, string>> {
++  try {
++    const machines = await Sandbox.list({ ...connection(), requestTimeoutMs: 5_000 })
++
++    return new Map(machines.map((machine) => [machine.sandboxId, String(machine.state)]))
++  } catch (error) {
++    logError('agent.box.list_failed', error, {})
++
++    return new Map()
++  }
++}
++
++const lastHeal = new Map<string, number>()
++
++/** A running machine whose host is not connected gets its host restarted, at most once a minute. */
++export function healBox(userId: string, deviceId: string, backendUrl: string): void {
++  const now = Date.now()
++  if (now - (lastHeal.get(deviceId) ?? 0) < 60_000) return
++  lastHeal.set(deviceId, now)
++  void resumeBox(userId, deviceId, backendUrl).catch((error: unknown) =>
++    logError('agent.box.heal_failed', error, { user_id: userId, device_id: deviceId }),
++  )
++}
++
++/** A link to watch and use the Box's desktop (VNC in the browser), valid for an hour. */
++export async function boxDesktopUrl(userId: string, deviceId: string): Promise<string> {
++  const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
++  if (!device.box.sandboxId) throw new AppError(409, 'box_state', 'The Box is still starting')
++  const sandbox = await attach(device.box.sandboxId, true)
++
++  try {
++    await sandbox.desktop.start()
++    const { url } = await sandbox.desktop.streamUrl({ viewOnly: false, ttlSeconds: 3_600 })
++
++    return url
++  } catch (error) {
++    throw new AppError(503, 'box_unavailable', `Could not open the Box's desktop: ${message(error)}`)
++  }
++}
+diff --git a/apps/backend/src/lib/agent/devices/store.ts b/apps/backend/src/lib/agent/devices/store.ts
+index 61f3943..4e602ec 100644
+--- a/apps/backend/src/lib/agent/devices/store.ts
++++ b/apps/backend/src/lib/agent/devices/store.ts
+@@ -21,6 +21,8 @@ export type AgentDevice = {
+   deviceId: string
+   label: string
+   platform: string
++  /** The machine's model as the OS names it, e.g. "MacBook Pro" or "Mac mini". */
++  model?: string
+   allowLocalExec: boolean
+   box?: AgentDeviceBox
+   /** sha256 of the credential a join token issued; absent for devices signed in as their owner. */
+@@ -32,7 +34,7 @@ export type AgentDevice = {
+ 
+ export type AgentDeviceRegistration = Pick<
+   AgentDevice,
+-  'deviceId' | 'label' | 'platform' | 'allowLocalExec'
++  'deviceId' | 'label' | 'platform' | 'model' | 'allowLocalExec'
+ >
+ 
+ const agentDevices = (): Collection<AgentDevice> => db().collection<AgentDevice>('agent_devices')
+@@ -67,6 +69,12 @@ export async function upsertAgentDevice(
+   )
+ }
+ 
++export async function renameAgentDevice(userId: string, deviceId: string, label: string): Promise<boolean> {
++  const result = await agentDevices().updateOne({ userId, deviceId }, { $set: { label, updatedAt: new Date() } })
++
++  return result.matchedCount === 1
++}
++
+ /** A joined device is always new, so a join token can never take over an existing one. */
+ export async function insertJoinedAgentDevice(
+   userId: string,
+@@ -175,6 +183,10 @@ export async function setAgentDeviceBoxState(
+   )
+ }
+ 
++export async function setAgentDeviceSandbox(userId: string, deviceId: string, sandboxId: string): Promise<void> {
++  await agentDevices().updateOne({ userId, deviceId }, { $set: { 'box.sandboxId': sandboxId, updatedAt: new Date() } })
++}
++
+ export async function deleteAgentDevice(userId: string, deviceId: string): Promise<boolean> {
+   const result = await agentDevices().deleteOne({ userId, deviceId })
+ 
+diff --git a/apps/backend/src/lib/claude-code-preview/local-runtime-catalog.ts b/apps/backend/src/lib/claude-code-preview/local-runtime-catalog.ts
+index 5b9dbf4..5713133 100644
+--- a/apps/backend/src/lib/claude-code-preview/local-runtime-catalog.ts
++++ b/apps/backend/src/lib/claude-code-preview/local-runtime-catalog.ts
+@@ -92,7 +92,7 @@ export async function listOwnLocalRuntimes(
+           return {
+             id,
+             provider,
+-            label: `${device.label} · ${PROVIDER_LABEL[provider]}`,
++            label: `${PROVIDER_LABEL[provider]} in ${device.label}`,
+             status: 'active',
+             kind: 'local',
+             createdAt: device.createdAt.toISOString(),
+diff --git a/apps/backend/src/routes/agent/routes-devices-box.ts b/apps/backend/src/routes/agent/routes-devices-box.ts
+index 3029402..85ef65d 100644
+--- a/apps/backend/src/routes/agent/routes-devices-box.ts
++++ b/apps/backend/src/routes/agent/routes-devices-box.ts
+@@ -1,3 +1,5 @@
++import { boxDesktopUrl, healBox, machineStates } from '@/lib/agent/devices/box-instabox'
++import { renameAgentDevice } from '@/lib/agent/devices/store'
+ import { Hono } from 'hono'
+ import { z } from 'zod'
+ 
+@@ -14,16 +16,17 @@ import type { AuthVariables } from '@/middleware/auth'
+ 
+ const deviceParam = z.object({ deviceId: z.string().trim().min(1).max(128) })
+ const boxCreateSchema = z.object({
+-  label: z.string().trim().min(1).max(200).default('Box'),
++  label: z.string().trim().min(1).max(200).optional(),
+   teamId: z.string().trim().min(1).max(64).optional(),
+ })
+ 
+ /** What a client sees of a device: never the credential hash. */
+-function deviceView(device: AgentDevice, online: boolean) {
++function deviceView(device: AgentDevice, online: boolean, machine?: string) {
+   return {
+     deviceId: device.deviceId,
+     label: device.label,
+     platform: device.platform,
++    ...(device.model ? { model: device.model } : {}),
+     allowLocalExec: device.allowLocalExec,
+     online,
+     createdAt: device.createdAt.toISOString(),
+@@ -32,8 +35,9 @@ function deviceView(device: AgentDevice, online: boolean) {
+           box: {
+             provider: device.box.provider,
+             sandboxId: device.box.sandboxId,
+-            state: device.box.state,
+-            ...(device.box.error ? { error: device.box.error } : {}),
++            // instabox's machine state is the Box's state; whether its agents are connected is `online`.
++            state: !device.box.sandboxId || machine === undefined ? 'creating' : machine === 'running' ? 'running' : machine === 'suspended' || machine === 'paused' ? 'paused' : machine === 'error' ? 'error' : 'creating',
++            joined: Boolean(device.credentialHash),
+             updatedAt: device.box.updatedAt.toISOString(),
+           },
+         }
+@@ -66,16 +70,41 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
+   routes.get('/devices', async (c) => {
+     const userId = c.get('userId')
+     const devices = await deps.listDevices(userId)
++    const machines = deps.box && devices.some((d) => d.box) ? await machineStates() : new Map<string, string>()
++    const backendUrl = deps.backendUrl()
+ 
+     return c.json({
++      boxAvailable: Boolean(deps.box) && Boolean(backendUrl),
+       devices: await Promise.all(
+-        devices.map(async (device) =>
+-          deviceView(device, await deps.isOnline(userId, device.deviceId)),
+-        ),
++        devices.map(async (device) => {
++          const online = await deps.isOnline(userId, device.deviceId)
++          const machine = device.box?.sandboxId ? machines.get(device.box.sandboxId) : undefined
++          // A running machine whose agents dropped (a host crash, a new backend URL) heals itself.
++          if (device.box && machine === 'running' && !online && device.credentialHash && backendUrl)
++            healBox(userId, device.deviceId, backendUrl)
++
++          return deviceView(device, online, machine)
++        }),
+       ),
+     })
+   })
+ 
++  // The Box's desktop, to watch and take over what its agents do.
++  routes.post('/devices/:deviceId/box/desktop', async (c) => {
++    requireBoxes()
++
++    return c.json({ url: await boxDesktopUrl(c.get('userId'), c.req.param('deviceId')) })
++  })
++
++  // Rename any of the caller's own Boxes, a cloud one or a computer.
++  routes.patch('/devices/:deviceId', zv('json', z.object({ label: z.string().trim().min(1).max(200) })), async (c) => {
++    const { label } = c.req.valid('json')
++    if (!(await renameAgentDevice(c.get('userId'), c.req.param('deviceId'), label)))
++      throw new AppError(404, 'device_not_found', 'No such Box')
++
++    return c.json({ ok: true })
++  })
++
+   // A Box: a cloud machine made for this user, joined with its own one-time token.
+   routes.post('/devices/boxes', zv('json', boxCreateSchema), async (c) => {
+     const box = requireBoxes()
+@@ -84,7 +113,10 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
+     const teamId = await resolveVerifiedTeamId(c, readTeamIdCandidate(c, requestedTeamId))
+ 
+     if (!teamId) throw new AppError(400, 'team_required', 'A Box is made inside one of your teams')
+-    const device = await box.create(c.get('userId'), teamId, label, backendUrl)
++    // Unnamed Boxes count up: Box 1, Box 2, … after the highest one this user has.
++    const taken = (await deps.listDevices(c.get('userId'))).map((d) => /^Box (\d+)$/u.exec(d.label)?.[1]).filter(Boolean)
++    const name = label ?? `Box ${String(Math.max(0, ...taken.map(Number)) + 1)}`
++    const device = await box.create(c.get('userId'), teamId, name, backendUrl)
+ 
+     return c.json(deviceView(device, false), 201)
+   })
+diff --git a/apps/backend/src/routes/agent/routes-devices.ts b/apps/backend/src/routes/agent/routes-devices.ts
+index 457156e..3b96167 100644
+--- a/apps/backend/src/routes/agent/routes-devices.ts
++++ b/apps/backend/src/routes/agent/routes-devices.ts
+@@ -44,6 +44,7 @@ const deviceRegistrationSchema = z.object({
+   deviceId: z.string().trim().min(1).max(128),
+   label: z.string().trim().min(1).max(200),
+   platform: z.string().trim().min(1).max(64),
++  model: z.string().trim().min(1).max(64).optional(),
+   allowLocalExec: z.boolean(),
+ })
+ 
+@@ -139,7 +140,8 @@ export function createAgentDeviceRoutes(deps: AgentDeviceRouteDependencies = def
+       expiresInSec,
+     })
+ 
+-    return c.json({ token, expiresAt: expiresAt.toISOString() }, 201)
++    // Where the joining machine dials: this deployment's public URL.
++    return c.json({ token, expiresAt: expiresAt.toISOString(), apiUrl: deps.backendUrl() ?? null }, 201)
+   })
+ 
+   // Revokes the credential a join token gave this device and drops its tunnel.
+diff --git a/apps/desktop/electron/atlas/boxes.ts b/apps/desktop/electron/atlas/boxes.ts
+index c73b3e9..0322870 100644
+--- a/apps/desktop/electron/atlas/boxes.ts
++++ b/apps/desktop/electron/atlas/boxes.ts
+@@ -8,8 +8,8 @@ const box = (deviceId: string) => `/agent/devices/${encodeURIComponent(deviceId)
+ export function listAgentDevices(): Promise<AgentDeviceList> {
+   return call('GET', '/agent/devices')
+ }
+-export function createBox(label?: string): Promise<AgentDevice> {
+-  return call('POST', '/agent/devices/boxes', label ? { label } : {}, { retry: false })
++export function createBox(label?: string, teamId?: string): Promise<AgentDevice> {
++  return call('POST', '/agent/devices/boxes', { ...(label ? { label } : {}), ...(teamId ? { teamId } : {}) }, { retry: false })
+ }
+ export function pauseBox(deviceId: string): Promise<{ box: BoxStatus }> {
+   return call('POST', `${box(deviceId)}/pause`, undefined, { retry: false })
+@@ -17,6 +17,15 @@ export function pauseBox(deviceId: string): Promise<{ box: BoxStatus }> {
+ export function resumeBox(deviceId: string): Promise<{ box: BoxStatus }> {
+   return call('POST', `${box(deviceId)}/resume`, undefined, { retry: false })
+ }
++export function renameBox(deviceId: string, label: string): Promise<{ ok: true }> {
++  return call('PATCH', `/agent/devices/${encodeURIComponent(deviceId)}`, { label }, { retry: false })
++}
++export function boxDesktop(deviceId: string): Promise<{ url: string }> {
++  return call('POST', `${box(deviceId)}/desktop`, undefined, { retry: false })
++}
++export function boxJoinToken(): Promise<{ token: string; expiresAt: string; apiUrl: string | null }> {
++  return call('POST', '/agent/devices/join-tokens', { expiresInSec: 3600 }, { retry: false })
++}
+ export function deleteBox(deviceId: string): Promise<{ ok: true }> {
+   return call('DELETE', box(deviceId), undefined, { retry: false })
+ }
+diff --git a/apps/desktop/electron/main/channels-box.ts b/apps/desktop/electron/main/channels-box.ts
+index a4fe11a..40d65ae 100644
+--- a/apps/desktop/electron/main/channels-box.ts
++++ b/apps/desktop/electron/main/channels-box.ts
+@@ -1,9 +1,12 @@
+-import { createBox, deleteBox, listAgentDevices, pauseBox, resumeBox } from '../atlas/boxes.ts'
++import { boxDesktop, boxJoinToken, createBox, deleteBox, renameBox, listAgentDevices, pauseBox, resumeBox } from '../atlas/boxes.ts'
+ 
+ export const boxChannels = {
+   'box:listDevices': () => listAgentDevices(),
+-  'box:create': (_e: unknown, label?: string) => createBox(label),
++  'box:create': (_e: unknown, label?: string, teamId?: string) => createBox(label, teamId),
+   'box:pause': (_e: unknown, deviceId: string) => pauseBox(deviceId),
+   'box:resume': (_e: unknown, deviceId: string) => resumeBox(deviceId),
+   'box:delete': (_e: unknown, deviceId: string) => deleteBox(deviceId),
++  'box:desktop': (_e: unknown, deviceId: string) => boxDesktop(deviceId),
++  'box:join-token': () => boxJoinToken(),
++  'box:rename': (_e: unknown, deviceId: string, label: string) => renameBox(deviceId, label),
+ }
+diff --git a/apps/desktop/electron/main/device-controller.ts b/apps/desktop/electron/main/device-controller.ts
+index a994325..905c396 100644
+--- a/apps/desktop/electron/main/device-controller.ts
++++ b/apps/desktop/electron/main/device-controller.ts
+@@ -1,3 +1,5 @@
++import { execFileSync } from 'node:child_process'
++
+ import { callJson } from '../agent/http.ts'
+ import { logLocalTool, normalizeToolError } from '../agent/local-exec.ts'
+ 
+@@ -5,6 +7,24 @@ import { readDeviceIdentity, setDeviceLabel } from './device-identity.ts'
+ 
+ import type { DeviceIdentity } from './device-identity-core.ts'
+ 
++let model: string | undefined | null = null
++
++/** "MacBook Pro", "Mac mini"…: what the Boxes list draws this computer as. Read once. */
++function machineModel(): string | undefined {
++  if (model !== null) return model
++  model = undefined
++  if (process.platform === 'darwin') {
++    try {
++      const out = execFileSync('/usr/sbin/system_profiler', ['SPHardwareDataType'], { encoding: 'utf8', timeout: 5_000 })
++      model = /Model Name:\s*(.+)/u.exec(out)?.[1]?.trim() || undefined
++    } catch {
++      model = undefined
++    }
++  }
++
++  return model
++}
++
+ // Local exec is available on every signed-in device while Desktop is open.
+ async function syncRegistration(identity: DeviceIdentity): Promise<void> {
+   try {
+@@ -15,6 +35,7 @@ async function syncRegistration(identity: DeviceIdentity): Promise<void> {
+         deviceId: identity.deviceId,
+         label: identity.label,
+         platform: process.platform,
++        ...(machineModel() ? { model: machineModel() } : {}),
+         // Older backends still require this capability flag in registration.
+         allowLocalExec: true,
+       },
+diff --git a/apps/desktop/electron/main/local-runtime/agent-home.ts b/apps/desktop/electron/main/local-runtime/agent-home.ts
+index 480fed6..11a4d54 100644
+--- a/apps/desktop/electron/main/local-runtime/agent-home.ts
++++ b/apps/desktop/electron/main/local-runtime/agent-home.ts
+@@ -72,7 +72,8 @@ export function prepareCodexHome(
+ 
+   try {
+     mkdirSync(home, { recursive: true, mode: 0o700 })
+-    if (!linkFrom(ownerHome, home, 'auth.json')) return undefined
++    // Without the owner's login Codex still runs, signed out, so it can be signed in from Nuphos.
++    linkFrom(ownerHome, home, 'auth.json')
+     // Codex skips an enabled plugin that is not installed, so users without the App are unaffected.
+     if (
+       linkFrom(ownerHome, home, CUA_PLUGIN_CACHE) &&
+@@ -109,7 +110,7 @@ export function prepareCodexHome(
+         },
+       )
+ 
+-    return existsSync(path.join(ownerHome, 'auth.json')) ? home : undefined
++    return home
+   } catch {
+     return undefined
+   }
+diff --git a/apps/desktop/electron/main/local-runtime/cli-host.ts b/apps/desktop/electron/main/local-runtime/cli-host.ts
+index 433e63b..ae5117d 100644
+--- a/apps/desktop/electron/main/local-runtime/cli-host.ts
++++ b/apps/desktop/electron/main/local-runtime/cli-host.ts
+@@ -288,3 +288,10 @@ console.log(
+ )
+ await controller.setUser(owner)
+ await signInClaude(owner)
++// A sign-in from Nuphos's dialog lands in the agent's own home; notice it without a restart.
++setInterval(() => {
++  const { agents } = controller.state()
++
++  if (!stopping && Object.values(agents).some((agent) => agent.cli?.installed && !agent.cli.loggedIn))
++    void controller.refresh(false)
++}, 2_000)
+diff --git a/apps/desktop/electron/main/local-runtime/config.ts b/apps/desktop/electron/main/local-runtime/config.ts
+index 3660a5f..39cd582 100644
+--- a/apps/desktop/electron/main/local-runtime/config.ts
++++ b/apps/desktop/electron/main/local-runtime/config.ts
+@@ -141,8 +141,21 @@ export function openabConfigToml(launch: LocalRuntimeLaunch): string {
+ export function agentLoginEnv(launch: AgentCliLaunch): Record<string, string> {
+   if (/\s/u.test(launch.cliPath)) return {}
+ 
++  // Next to a headless host (a Box) ship the cloud runtime's login wrappers: they turn the
++  // CLI's sign-in into the NDJSON steps openab relays to the Sign in dialog.
++  const wrapper = path.join(path.dirname(process.argv[1] ?? ''), `${launch.provider === 'codex' ? 'codex' : 'claude'}-login.mjs`)
++  const cliEnv = agentCliEnv(launch)
++  if (existsSync(wrapper) && !/\s/u.test(process.execPath + wrapper))
++    return {
++      ...cliEnv,
++      ...(launch.provider === 'codex' && cliEnv.CODEX_HOME ? { NUPHOS_CODEX_AUTH_DIRECTORY: cliEnv.CODEX_HOME } : {}),
++      CLAUDE_CODE_EXECUTABLE: launch.cliPath,
++      CODEX_EXECUTABLE: launch.cliPath,
++      OPENAB_RUNTIME_LOGIN_COMMAND: [process.execPath, wrapper, ...(launch.provider === 'codex' ? ['--install'] : [])].join(' '),
++    }
++
+   return {
+-    ...agentCliEnv(launch),
++    ...cliEnv,
+     OPENAB_RUNTIME_LOGIN_COMMAND: [launch.cliPath, ...agentSignInArgs(launch.provider)].join(' '),
+   }
+ }
+diff --git a/apps/desktop/electron/preload-parts/api-device.ts b/apps/desktop/electron/preload-parts/api-device.ts
+index a87b0e6..aa07983 100644
+--- a/apps/desktop/electron/preload-parts/api-device.ts
++++ b/apps/desktop/electron/preload-parts/api-device.ts
+@@ -33,8 +33,11 @@ export const deviceApi = {
+   localRuntimeListActivity: (before?: string) =>
+     ipcRenderer.invoke('localRuntime:listActivity', before),
+   boxListDevices: () => ipcRenderer.invoke('box:listDevices'),
+-  boxCreate: (label?: string) => ipcRenderer.invoke('box:create', label),
++  boxCreate: (label?: string, teamId?: string) => ipcRenderer.invoke('box:create', label, teamId),
+   boxPause: (deviceId: string) => ipcRenderer.invoke('box:pause', deviceId),
+   boxResume: (deviceId: string) => ipcRenderer.invoke('box:resume', deviceId),
+   boxDelete: (deviceId: string) => ipcRenderer.invoke('box:delete', deviceId),
++  boxDesktop: (deviceId: string) => ipcRenderer.invoke('box:desktop', deviceId),
++  boxJoinToken: () => ipcRenderer.invoke('box:join-token'),
++  boxRename: (deviceId: string, label: string) => ipcRenderer.invoke('box:rename', deviceId, label),
+ }
+diff --git a/apps/desktop/src/api/device-api.ts b/apps/desktop/src/api/device-api.ts
+index ab319a4..43a8c45 100644
+--- a/apps/desktop/src/api/device-api.ts
++++ b/apps/desktop/src/api/device-api.ts
+@@ -20,8 +20,11 @@ export const deviceApi = {
+   localRuntimeOpenWorkspace: () => window.api.localRuntimeOpenWorkspace(),
+   localRuntimeListActivity: (before?: string) => window.api.localRuntimeListActivity(before),
+   boxListDevices: () => window.api.boxListDevices(),
+-  boxCreate: (label?: string) => window.api.boxCreate(label),
++  boxCreate: (label?: string, teamId?: string) => window.api.boxCreate(label, teamId),
+   boxPause: (deviceId: string) => window.api.boxPause(deviceId),
+   boxResume: (deviceId: string) => window.api.boxResume(deviceId),
+   boxDelete: (deviceId: string) => window.api.boxDelete(deviceId),
++  boxDesktop: (deviceId: string) => window.api.boxDesktop(deviceId),
++  boxJoinToken: () => window.api.boxJoinToken(),
++  boxRename: (deviceId: string, label: string) => window.api.boxRename(deviceId, label),
+ }
+diff --git a/apps/desktop/src/api/device-types.ts b/apps/desktop/src/api/device-types.ts
+index eb69336..b6a8c03 100644
+--- a/apps/desktop/src/api/device-types.ts
++++ b/apps/desktop/src/api/device-types.ts
+@@ -109,6 +109,8 @@ export type BoxStatus = {
+   provider: 'instabox'
+   sandboxId: string
+   state: BoxState
++  /** The host has joined at least once; until then the Box is still starting. */
++  joined?: boolean
+   updatedAt?: string
+ }
+ 
+@@ -117,6 +119,8 @@ export type AgentDevice = {
+   deviceId: string
+   label: string
+   platform: string
++  model?: string
++  createdAt?: string
+   allowLocalExec?: boolean
+   online?: boolean
+   box?: BoxStatus
+diff --git a/apps/desktop/src/api/window-device.ts b/apps/desktop/src/api/window-device.ts
+index 7fa88f4..6c66e50 100644
+--- a/apps/desktop/src/api/window-device.ts
++++ b/apps/desktop/src/api/window-device.ts
+@@ -30,8 +30,11 @@ export type WindowDeviceApi = {
+   localRuntimeOpenWorkspace(): Promise<void>
+   localRuntimeListActivity(before?: string): Promise<LocalRuntimeActivityPage>
+   boxListDevices(): Promise<AgentDeviceList>
+-  boxCreate(label?: string): Promise<AgentDevice>
++  boxCreate(label?: string, teamId?: string): Promise<AgentDevice>
+   boxPause(deviceId: string): Promise<{ box: BoxStatus }>
+   boxResume(deviceId: string): Promise<{ box: BoxStatus }>
+   boxDelete(deviceId: string): Promise<{ ok: true }>
++  boxRename(deviceId: string, label: string): Promise<{ ok: true }>
++  boxDesktop(deviceId: string): Promise<{ url: string }>
++  boxJoinToken(): Promise<{ token: string; expiresAt: string; apiUrl: string | null }>
+ }
+diff --git a/apps/desktop/src/app/workspace/useWorkspaceLinkOpeners.tsx b/apps/desktop/src/app/workspace/useWorkspaceLinkOpeners.tsx
+index 4907435..5e6f188 100644
+--- a/apps/desktop/src/app/workspace/useWorkspaceLinkOpeners.tsx
++++ b/apps/desktop/src/app/workspace/useWorkspaceLinkOpeners.tsx
+@@ -1,4 +1,4 @@
+-import { useCallback } from 'react'
++import { useCallback, useEffect } from 'react'
+ 
+ import { hydrateNavigationCredentialState } from '../../app/accountScopes'
+ import { navigationFromMentionTarget } from '../../app/mentionNavigation'
+@@ -163,7 +163,17 @@ export function useWorkspaceLinkOpeners(a: Args) {
+       workspaceActions,
+       workspaceStore,
+     ],
+-  )
++  )  // Views outside the workspace (Settings) ask for an in-app tab with this event.
++  useEffect(() => {
++    const open = (event: Event) => {
++      const href = (event as CustomEvent<string>).detail
++      if (typeof href === 'string') openNuphosLinkInNewTab(href)
++    }
++    window.addEventListener('nuphos:open-in-app', open)
++
++    return () => window.removeEventListener('nuphos:open-in-app', open)
++  }, [openNuphosLinkInNewTab])
++
+ 
+   const openAppOpenDeepLink = useCallback(
+     (payload: AppOpenDeepLinkPayload) => {
+diff --git a/apps/desktop/src/components/agent/panel/RuntimeSelector.tsx b/apps/desktop/src/components/agent/panel/RuntimeSelector.tsx
+index 4c6b561..90db981 100644
+--- a/apps/desktop/src/components/agent/panel/RuntimeSelector.tsx
++++ b/apps/desktop/src/components/agent/panel/RuntimeSelector.tsx
+@@ -221,7 +221,7 @@ export function RuntimeSelector({
+             {groupAgentsByTier(options, owner).map((group, index) => (
+               <MenuGroup key={group.tier}>
+                 {index > 0 && <MenuSeparator />}
+-                <MenuGroupLabel>{group.title}</MenuGroupLabel>
++                {group.title && <MenuGroupLabel>{group.title}</MenuGroupLabel>}
+                 {group.agents.map((instance) => {
+                   const update = updates.get(instance.id)
+                   const needsLocalLogin =
+diff --git a/apps/desktop/src/components/agent/panel/useNewConversationRuntime.ts b/apps/desktop/src/components/agent/panel/useNewConversationRuntime.ts
+index 46d360e..797cdd0 100644
+--- a/apps/desktop/src/components/agent/panel/useNewConversationRuntime.ts
++++ b/apps/desktop/src/components/agent/panel/useNewConversationRuntime.ts
+@@ -33,9 +33,14 @@ export function useNewConversationRuntime(teamId?: string) {
+   const selectedId = choices[key] ?? saved
+   // An unavailable saved choice requires a new selection; do not silently
+   // send a draft to another account just because its runtime disappeared.
+-  const selected = selectedId
+-    ? instances.find((instance) => instance.id === selectedId)
+-    : defaultAgent(instances, owner)
++  const best = defaultAgent(instances, owner, (instance) => {
++    const windows = runtimeQuotas.get(instance.id)?.windows ?? []
++    return windows.length ? Math.max(...windows.map((window) => window.usedPercent)) : undefined
++  })
++  // A choice made for this draft stands while it is usable; otherwise the best agent, never none.
++  const chosen = selectedId ? instances.find((instance) => instance.id === selectedId) : undefined
++  const selected =
++    chosen && chosen.status === 'active' && chosen.local?.signedIn !== false ? chosen : best
+ 
+   function selectConversationRuntime(runtimeId: string) {
+     setChoices((previous) => ({ ...previous, [key]: runtimeId }))
+diff --git a/apps/desktop/src/lib/agentName.ts b/apps/desktop/src/lib/agentName.ts
+index c45fd43..94a574c 100644
+--- a/apps/desktop/src/lib/agentName.ts
++++ b/apps/desktop/src/lib/agentName.ts
+@@ -35,9 +35,9 @@ export function agentName(agent: NamedAgent, owner: ThisComputer): string {
+   const tier = agentTier(agent, owner)
+ 
+   if (tier === 'cloud') return agent.label
+-  if (tier === 'local') return 'Local'
++  if (tier === 'local') return agent.label
+ 
+-  return agent.local?.deviceLabel ?? agent.label.replace(PROVIDER_SUFFIX, '')
++  return agent.label
+ }
+ 
+ const TIER_TITLE: Record<AgentTier, string> = {
+@@ -53,11 +53,10 @@ export function groupAgentsByTier<T extends NamedAgent>(
+   agents: readonly T[],
+   owner: ThisComputer,
+ ): AgentTierGroup<T>[] {
+-  return (['local', 'remote', 'cloud'] as const).flatMap((tier) => {
+-    const members = agents.filter((agent) => agentTier(agent, owner) === tier)
++  // Every machine is a Box now: one list, no This Computer / Remote / Cloud split.
++  void owner
+ 
+-    return members.length ? [{ tier, title: TIER_TITLE[tier], agents: members }] : []
+-  })
++  return agents.length ? [{ tier: 'local' as const, title: '', agents: [...agents] }] : []
+ }
+ 
+ type SelectableAgent = NamedAgent & { status: 'active' | 'disabled' }
+@@ -66,13 +65,24 @@ function usable(agent: SelectableAgent): boolean {
+   return agent.status === 'active' && agent.local?.signedIn !== false
+ }
+ 
+-/** With no saved choice, a new conversation starts on this computer when it can. */
+-export function defaultAgent<T extends SelectableAgent>(
++/** A new conversation starts on the usable agent with the most quota left; unknown counts as full. */
++export function defaultAgent<T extends SelectableAgent & { id: string }>(
+   agents: readonly T[],
+   owner: ThisComputer,
++  usedPercent: (agent: T) => number | undefined = () => undefined,
+ ): T | undefined {
+-  return (
+-    agents.find((agent) => agentTier(agent, owner) === 'local' && usable(agent)) ??
+-    agents.find((agent) => agentTier(agent, owner) === 'cloud' && usable(agent))
+-  )
++  void owner
++  let best: T | undefined
++  let bestUsed = Infinity
++
++  for (const agent of agents) {
++    if (!usable(agent)) continue
++    const used = usedPercent(agent) ?? 0
++    if (used < bestUsed) {
++      best = agent
++      bestUsed = used
++    }
++  }
++
++  return best
+ }
+diff --git a/apps/desktop/src/views/settings/AgentSection.tsx b/apps/desktop/src/views/settings/AgentSection.tsx
+index b126f87..e4888dd 100644
+--- a/apps/desktop/src/views/settings/AgentSection.tsx
++++ b/apps/desktop/src/views/settings/AgentSection.tsx
+@@ -73,7 +73,6 @@ export function AgentSection({
+   const { isActive } = useWorkspaceTab()
+   const panelShown = isActive && aside !== null && selected !== undefined
+ 
+-  useToolbarPrimaryAction(isActive && isAdmin ? 'Add agent' : null, () => setAdding(true))
+   useEffect(() => {
+     onCount(instances.length)
+   }, [instances.length, onCount])
+@@ -110,22 +109,6 @@ export function AgentSection({
+         </div>
+       )}
+       <BoxSection teamId={teamId} instances={catalog.instances} />
+-      {catalog.loading && instances.length === 0 && (
+-        <div className="min-h-0 flex-1 overflow-hidden p-5 lg:p-8">
+-          <div className="mx-auto w-full max-w-5xl">
+-            <AgentUsageSkeleton />
+-          </div>
+-        </div>
+-      )}
+-      {!catalog.loading && !catalog.error && instances.length === 0 && (
+-        <p className="m-6 rounded-xl border border-dashed border-zGray-800 p-8 text-center text-sm text-tertiary">
+-          {filter.trim()
+-            ? 'No matching agents.'
+-            : isAdmin
+-              ? 'Add your first agent to start a conversation.'
+-              : 'Ask a workspace administrator to add an agent.'}
+-        </p>
+-      )}
+       {instances.length > 0 && (
+         <div className="min-h-0 flex-1 overflow-y-auto p-5 lg:p-8">
+           <div className="t-agents-reveal mx-auto w-full max-w-5xl">
+diff --git a/apps/desktop/src/views/settings/BoxSection.tsx b/apps/desktop/src/views/settings/BoxSection.tsx
+index 8869baf..209ca34 100644
+--- a/apps/desktop/src/views/settings/BoxSection.tsx
++++ b/apps/desktop/src/views/settings/BoxSection.tsx
+@@ -1,20 +1,24 @@
+ import clsx from 'clsx'
+-import { Box, Loader2 } from 'lucide-react'
+-import { useCallback, useEffect, useState } from 'react'
++import { Box, Ellipsis, Laptop, Loader2, Monitor } from 'lucide-react'
++import { useCallback, useEffect, useRef, useState } from 'react'
+ 
+ import { api } from '../../api'
++import { emptyNavigation, pageLocationForNavigation } from '../../lib/appRoutes'
+ import { ConfirmDialog } from '../../components/ConfirmDialog'
++import { Modal } from '../../components/Modal'
+ import { Button } from '../../components/ui/button'
++import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu'
++import { useThisComputer } from '../../hooks/useThisComputer'
+ import { toast } from '../../components/ui/toast'
+ import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
+ import { AGENT_PROVIDER } from '../../types/runtime'
+ 
+-import { BOX_BADGE, boxActions, boxAgents, boxPollMs, boxes } from './boxPresentation'
++import { BOX_BADGE, boxActions, boxAgents, boxPollMs, boxes, boxState } from './boxPresentation'
+ import { RuntimeLoginDialog } from './RuntimeLoginDialog'
+ import { STATUS_DOT } from './runtimePresentation'
+ import { inputClasses } from './styles'
+ 
+-import type { AgentDeviceList } from '../../api'
++import type { AgentDevice, AgentDeviceList, BoxState } from '../../api'
+ import type { RuntimeInstance } from '../../types/runtime'
+ 
+ type BoxDevice = ReturnType<typeof boxes>[number]
+@@ -27,12 +31,16 @@ export function BoxSection({
+   teamId: string
+   instances: RuntimeInstance[]
+ }) {
++  const thisComputer = useThisComputer()
+   const [list, setList] = useState<AgentDeviceList | null>(null)
+-  const [label, setLabel] = useState('')
+   const [creating, setCreating] = useState(false)
++  const [join, setJoin] = useState<{ token: string; expiresAt: string; apiUrl: string | null } | null>(null)
+   const [revision, setRevision] = useState(0)
+ 
+   const reload = useCallback(() => setRevision((value) => value + 1), [])
++  const instancesRef = useRef(instances)
++
++  instancesRef.current = instances
+ 
+   useEffect(() => {
+     let cancelled = false
+@@ -42,7 +50,13 @@ export function BoxSection({
+         (next) => {
+           if (cancelled) return
+           setList(next)
+-          timer = setTimeout(poll, boxPollMs(next.devices))
++          // The agents under each Box come from the runtime catalog: refresh it with the
++          // list, quickly while a Box is starting or one of its agents is not signed in yet.
++          window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
++          const watching = instancesRef.current.some(
++            (instance) => instance.kind === 'local' && instance.local?.signedIn !== true,
++          )
++          timer = setTimeout(poll, watching ? 1_500 : boxPollMs(next.devices))
+         },
+         () => {
+           if (!cancelled) timer = setTimeout(poll, boxPollMs([]))
+@@ -62,8 +76,7 @@ export function BoxSection({
+   const create = async () => {
+     setCreating(true)
+     try {
+-      await api.boxCreate(label.trim() || undefined)
+-      setLabel('')
++      await api.boxCreate(undefined, teamId)
+       reload()
+     } catch (error) {
+       toast.apiError('Could not create Box', error)
+@@ -79,8 +92,7 @@ export function BoxSection({
+         <div className="min-w-0">
+           <h2 className="text-[14px] font-semibold text-main">Boxes</h2>
+           <p className="mt-0.5 text-[12px] text-tertiary">
+-            Linux computers Nuphos runs for you, with their own agents and local exec. Only you can
+-            use them.
++            Every computer your agents run on: cloud Boxes and your own Macs.
+           </p>
+         </div>
+         <form
+@@ -90,15 +102,16 @@ export function BoxSection({
+             void create()
+           }}
+         >
+-          <input
+-            type="text"
+-            maxLength={200}
+-            value={label}
+-            placeholder="Name (optional)"
+-            aria-label="Box name"
+-            onChange={(event) => setLabel(event.target.value)}
+-            className={clsx(inputClasses, 'h-8 w-44')}
+-          />
++          <Button
++            type="button"
++            size="sm"
++            variant="secondary"
++            onClick={() =>
++              void api.boxJoinToken().then(setJoin, (error: unknown) => toast.apiError('Could not make a join command', error))
++            }
++          >
++            Connect external Box
++          </Button>
+           <Button type="submit" size="sm" disabled={creating}>
+             {creating ? (
+               <Loader2 className="h-3.5 w-3.5 animate-spin" />
+@@ -109,10 +122,12 @@ export function BoxSection({
+           </Button>
+         </form>
+       </div>
++      {join && <JoinDialog join={join} onClose={() => setJoin(null)} />}
+       {owned.length > 0 && (
+         <ul className="mt-3 divide-y divide-zGray-800/60 rounded-xl border border-zGray-800/70">
+           {owned.map((device) => (
+             <BoxRow
++              thisComputer={thisComputer?.deviceId === device.deviceId}
+               key={device.deviceId}
+               teamId={teamId}
+               device={device}
+@@ -126,19 +141,53 @@ export function BoxSection({
+   )
+ }
+ 
+-function boxDetail(state: BoxDevice['box']['state'], agents: RuntimeInstance[], platform: string) {
++const OS_LABEL: Record<string, string> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }
++
++/** What kind of machine this is, drawn the way people recognise it. */
++function MachineIcon({ device }: { device: AgentDevice }) {
++  const model = device.model ?? ''
++  if (device.box)
++    return (
++      // instabox's mark: a Box is an instabox machine.
++      <svg viewBox="0 0 32 32" className="h-5 w-5" aria-label="instabox">
++        <rect width="32" height="32" rx="7" fill="#000" />
++        <path transform="translate(4.39 2.92) scale(0.82)" fill="#fff" d="M15.38 0L1.96 8.88C1.49 9.19 0.87 9.03 0.59 8.54C0.3 8.05 0.49 7.43 1 7.2L15.38 0ZM28.56 22.3L15.58 31.43C14.91 31.9 13.96 31.72 13.54 30.97C13.13 30.25 13.41 29.32 14.16 28.98L28.56 22.3ZM28.56 18.55L15.58 27.69C14.91 28.15 13.96 27.97 13.54 27.23C13.13 26.5 13.41 25.57 14.16 25.24L28.56 18.55ZM28.56 14.81L15.58 23.95C14.91 24.41 13.96 24.23 13.54 23.48C13.13 22.76 13.41 21.83 14.16 21.5L28.56 14.81ZM28.56 11.1L15.58 20.23C14.91 20.7 13.96 20.52 13.54 19.77C13.13 19.05 13.41 18.12 14.16 17.78L28.56 11.1ZM28.3 7.48L15.56 16.46C14.89 16.95 13.93 16.75 13.52 16.03C13.11 15.3 13.39 14.37 14.16 14.04L28.33 7.48H28.3ZM25.08 5.63L11.66 14.48C11.2 14.79 10.58 14.63 10.29 14.14C10.01 13.65 10.19 13.03 10.71 12.8L25.08 5.63ZM21.83 3.74L8.41 12.59C7.94 12.9 7.32 12.75 7.04 12.26C6.76 11.77 6.94 11.15 7.45 10.92L21.83 3.74ZM18.6 1.88L5.18 10.74C4.72 11.05 4.1 10.89 3.81 10.4C3.53 9.91 3.71 9.29 4.23 9.06L18.6 1.88ZM13.52 27.23L10.19 29.68C9.96 29.83 9.65 29.78 9.52 29.52C9.39 29.29 9.49 28.98 9.72 28.88L13.49 27.23H13.52ZM13.52 23.51L6.99 27.85C6.76 28 6.45 27.92 6.29 27.69C6.16 27.46 6.24 27.15 6.5 27.02C6.5 27.02 13.52 23.51 13.52 23.54V23.51ZM13.52 19.77L3.74 25.99C3.51 26.14 3.2 26.06 3.04 25.81C2.89 25.57 2.99 25.24 3.25 25.11C3.25 25.11 13.52 19.74 13.52 19.77ZM13.52 16.03L0.77 23.97C0.54 24.13 0.2 24.05 0.07 23.79C-0.08 23.56 0.02 23.23 0.28 23.1L13.54 16.03H13.52ZM10.29 14.14L0.77 20.23C0.54 20.39 0.23 20.31 0.07 20.05C-0.08 19.82 0.02 19.48 0.28 19.35L10.29 14.14ZM7.04 12.28L0.74 16.49C0.51 16.65 0.2 16.57 0.05 16.34H0.07C-0.06 16.1 0.02 15.79 0.28 15.66L7.07 12.31L7.04 12.28ZM3.81 10.43L0.74 12.72C0.54 12.88 0.2 12.83 0.07 12.59C-0.06 12.36 0.05 12.05 0.28 11.95L3.81 10.43Z" />
++      </svg>
++    )
++  if (/MacBook|Laptop/iu.test(model)) return <Laptop className="h-4 w-4 text-secondary" />
++  if (/Mac mini|Mac Studio/iu.test(model))
++    return (
++      <svg viewBox="0 0 24 24" className="h-4 w-4 text-secondary" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden>
++        <rect x="3" y="8" width="18" height="8" rx="2.5" />
++        <circle cx="7" cy="12" r="0.9" fill="currentColor" stroke="none" />
++      </svg>
++    )
++
++  return <Monitor className="h-4 w-4 text-secondary" />
++}
++
++function machineLine(device: AgentDevice): string {
++  const os = OS_LABEL[device.platform] ?? device.platform
++  if (device.box) return `${os} · instabox`
++
++  return device.model ? `${os} · ${device.model}` : os
++}
++
++function boxDetail(state: BoxState, agents: RuntimeInstance[], platform: string) {
+   if (state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
+-  if (agents.length === 0) return platform
++  if (agents.length === 0) return state === 'running' ? 'Connecting agents…' : platform
+ 
+-  return agents.map((agent) => AGENT_PROVIDER[agent.provider].label).join(' · ')
++  return `${String(agents.length)} agent${agents.length === 1 ? '' : 's'}`
+ }
+ 
+ function BoxRow({
++  thisComputer,
+   teamId,
+   device,
+   agents,
+   onChanged,
+ }: {
++  thisComputer: boolean
+   teamId: string
+   device: BoxDevice
+   agents: RuntimeInstance[]
+@@ -146,10 +195,12 @@ function BoxRow({
+ }) {
+   const [busy, setBusy] = useState(false)
+   const [confirmDelete, setConfirmDelete] = useState(false)
++  const [renaming, setRenaming] = useState<string | null>(null)
+   const [signingIn, setSigningIn] = useState<RuntimeInstance | null>(null)
+-  const { state } = device.box
++  const state = boxState(device)
++  const cloud = device.box !== undefined
+   const badge = BOX_BADGE[state]
+-  const actions = boxActions(state)
++  const actions = cloud ? boxActions(state) : { pause: false, resume: false, remove: false }
+   const run = async (title: string, action: () => Promise<unknown>) => {
+     setBusy(true)
+     try {
+@@ -167,14 +218,41 @@ function BoxRow({
+     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
+       <div className="flex min-w-0 flex-1 basis-52 items-center gap-3">
+         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zGray-800/70 bg-main">
+-          <Box className="h-4 w-4 text-secondary" />
++          <MachineIcon device={device} />
+         </div>
+         <div className="min-w-0">
+-          <div className="truncate text-[13px] font-medium text-main" title={device.label}>
+-            {device.label}
+-          </div>
++          {renaming === null ? (
++            <div className="flex min-w-0 items-center gap-1.5">
++              <span className="truncate text-[13px] font-medium text-main" title={device.label}>
++                {device.label}
++              </span>
++              {thisComputer && (
++                <span className="shrink-0 rounded border border-zGray-700 px-1 text-[10.5px] text-secondary">
++                  This Computer
++                </span>
++              )}
++            </div>
++          ) : (
++            <input
++              autoFocus
++              aria-label="Box name"
++              value={renaming}
++              maxLength={200}
++              className={clsx(inputClasses, 'h-7 text-[13px]')}
++              onChange={(event) => setRenaming(event.target.value)}
++              onBlur={() => setRenaming(null)}
++              onKeyDown={(event) => {
++                if (event.key === 'Escape') setRenaming(null)
++                if (event.key !== 'Enter') return
++                const label = renaming.trim()
++                setRenaming(null)
++                if (label && label !== device.label)
++                  void run('Could not rename Box', () => api.boxRename(device.deviceId, label))
++              }}
++            />
++          )}
+           <div className="truncate text-[12px] text-tertiary">
+-            {boxDetail(state, agents, device.platform)}
++            {machineLine(device)} · {boxDetail(state, agents, device.platform)}
+           </div>
+         </div>
+       </div>
+@@ -190,24 +268,6 @@ function BoxRow({
+         {badge.label}
+       </span>
+       <div className="flex shrink-0 items-center gap-1.5">
+-        {state === 'running' &&
+-          agents
+-            .filter((agent) => agent.local?.signedIn !== true)
+-            .map((agent) => (
+-              <Button key={agent.id} size="sm" onClick={() => setSigningIn(agent)}>
+-                Sign in {AGENT_PROVIDER[agent.provider].label}
+-              </Button>
+-            ))}
+-        {actions.pause && (
+-          <Button
+-            size="sm"
+-            variant="secondary"
+-            disabled={busy}
+-            onClick={() => void run('Could not pause Box', () => api.boxPause(device.deviceId))}
+-          >
+-            Pause
+-          </Button>
+-        )}
+         {actions.resume && (
+           <Button
+             size="sm"
+@@ -215,13 +275,68 @@ function BoxRow({
+             disabled={busy}
+             onClick={() => void run('Could not resume Box', () => api.boxResume(device.deviceId))}
+           >
+-            Resume
++            {state === 'error' ? 'Retry' : 'Resume'}
+           </Button>
+         )}
+-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmDelete(true)}>
+-          Delete
+-        </Button>
++        <Menu>
++          <MenuTrigger
++            aria-label={`Manage ${device.label}`}
++            disabled={busy}
++            className="flex h-7 w-7 items-center justify-center rounded-md text-tertiary hover:bg-zGray-800/60 hover:text-main"
++          >
++            <Ellipsis className="h-4 w-4" />
++          </MenuTrigger>
++          <MenuContent align="end">
++            {cloud && state === 'running' && (
++              <MenuItem
++                onClick={() =>
++                  void run('Could not open the desktop', async () => {
++                    const { url } = await api.boxDesktop(device.deviceId)
++                    const href = pageLocationForNavigation(
++                      emptyNavigation({ kind: 'team', teamId }, 'team.browser', { browserUrl: url }),
++                    ).href
++                    window.dispatchEvent(new CustomEvent('nuphos:open-in-app', { detail: href }))
++                  })
++                }
++              >
++                Open desktop
++              </MenuItem>
++            )}
++            <MenuItem onClick={() => setRenaming(device.label)}>Rename</MenuItem>
++            {actions.pause && (
++              <MenuItem onClick={() => void run('Could not pause Box', () => api.boxPause(device.deviceId))}>
++                Pause
++              </MenuItem>
++            )}
++            {actions.remove && (
++              <>
++                <MenuSeparator />
++                <MenuItem destructive onClick={() => setConfirmDelete(true)}>
++                  Delete
++                </MenuItem>
++              </>
++            )}
++          </MenuContent>
++        </Menu>
+       </div>
++      {state === 'running' && agents.length > 0 && (
++        <ul className="basis-full space-y-1 pl-12">
++          {agents.map((agent) => (
++            <li key={agent.id} className="flex items-center gap-3 text-[12.5px]">
++              <span className="min-w-0 flex-1 truncate text-main">
++                {AGENT_PROVIDER[agent.provider].label}
++              </span>
++              {agent.local?.signedIn === true ? (
++                <span className="text-[11.5px] text-tertiary">Signed in</span>
++              ) : (
++                <Button size="sm" variant="secondary" onClick={() => setSigningIn(agent)}>
++                  Sign in
++                </Button>
++              )}
++            </li>
++          ))}
++        </ul>
++      )}
+       <ConfirmDialog
+         open={confirmDelete}
+         title={`Delete ${device.label}?`}
+@@ -244,3 +359,32 @@ function BoxRow({
+     </li>
+   )
+ }
++
++/** The two commands that make any Linux or macOS machine a Box of this user. */
++function JoinDialog({
++  join,
++  onClose,
++}: {
++  join: { token: string; expiresAt: string; apiUrl: string | null }
++  onClose: () => void
++}) {
++  // Nuphos Cloud is the CLI's default; only another deployment (self-hosted, dev) names itself.
++  const env = [join.apiUrl && join.apiUrl !== 'https://api.nuphos.ai' ? `NUPHOS_API_URL=${join.apiUrl}` : '', `NUPHOS_JOIN_TOKEN=${join.token}`].filter(Boolean).join(' ')
++  const command = `curl -fsSL https://nuphos.ai/install | sh\n${env} nuphos agent`
++
++  return (
++    <Modal open onClose={onClose} title="Connect an external Box" description="Run this on the machine. The token works once and expires in an hour.">
++      <div className="space-y-3 p-5">
++        <pre className="whitespace-pre-wrap break-all rounded-lg border border-zGray-800 bg-main p-3 font-mono text-[12px] text-main">{command}</pre>
++        <div className="flex justify-end gap-2">
++          <Button size="sm" variant="secondary" onClick={() => void navigator.clipboard.writeText(command).then(() => toast.success('Copied'))}>
++            Copy
++          </Button>
++          <Button size="sm" onClick={onClose}>
++            Done
++          </Button>
++        </div>
++      </div>
++    </Modal>
++  )
++}
+diff --git a/apps/desktop/src/views/settings/boxPresentation.ts b/apps/desktop/src/views/settings/boxPresentation.ts
+index 5dadb02..4032e7e 100644
+--- a/apps/desktop/src/views/settings/boxPresentation.ts
++++ b/apps/desktop/src/views/settings/boxPresentation.ts
+@@ -7,27 +7,37 @@ export const BOX_POLL_MS = 10_000
+ export const BOX_CREATING_POLL_MS = 2_000
+ 
+ export const BOX_BADGE: Record<BoxState, RuntimeStatusView> = {
+-  creating: { label: 'Creating', tone: 'pending' },
++  creating: { label: 'Starting', tone: 'pending' },
+   running: { label: 'Running', tone: 'online' },
+   paused: { label: 'Paused', tone: 'off' },
+-  stopped: { label: 'Stopped', tone: 'off' },
+-  error: { label: 'Error', tone: 'error' },
++  stopped: { label: 'Offline', tone: 'off' },
++  error: { label: "Didn't start", tone: 'error' },
+ }
+ 
+-/** What can be done to a Box in each state; the backend answers 409 otherwise. */
+-export function boxActions(state: BoxState): { pause: boolean; resume: boolean } {
+-  return { pause: state === 'running', resume: state === 'paused' || state === 'stopped' }
++/** What can be done to a Box in each state; a starting Box needs nothing from you. */
++export function boxActions(state: BoxState): { pause: boolean; resume: boolean; remove: boolean } {
++  return {
++    pause: state === 'running',
++    resume: state === 'stopped' || state === 'error',
++    remove: state !== 'creating',
++  }
+ }
+ 
+-export function boxes(
+-  devices: AgentDevice[],
+-): (AgentDevice & Required<Pick<AgentDevice, 'box'>>)[] {
+-  return devices.filter((device) => device.box !== undefined) as (AgentDevice &
+-    Required<Pick<AgentDevice, 'box'>>)[]
++export function boxes(devices: AgentDevice[]): AgentDevice[] {
++  // A computer shows while its agents are connected; a cloud Box always shows, so it can be resumed.
++  return devices.filter((device) => device.box !== undefined || device.online === true)
++}
++
++/** Derived, never stored: a Box is running while its host is connected. */
++export function boxState(device: AgentDevice): BoxState {
++  // A cloud Box's state is instabox's machine state; a computer is running while connected.
++  if (device.box) return device.box.state
++
++  return device.online ? 'running' : 'stopped'
+ }
+ 
+ export function boxPollMs(devices: AgentDevice[]): number {
+-  return devices.some((device) => device.box?.state === 'creating')
++  return devices.some((device) => device.box !== undefined && (device.box.state === 'creating' || !device.online))
+     ? BOX_CREATING_POLL_MS
+     : BOX_POLL_MS
+ }
+diff --git a/scripts/dev-tunnel.ts b/scripts/dev-tunnel.ts
+index 7d5a5b3..8f254a4 100644
+--- a/scripts/dev-tunnel.ts
++++ b/scripts/dev-tunnel.ts
+@@ -181,13 +181,15 @@ async function ensureNamedTunnel(): Promise<boolean> {
+ }
+ 
+ async function startQuickTunnel(port: number): Promise<string | null> {
++  quickPort = port
+   tunnel.kind = 'quick'
+   tunnel.status = 'starting'
+   tunnel.note = 'starting…'
+   pushEvent(tunnel, 'starting quick tunnel (trycloudflare)…')
+   const child = spawn(
+     'cloudflared',
+-    ['tunnel', '--url', `http://localhost:${port}`, '--no-autoupdate', '--no-prechecks'],
++    // An empty --config: a named tunnel's ~/.cloudflared/config.yml would otherwise route this quick tunnel to its 404 catch-all.
++    ['tunnel', '--config', '/dev/null', '--url', `http://localhost:${port}`, '--no-autoupdate', '--no-prechecks'],
+     { detached: true, stdio: ['ignore', 'pipe', 'pipe'] },
+   )
+ 
+@@ -232,7 +234,13 @@ function applyQuickTunnelResult(url: string | null) {
+ // Bring up the tunnel for `port` and return the public URL to hand the backend
+ // as NUPHOS_BACKEND_URL. Returns null when unavailable (backend still starts,
+ // but sandbox callbacks fall back to PROD — surfaced loudly on the dashboard).
++let quickPort: number | null = null
++
+ export async function setupTunnel(port: number): Promise<string | null> {
++  // A backend restart on the same port keeps its quick tunnel: Boxes and runtimes
++  // that were handed this URL must still reach the backend afterwards.
++  if (tunnel.kind === 'quick' && quickPort === port && tunnel.url && tunnel.proc && tunnel.proc.exitCode === null)
++    return tunnel.url
+   stopTunnel() // drop any quick tunnel from a previous (port-conflict) attempt
+   if (!hasCloudflared()) {
+     tunnel.status = 'missing'
