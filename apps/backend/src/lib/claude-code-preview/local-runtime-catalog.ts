@@ -88,7 +88,7 @@ export async function listOwnLocalRuntimes(
           return {
             id,
             provider,
-            label: `${device.label} · ${PROVIDER_LABEL[provider]}`,
+            label: `${PROVIDER_LABEL[provider]} in ${device.label}`,
             status: 'active',
             kind: 'local',
             createdAt: device.createdAt.toISOString(),

@@ -9,6 +9,8 @@ export type BoxConfig = {
   instabox: { apiKey: string; apiUrl?: string } | null
   /** Where a Box downloads the CLI and its runtime bundle; unset means the GitHub release. */
   downloadUrl?: string
+  /** What a Box is made from: an instabox template name or a snapshot id; unset means the default template. */
+  template?: string
 }
 
 export function boxConfig(): BoxConfig {
@@ -18,6 +20,7 @@ export function boxConfig(): BoxConfig {
     ...(optional('NUPHOS_BOX_DOWNLOAD_URL')
       ? { downloadUrl: optional('NUPHOS_BOX_DOWNLOAD_URL') }
       : {}),
+    ...(optional('NUPHOS_BOX_TEMPLATE') ? { template: optional('NUPHOS_BOX_TEMPLATE') } : {}),
     instabox: apiKey
       ? {
           apiKey,

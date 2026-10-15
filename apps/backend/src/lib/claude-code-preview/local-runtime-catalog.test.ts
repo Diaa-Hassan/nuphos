@@ -59,7 +59,7 @@ describe('local runtime catalog', () => {
     expect(listed).toMatchObject({
       id: runtimeId,
       kind: 'local',
-      label: 'Olivia’s MacBook · Claude Code',
+      label: 'Claude Code in Olivia’s MacBook',
       local: { ownerUserId: 'owner', deviceId: 'mac-1', signedIn: true },
     })
     expect(await listOwnLocalRuntimes('t2', 'owner', deps)).toEqual([])
@@ -96,8 +96,8 @@ describe('local runtime catalog', () => {
     const listed = await listOwnLocalRuntimes('t1', 'owner', deps)
 
     expect(listed.map((instance) => [instance.label, instance.provider])).toEqual([
-      ['Olivia’s MacBook · Claude Code', 'claude-code'],
-      ['Olivia’s MacBook · Codex', 'codex'],
+      ['Claude Code in Olivia’s MacBook', 'claude-code'],
+      ['Codex in Olivia’s MacBook', 'codex'],
     ])
     const codex = await resolveLocalRuntimeEndpoint(
       't1',

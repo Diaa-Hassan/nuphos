@@ -20,8 +20,10 @@ export const BOX_INSTALL_COMMAND = [
   'if ! node -e "process.exit(+process.versions.node.split(\'.\')[0] >= 22 ? 0 : 1)" 2>/dev/null; then',
   '  curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash - && sudo apt-get install -y nodejs',
   'fi',
-  'npm config set prefix "$HOME/.npm-global" && npm i -g @anthropic-ai/claude-code @openai/codex',
+  'command -v claude >/dev/null && command -v codex >/dev/null || { npm config set prefix "$HOME/.npm-global" && npm i -g @anthropic-ai/claude-code @openai/codex; }',
   'command -v nuphos >/dev/null || curl -fsSL https://nuphos.ai/install | sh',
+  // So `nuphos` also works in the Box\'s own terminal, not only in the commands run here.
+  'grep -q .local/bin "$HOME/.profile" 2>/dev/null || echo \'export PATH="$HOME/.local/bin:$PATH"\' >> "$HOME/.profile"',
 ].join('\n')
 
 /**
@@ -58,10 +60,31 @@ export const reason = (error: unknown) => (error instanceof Error ? error.messag
 export const unavailable = (what: string, error: unknown) =>
   new AppError(503, 'box_unavailable', `${what}: ${reason(error)}`)
 
+/**
+ * Deletes the machine a Box owns. A row that never got its machine id (the backend
+ * went away between ordering the machine and recording it) may still own one: it is
+ * found by the device id in its metadata. A failed kill throws, so the caller keeps
+ * the row and nothing is orphaned silently.
+ */
+export async function killBoxMachine(
+  conn: ReturnType<typeof connection>,
+  sandboxId: string | undefined,
+  deviceId: string,
+): Promise<void> {
+  const machines = sandboxId
+    ? [{ sandboxId }]
+    : await Sandbox.list({ ...conn, metadata: { deviceId } })
+
+  for (const machine of machines) await kill(machine.sandboxId, conn)
+}
+
 /** Deletes a machine, treating one that is already gone as deleted. */
-export async function kill(sandboxId: string): Promise<void> {
+export async function kill(
+  sandboxId: string,
+  conn: ReturnType<typeof connection> = connection(QUICK_TIMEOUT_MS),
+): Promise<void> {
   try {
-    await Sandbox.kill(sandboxId, connection(QUICK_TIMEOUT_MS))
+    await Sandbox.kill(sandboxId, conn)
   } catch (error) {
     if (error instanceof InstaboxError && error.status === 404) return
     throw error

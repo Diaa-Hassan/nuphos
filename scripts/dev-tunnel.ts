@@ -187,7 +187,17 @@ async function startQuickTunnel(port: number): Promise<string | null> {
   pushEvent(tunnel, 'starting quick tunnel (trycloudflare)…')
   const child = spawn(
     'cloudflared',
-    ['tunnel', '--url', `http://localhost:${port}`, '--no-autoupdate', '--no-prechecks'],
+    // Without `--config`, cloudflared reads ~/.cloudflared/config.yml: the named tunnel's
+    // credentials and ingress, whose catch-all answers 404 to every request.
+    [
+      'tunnel',
+      '--config',
+      '/dev/null',
+      '--url',
+      `http://localhost:${port}`,
+      '--no-autoupdate',
+      '--no-prechecks',
+    ],
     { detached: true, stdio: ['ignore', 'pipe', 'pipe'] },
   )
 

@@ -14,9 +14,19 @@ import type { AuthVariables } from '@/middleware/auth'
 
 const deviceParam = z.object({ deviceId: z.string().trim().min(1).max(128) })
 const boxCreateSchema = z.object({
-  label: z.string().trim().min(1).max(200).default('Box'),
+  label: z.string().trim().min(1).max(200).optional(),
   teamId: z.string().trim().min(1).max(64).optional(),
 })
+
+/** Unnamed Boxes count up: "Box 1", "Box 2", … after the highest the caller has. */
+export function nextBoxLabel(labels: string[]): string {
+  const taken = labels
+    .map((label) => /^Box (\d+)$/u.exec(label)?.[1])
+    .filter((n): n is string => n !== undefined)
+    .map(Number)
+
+  return `Box ${String(Math.max(0, ...taken) + 1)}`
+}
 
 /** What a client sees of a device: never the credential hash. */
 /** Null when the Box's machine no longer exists; the row is dropped with it. */
@@ -34,11 +44,15 @@ async function deviceView(
 
     return null
   }
+  // A running machine whose joined host dropped (a host crash, a new backend URL) heals itself.
+  if (state === 'running' && !online && device.credentialHash)
+    deps.box?.heal(device.userId, device.deviceId)
 
   return {
     deviceId: device.deviceId,
     label: device.label,
     platform: device.platform,
+    ...(device.model ? { model: device.model } : {}),
     allowLocalExec: device.allowLocalExec,
     online,
     createdAt: device.createdAt.toISOString(),
@@ -90,10 +104,37 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
     const teamId = await resolveVerifiedTeamId(c, readTeamIdCandidate(c, requestedTeamId))
 
     if (!teamId) throw new AppError(400, 'team_required', 'A Box is made inside one of your teams')
-    const device = await box.create(c.get('userId'), teamId, label)
+    const device = await box.create(
+      c.get('userId'),
+      teamId,
+      label ?? nextBoxLabel((await deps.listDevices(c.get('userId'))).map((d) => d.label)),
+    )
 
     return c.json(await viewOrGone(device), 201)
   })
+
+  // The Box's desktop, to watch and take over what its agents do.
+  routes.post('/devices/:deviceId/box/desktop', zv('param', deviceParam), async (c) => {
+    const url = await requireBoxes().desktop(c.get('userId'), c.req.valid('param').deviceId)
+
+    return c.json({ url })
+  })
+
+  // Rename any of the caller's own devices, a Box or a computer.
+  routes.patch(
+    '/devices/:deviceId',
+    zv('param', deviceParam),
+    zv('json', z.object({ label: z.string().trim().min(1).max(200) })),
+    async (c) => {
+      const { deviceId } = c.req.valid('param')
+      const { label } = c.req.valid('json')
+
+      if (!(await deps.renameDevice(c.get('userId'), deviceId, label)))
+        throw new AppError(404, 'not_found', `No device ${deviceId}`)
+
+      return c.json({ ok: true })
+    },
+  )
 
   routes.post('/devices/:deviceId/box/pause', zv('param', deviceParam), async (c) => {
     const userId = c.get('userId')

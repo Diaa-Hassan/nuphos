@@ -23,7 +23,7 @@ import {
   QUICK_TIMEOUT_MS,
   boxBackendUrl,
   connection,
-  kill,
+  killBoxMachine,
   unavailable,
 } from './box-instabox-client'
 
@@ -42,7 +42,8 @@ export { boxBackendUrl, boxesAvailable, boxesEnabled } from './box-instabox-clie
 export { boxState } from './box-instabox-state'
 export type { BoxState } from './box-instabox-state'
 
-export const BOX_TEMPLATE = 'universal'
+/** The default template: a desktop the person can watch and take over. */
+export const BOX_TEMPLATE = 'agent-browser'
 /** The machine joins within this; a token left unused expires with it. */
 const JOIN_TOKEN_TTL_SEC = 60 * 60
 /** How long a resume may take before the tunnel is back. */
@@ -82,12 +83,6 @@ function backendUrl(): string {
   return url
 }
 
-async function killByDevice(deviceId: string): Promise<void> {
-  const machines = await Sandbox.list({ ...connection(QUICK_TIMEOUT_MS), metadata: { deviceId } })
-
-  for (const machine of machines) await kill(machine.sandboxId)
-}
-
 /**
  * Registers the device row at once and returns; ordering, installing and
  * joining run in the background. The row shows `creating` until the host joins.
@@ -125,7 +120,7 @@ async function order(
   let sandbox: Sandbox | undefined
 
   try {
-    sandbox = await Sandbox.create(BOX_TEMPLATE, {
+    sandbox = await Sandbox.create(config.box.template ?? BOX_TEMPLATE, {
       ...connection(CREATE_TIMEOUT_MS),
       name: `nuphos-${deviceId.slice(0, 8)}`,
       metadata: { teamId, deviceId, createdBy: userId },
@@ -158,10 +153,45 @@ async function order(
     // Nothing half-made stays: no machine to bill, no row to confuse, no token to find.
     // A create that timed out on our side may still have produced a machine: it is
     // found by the device id in its metadata.
-    await (sandbox ? kill(sandbox.sandboxId) : killByDevice(deviceId)).catch(() => undefined)
+    await killBoxMachine(connection(QUICK_TIMEOUT_MS), sandbox?.sandboxId, deviceId).catch(
+      () => undefined,
+    )
     await deleteDeviceJoinTokens(deviceId).catch(() => undefined)
     await deleteAgentDevice(userId, deviceId).catch(() => undefined)
   }
+}
+
+/** A link to watch and use the Box's desktop (VNC in the browser), valid for an hour. */
+export async function boxDesktopUrl(userId: string, deviceId: string): Promise<string> {
+  const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
+  const sandboxId = requireMachine(device)
+
+  try {
+    const sandbox = await Sandbox.connect(sandboxId, {
+      ...connection(QUICK_TIMEOUT_MS),
+      resume: true,
+    })
+
+    await sandbox.desktop.start()
+    const { url } = await sandbox.desktop.streamUrl({ viewOnly: false, ttlSeconds: 3_600 })
+
+    return url
+  } catch (error) {
+    throw unavailable("Could not open the Box's desktop", error)
+  }
+}
+
+const lastHeal = new Map<string, number>()
+
+/** A running machine whose host is not connected gets its host started again, at most once a minute. */
+export function healBox(userId: string, deviceId: string): void {
+  const now = Date.now()
+
+  if (now - (lastHeal.get(deviceId) ?? 0) < 60_000) return
+  lastHeal.set(deviceId, now)
+  void resumeBox(userId, deviceId).catch((error: unknown) => {
+    logError('agent.box.heal_failed', error, { user_id: userId, device_id: deviceId })
+  })
 }
 
 export async function pauseBox(userId: string, deviceId: string): Promise<AgentDevice> {
@@ -209,14 +239,18 @@ export async function resumeBox(userId: string, deviceId: string): Promise<Agent
   return device
 }
 
-/** Deletes the machine and its disks; the caller removes the device row. A row without a machine, or whose machine is already gone, just goes. */
+/**
+ * Deletes the machine and its disks; the caller removes the device row. A row that
+ * never got its machine id (the backend went away mid-create) may still own a
+ * machine: it is found by the device id in its metadata. A machine that is already
+ * gone just goes; a kill that fails keeps the row, so nothing is orphaned silently.
+ */
 export async function destroyBox(userId: string, deviceId: string): Promise<void> {
   const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
 
   await deleteDeviceJoinTokens(deviceId)
-  if (!device.box.sandboxId) return
   try {
-    await kill(device.box.sandboxId)
+    await killBoxMachine(connection(QUICK_TIMEOUT_MS), device.box.sandboxId, deviceId)
   } catch (error) {
     logError('agent.box.kill_failed', error, { user_id: userId, device_id: deviceId })
     throw unavailable('Could not delete the Box', error)

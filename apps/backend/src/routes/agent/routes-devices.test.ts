@@ -3,6 +3,7 @@ import { Hono } from 'hono'
 
 import { errorHandler } from '@/lib/errors'
 import { createAgentDeviceRoutes } from '@/routes/agent/routes-devices'
+import { nextBoxLabel } from '@/routes/agent/routes-devices-box'
 
 import type { DeviceExecAuditEntry } from '@/lib/agent/devices/audit'
 import type { AgentDeviceRouteDependencies } from '@/routes/agent/routes-devices'
@@ -46,6 +47,14 @@ function buildApp(box: BoxDeps | null = null) {
       listDevices: async (userId) => Object.values(devices).filter((d) => d.userId === userId),
       isOnline: async () => false,
       deleteDevice: async (userId, deviceId) => delete devices[key(userId, deviceId)],
+      renameDevice: async (userId, deviceId, label) => {
+        const device = devices[key(userId, deviceId)]
+
+        if (device) device.label = label
+
+        return device !== undefined
+      },
+      publicUrl: () => 'https://nuphos.example',
       box,
       listDeviceExecAudit: async (ownerUserId, deviceId, options) => {
         auditQueries.push({ ownerUserId, deviceId, ...options })
@@ -208,6 +217,7 @@ describe('agent device routes', () => {
     expect(await response.json()).toEqual({
       token: 'nbj_test',
       expiresAt: '2026-10-14T12:15:00.000Z',
+      apiUrl: 'https://nuphos.example',
     })
     expect(issued).toEqual([
       { userId: 'user-1', options: { label: 'build box', expiresInSec: 900 } },
@@ -280,6 +290,10 @@ describe('agent device routes', () => {
       destroy: async (_userId, deviceId) => {
         calls.push(`destroy ${deviceId}`)
       },
+      desktop: async (_userId, deviceId) => `https://desktop.example/${deviceId}`,
+      heal: (_userId, deviceId) => {
+        calls.push(`heal ${deviceId}`)
+      },
       available: () => true,
       state: async (device, online) =>
         !device.box?.sandboxId ? 'creating' : online ? 'running' : machineState,
@@ -312,6 +326,45 @@ describe('agent device routes', () => {
     }
 
     expect(plain.boxAvailable).toBe(false)
+  })
+
+  test('an unnamed Box counts up from the highest "Box N" the caller has', () => {
+    expect(nextBoxLabel([])).toBe('Box 1')
+    expect(nextBoxLabel(['Box 3', 'Build box', 'Box 1'])).toBe('Box 4')
+    expect(nextBoxLabel(['Box 10'])).toBe('Box 11')
+  })
+
+  test('PATCH /devices/:deviceId renames the caller device and only theirs', async () => {
+    devices[key('user-1', 'b1')] = boxDevice('user-1', 'b1')
+    devices[key('user-2', 'b2')] = boxDevice('user-2', 'b2')
+    const app = buildApp(fakeBox([]))
+    const renamed = await app.request('/agent/devices/b1', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: 'Build box' }),
+    })
+
+    expect(renamed.status).toBe(200)
+    expect(devices[key('user-1', 'b1')]?.label).toBe('Build box')
+    const other = await app.request('/agent/devices/b2', {
+      method: 'PATCH',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: 'Mine now' }),
+    })
+
+    expect(other.status).toBe(404)
+    expect(devices[key('user-2', 'b2')]?.label).toBe('Box')
+  })
+
+  test('a running machine whose joined host dropped is healed when listed', async () => {
+    const calls: string[] = []
+
+    machineState = 'running'
+    devices[key('user-1', 'b1')] = { ...boxDevice('user-1', 'b1'), credentialHash: 'h' }
+    devices[key('user-1', 'b3')] = boxDevice('user-1', 'b3')
+    await buildApp(fakeBox(calls)).request('/agent/devices')
+    // b3 never joined: nothing to restart there.
+    expect(calls).toEqual(['heal b1'])
   })
 
   test('POST /devices/boxes is 503 without a Box provider', async () => {

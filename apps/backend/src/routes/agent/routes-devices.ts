@@ -7,11 +7,14 @@ import {
   listDeviceExecAudit,
 } from '@/lib/agent/devices/audit'
 import {
+  boxBackendUrl,
+  boxDesktopUrl,
   boxState,
   boxesAvailable,
   boxesEnabled,
   createBox,
   destroyBox,
+  healBox,
   pauseBox,
   resumeBox,
 } from '@/lib/agent/devices/box-instabox'
@@ -27,6 +30,7 @@ import {
   deleteAgentDevice,
   getAgentDevice,
   listAgentDevicesForUser,
+  renameAgentDevice,
   revokeAgentDeviceCredential,
   upsertAgentDevice,
 } from '@/lib/agent/devices/store'
@@ -46,6 +50,7 @@ const deviceRegistrationSchema = z.object({
   deviceId: z.string().trim().min(1).max(128),
   label: z.string().trim().min(1).max(200),
   platform: z.string().trim().min(1).max(64),
+  model: z.string().trim().min(1).max(64).optional(),
   allowLocalExec: z.boolean(),
 })
 
@@ -83,12 +88,19 @@ export type AgentDeviceRouteDependencies = {
   listDevices: (userId: string) => Promise<AgentDevice[]>
   isOnline: (userId: string, deviceId: string) => Promise<boolean>
   deleteDevice: (userId: string, deviceId: string) => Promise<boolean>
+  renameDevice: (userId: string, deviceId: string, label: string) => Promise<boolean>
+  /** Where a joining machine dials: this deployment's public URL, if it has one. */
+  publicUrl: () => string | undefined
   /** Null when this deployment has no Box provider. */
   box: {
     create: (userId: string, teamId: string, label: string) => Promise<AgentDevice>
     pause: (userId: string, deviceId: string) => Promise<AgentDevice>
     resume: (userId: string, deviceId: string) => Promise<AgentDevice>
     destroy: (userId: string, deviceId: string) => Promise<void>
+    /** A link to the Box's desktop, to watch and take over what its agents do. */
+    desktop: (userId: string, deviceId: string) => Promise<string>
+    /** Starts the host again on a running machine whose host dropped; rate-limited. */
+    heal: (userId: string, deviceId: string) => void
     /** Whether Boxes can be ordered here: a provider and a public URL for the machine to dial. */
     available: () => boolean
     state: (device: AgentDevice, online: boolean) => Promise<BoxState | 'gone'>
@@ -111,12 +123,16 @@ const defaultDependencies: AgentDeviceRouteDependencies = {
   listDevices: listAgentDevicesForUser,
   isOnline: isDevicePresent,
   deleteDevice: deleteAgentDevice,
+  renameDevice: renameAgentDevice,
+  publicUrl: boxBackendUrl,
   box: boxesEnabled()
     ? {
         create: createBox,
         pause: pauseBox,
         resume: resumeBox,
         destroy: destroyBox,
+        desktop: boxDesktopUrl,
+        heal: healBox,
         available: boxesAvailable,
         state: boxState,
       }
@@ -143,7 +159,11 @@ export function createAgentDeviceRoutes(deps: AgentDeviceRouteDependencies = def
       expiresInSec,
     })
 
-    return c.json({ token, expiresAt: expiresAt.toISOString() }, 201)
+    // Where the joining machine dials: this deployment's public URL.
+    return c.json(
+      { token, expiresAt: expiresAt.toISOString(), apiUrl: deps.publicUrl() ?? null },
+      201,
+    )
   })
 
   // Revokes the credential a join token gave this device and drops its tunnel.

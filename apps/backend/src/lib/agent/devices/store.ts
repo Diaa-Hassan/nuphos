@@ -18,6 +18,8 @@ export type AgentDevice = {
   deviceId: string
   label: string
   platform: string
+  /** The machine's model as the OS names it, e.g. "MacBook Pro"; absent for a Box. */
+  model?: string
   allowLocalExec: boolean
   box?: AgentDeviceBox
   /** sha256 of the credential a join token issued; absent for devices signed in as their owner. */
@@ -29,7 +31,7 @@ export type AgentDevice = {
 
 export type AgentDeviceRegistration = Pick<
   AgentDevice,
-  'deviceId' | 'label' | 'platform' | 'allowLocalExec'
+  'deviceId' | 'label' | 'platform' | 'model' | 'allowLocalExec'
 >
 
 const agentDevices = (): Collection<AgentDevice> => db().collection<AgentDevice>('agent_devices')
@@ -62,6 +64,19 @@ export async function upsertAgentDevice(
     { $set: { ...device, userId, updatedAt: now }, $setOnInsert: { createdAt: now } },
     { upsert: true },
   )
+}
+
+export async function renameAgentDevice(
+  userId: string,
+  deviceId: string,
+  label: string,
+): Promise<boolean> {
+  const result = await agentDevices().updateOne(
+    { userId, deviceId },
+    { $set: { label, updatedAt: new Date() } },
+  )
+
+  return result.matchedCount === 1
 }
 
 /** A joined device is always new, so a join token can never take over an existing one. */
