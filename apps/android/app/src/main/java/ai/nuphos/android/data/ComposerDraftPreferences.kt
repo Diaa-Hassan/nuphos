@@ -5,7 +5,7 @@ import android.content.SharedPreferences
 import ai.nuphos.android.session.ComposerDrafts
 import kotlinx.serialization.json.*
 
-/** App-private text only, excluded from Android backup with the rest of app data. */
+/** App-private text, explicitly excluded from cloud backup and device-to-device transfer. */
 class ComposerDraftPreferences internal constructor(private val prefs: SharedPreferences) : ComposerDrafts.Persistence {
     constructor(context: Context) : this(context.getSharedPreferences("nuphos.composer-drafts", Context.MODE_PRIVATE))
     private fun key(key: ComposerDrafts.Key): String = buildJsonArray {
@@ -32,7 +32,8 @@ class ComposerDraftPreferences internal constructor(private val prefs: SharedPre
     override fun write(key: ComposerDrafts.Key, text: String) {
         prefs.edit().apply { if (text.isEmpty()) remove(key(key)) else putString(key(key), text) }.apply()
     }
-    override fun clear(accountId: String) {
-        prefs.edit().apply { prefs.all.keys.filter { decode(it)?.accountId == accountId }.forEach(::remove) }.apply()
+    override fun clear() {
+        // Also remove drafts whose identity was never restored (e.g. expired token).
+        prefs.edit().clear().apply()
     }
 }

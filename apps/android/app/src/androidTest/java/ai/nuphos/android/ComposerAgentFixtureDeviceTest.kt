@@ -44,6 +44,9 @@ class ComposerAgentFixtureDeviceTest {
             assertTrue("Agent and Send are on different rows", chip.center.y in send.top..send.bottom)
         }
         checkRow()
+        val send = compose.onNodeWithContentDescription("Send").fetchSemanticsNode().boundsInRoot
+        val composer = compose.onNodeWithContentDescription("Ask Nuphos anything").fetchSemanticsNode().boundsInRoot
+        assertTrue("Send must remain at the right edge", send.right >= composer.right - 12f)
         compose.onNodeWithText(name).performClick()
         assertEquals(1, choices)
         compose.onNodeWithContentDescription("Ask Nuphos anything").performTextInput("line one\nline two")

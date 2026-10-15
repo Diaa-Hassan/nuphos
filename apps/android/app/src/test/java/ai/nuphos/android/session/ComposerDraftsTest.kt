@@ -10,7 +10,16 @@ class ComposerDraftsTest {
         override fun write(key: ComposerDrafts.Key, text: String) {
             if (text.isEmpty()) values.remove(key) else values[key] = text
         }
-        override fun clear(accountId: String) { values.keys.removeAll { it.accountId == accountId } }
+        override fun clear() { values.clear() }
+    }
+    @Test fun clearBeforeIdentityRestoreRemovesOrphanedDrafts() {
+        val disk = Disk()
+        ComposerDrafts(disk).bind("expired-account", "team", ComposerDrafts.Destination.NewChat)!!.write("private")
+        val restoring = ComposerDrafts(disk)
+        restoring.clear()
+        assertTrue(disk.values.isEmpty())
+        restoring.onIdentity("expired-account")
+        assertEquals("", restoring.bind("expired-account", "team", ComposerDrafts.Destination.NewChat)!!.text)
     }
     @Test fun processRecreationAndSuccessfulSendKeepDestinationsSeparate() {
         val disk = Disk()

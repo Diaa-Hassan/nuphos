@@ -69,8 +69,8 @@ Text drafts persist in app-private storage, separately for each account, workspa
 existing conversation, and the new-conversation composer. Sending clears only the
 submitted draft; sign-out, identity replacement and consent withdrawal remove
 that account's drafts. Attachments remain temporary and are not restored after
-leaving the composer or restarting the process. Draft data is excluded from Android
-backup with the rest of application data.
+leaving the composer or restarting the process. Draft preferences are explicitly excluded from cloud backup, device-to-device
+transfer, and legacy full backup by the XML backup rules.
 
 The Agent chip remains visible beside Send. New conversations open the Agent
 picker; existing conversations show their assigned Agent and open its usage details.

@@ -46,6 +46,7 @@ class AccountParityFixtureDeviceTest {
     }
     private var savedToken: String? = null
     private var preferences: Map<String, *> = emptyMap<String, Any>()
+    @Volatile private var rejectRestoredToken = false
     @Volatile private var consentReadMode = "valid"
     @Volatile private var rejectConsentWrite = false
     @Volatile private var draftTeam = false
@@ -99,7 +100,7 @@ class AccountParityFixtureDeviceTest {
                     Http.json.parseToJsonElement(buffer.readUtf8()).jsonObject
                 } ?: JsonObject(emptyMap())
                 val response = when {
-                    path == "/auth/me" && request.method == "GET" -> currentUser()
+                    path == "/auth/me" && request.method == "GET" -> if (rejectRestoredToken) { status = 401; "{}" } else currentUser()
                     path == "/auth/me" && request.method == "PATCH" -> {
                         val fields = body()
                         if (fields.keys != setOf("name", "username", "avatarURL")) unexpected += read
@@ -237,6 +238,28 @@ class AccountParityFixtureDeviceTest {
     private fun deletion() { account(); tap("Account deletion request"); awaitText("Request permanent deletion") }
     private fun enter(label: String, value: String) = compose.onNodeWithText(label).performScrollTo().performTextReplacement(value)
     private fun submits() = count("POST", "/auth/account-deletion")
+
+    @Test fun rejectedSavedTokenClearsDraftsBeforeAnIdentityWasRestored() {
+        verifyUnauthenticatedRestoreClearsDrafts(rejectToken = true)
+    }
+    @Test fun missingSavedTokenClearsDraftsBeforeAnIdentityWasRestored() {
+        verifyUnauthenticatedRestoreClearsDrafts(rejectToken = false)
+    }
+    private fun verifyUnauthenticatedRestoreClearsDrafts(rejectToken: Boolean) {
+        awaitText("Before you use AI agents")
+        compose.waitUntil(8_000) { !app.authSession.consentBusy }
+        val persistence = ai.nuphos.android.data.ComposerDraftPreferences(app)
+        val retired = ai.nuphos.android.session.ComposerDrafts(persistence)
+        retired.bind("retired-fixture", "aaaaaaaaaaaaaaaaaaaaaaaa", ai.nuphos.android.session.ComposerDrafts.Destination.NewChat)!!.write("orphaned private draft")
+        val prefs = app.getSharedPreferences("nuphos.composer-drafts", Context.MODE_PRIVATE)
+        assertTrue(prefs.all.isNotEmpty())
+        if (rejectToken) rejectRestoredToken = true else app.tokenStore.clear()
+        val restored = AuthSession(app, app.tokenStore).also { extraAuthSessions += it }
+        compose.runOnIdle { restored.restore() }
+        compose.waitUntil(8_000) { restored.state is AuthSession.State.SignedOut }
+        assertNull(app.tokenStore.read())
+        assertTrue("No persisted draft may survive a missing or rejected login", prefs.all.isEmpty())
+    }
 
     @Test fun restoredAcceptedConsentNeverShowsTheNoticeWhileRemoteReadIsPending() {
         awaitText("Before you use AI agents")

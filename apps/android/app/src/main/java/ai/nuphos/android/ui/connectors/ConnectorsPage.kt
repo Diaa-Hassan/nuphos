@@ -74,7 +74,7 @@ fun ConnectorsPage() {
         if (store.phase == ConnectorsStore.Phase.Loaded && store.inventory.rows.isEmpty()) Text("No connectors are saved for this team.", Modifier.padding(vertical = 24.dp))
         LazyColumn(modifier = Modifier.testTag("connector-inventory-list"), verticalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 24.dp)) {
             val groups = store.inventory.rows.groupBy { ConnectorCatalog.named(it.provider)?.category ?: "Other" }
-            val categoryOrder = ConnectorCatalog.all.map { it.category }.distinct() + "Other"
+            val categoryOrder = ConnectorCatalog.categoryOrder
             categoryOrder.forEach { category ->
                 val rows = groups[category].orEmpty()
                 if (rows.isNotEmpty()) {

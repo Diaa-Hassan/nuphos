@@ -12,7 +12,7 @@ class ComposerDrafts(private val persistence: Persistence? = null) {
     interface Persistence {
         fun load(accountId: String): Map<Key, String>
         fun write(key: Key, text: String)
-        fun clear(accountId: String)
+        fun clear()
     }
     private val texts = mutableStateMapOf<Key, String>()
     private var accountId: String? = null
@@ -20,14 +20,17 @@ class ComposerDrafts(private val persistence: Persistence? = null) {
 
     @Synchronized fun onIdentity(id: String?) {
         if (accountId != id) {
-            clear()
+            // Initial authenticated restore must retain on-disk drafts. Identity
+            // replacement/sign-out must discard all persisted identities.
+            if (accountId != null) clear()
+            else { generation++; texts.clear() }
             accountId = id
             if (id != null) texts.putAll(persistence?.load(id).orEmpty().filterKeys { it.accountId == id })
         }
     }
     @Synchronized fun clear() {
         generation++
-        accountId?.let { persistence?.clear(it) }
+        persistence?.clear()
         texts.clear()
     }
 

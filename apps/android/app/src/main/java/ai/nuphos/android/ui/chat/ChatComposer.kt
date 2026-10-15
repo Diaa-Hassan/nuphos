@@ -364,7 +364,7 @@ fun ChatComposer(
             }
 
             Row(
-                    Modifier.padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
+                    Modifier.fillMaxWidth().padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box {
@@ -382,13 +382,14 @@ fun ChatComposer(
                             })
                         }
                     }
-                    Spacer(Modifier.weight(1f))
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
                     if (onChooseAgent != null || agentLabel != null) {
                         AgentChip(agent, enabled = agentEnabled,
                             onClick = onChooseAgent ?: { showAgentUsage = true },
-                            labelOverride = agentLabel, modifier = Modifier.weight(3f, fill = false))
-                        Spacer(Modifier.width(8.dp))
+                            labelOverride = agentLabel)
                     }
+                    }
+                    Spacer(Modifier.width(8.dp))
                     if (isStreaming && hasText && canSubmit) {
                         IconButton(onClick = ::send, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Outlined.PlaylistAdd, contentDescription = "Queue message")
