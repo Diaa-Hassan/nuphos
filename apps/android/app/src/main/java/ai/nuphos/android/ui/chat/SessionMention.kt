@@ -32,8 +32,8 @@ object SessionMention {
             it.sessionId != source.excludedSessionId &&
                 (it.teamId == null || it.teamId == source.teamId) &&
                 it.isOwner != false && !it.isArchived &&
-                it.sessionId.matches(Regex("[A-Za-z0-9_-]+"))
+                it.sessionId.matches(Regex("[A-Za-z0-9][A-Za-z0-9_-]{0,127}"))
         }.distinctBy { it.sessionId }.take(5)
 
-    fun link(teamId: String, sessionId: String): String = "https://nuphos.ai/teams/$teamId/agent/$sessionId"
+    fun link(teamId: String, sessionId: String): String = ai.nuphos.android.session.ConversationLink(teamId, sessionId).url
 }

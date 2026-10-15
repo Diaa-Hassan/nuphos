@@ -20,6 +20,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
@@ -66,6 +67,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -158,9 +160,9 @@ fun ChatComposer(
     var field by remember(draft) { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
     // External draft restoration must not reset the selection/composition on each keystroke.
     val fieldValue = if (field.text == text) field else TextFieldValue(text, TextRange(text.length))
-    var dismissedMention by remember(draft, mentions?.teamId) { mutableStateOf<String?>(null) }
+    var dismissedAt by remember(draft, mentions?.teamId) { mutableIntStateOf(-1) }
     val mentionQuery = if (draftingEnabled && focused && mentions != null) SessionMention.query(fieldValue) else null
-    val activeMention = mentionQuery?.takeUnless { dismissedMention == text }
+    val activeMention = mentionQuery?.takeUnless { text.lastIndexOf('@') == dismissedAt }
     var mentionRows by remember(activeMention, draft, mentions) { mutableStateOf<List<ai.nuphos.android.model.AgentConversation>>(emptyList()) }
     var mentionLoading by remember(activeMention, draft, mentions) { mutableStateOf(activeMention != null) }
     var mentionFailed by remember(activeMention, draft, mentions) { mutableStateOf(false) }
@@ -259,7 +261,7 @@ fun ChatComposer(
     }
 
     BackHandler(enabled = activeMention != null) {
-        dismissedMention = text
+        dismissedAt = text.lastIndexOf('@')
     }
 
     val colors = MaterialTheme.colorScheme
@@ -284,10 +286,11 @@ fun ChatComposer(
                 Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("My chats", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
-                        IconButton(onClick = { dismissedMention = text }, modifier = Modifier.size(32.dp)) {
+                        IconButton(onClick = { dismissedAt = text.lastIndexOf('@') }, modifier = Modifier.size(32.dp)) {
                             Icon(Icons.Outlined.Close, contentDescription = "Dismiss chat mentions", modifier = Modifier.size(16.dp))
                         }
                     }
+                    Column(Modifier.heightIn(max = 120.dp).verticalScroll(rememberScrollState())) {
                     when {
                         mentionLoading -> Text("Searching chats…", style = MaterialTheme.typography.bodySmall)
                         mentionFailed -> Text("Could not search chats. You can keep typing.", style = MaterialTheme.typography.bodySmall)
@@ -307,6 +310,7 @@ fun ChatComposer(
                                 }.padding(vertical = 8.dp),
                             )
                         }
+                    }
                     }
                 }
             }
@@ -380,7 +384,7 @@ fun ChatComposer(
                     onValueChange = { value ->
                         if (draftingEnabled) {
                             field = value
-                            if (value.text != text) dismissedMention = null
+                            if (SessionMention.query(value.text) == null) dismissedAt = -1
                             updateText(value.text)
                         }
                     },

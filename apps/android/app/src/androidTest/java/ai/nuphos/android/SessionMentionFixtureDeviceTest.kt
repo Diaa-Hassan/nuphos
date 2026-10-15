@@ -61,7 +61,8 @@ class SessionMentionFixtureDeviceTest {
             calls += query
             listOf(AgentConversation("current", title = "Current chat"),
                 AgentConversation("other", teamId = "wrong", title = "Other team"),
-                AgentConversation("synthetic-session", teamId = team, title = "Synthetic project notes"))
+                AgentConversation("synthetic-session", teamId = team, title = "Synthetic project notes")) +
+                (1..4).map { AgentConversation("synthetic-$it", teamId = team, title = "Synthetic extra notes $it") }
         }
         compose.setContent {
             NuphosTheme(darkTheme = dark) {
@@ -81,6 +82,8 @@ class SessionMentionFixtureDeviceTest {
         compose.onNodeWithText("Synthetic project notes").assertIsDisplayed()
         compose.onNodeWithText("Current chat").assertDoesNotExist()
         compose.onNodeWithText("Other team").assertDoesNotExist()
+        compose.onNodeWithContentDescription("Send").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Attach").assertIsDisplayed()
         snap("synthetic-mention-light")
         compose.runOnIdle { dark = true }
         snap("synthetic-mention-dark")
@@ -94,6 +97,14 @@ class SessionMentionFixtureDeviceTest {
         compose.onNodeWithContentDescription("Dismiss chat mentions").performClick()
         field().assertTextEquals("@")
         compose.onNodeWithContentDescription("Dismiss chat mentions").assertDoesNotExist()
+        val dismissedCalls = calls.size
+        field().performTextInput("x")
+        Thread.sleep(300)
+        compose.onNodeWithContentDescription("Dismiss chat mentions").assertDoesNotExist()
+        assertEquals(dismissedCalls, calls.size)
+        field().performTextInput(" @again")
+        compose.waitUntil(5000) { calls.contains("again") }
+        compose.onNodeWithContentDescription("Dismiss chat mentions").assertIsDisplayed()
         assertEquals(0, sends)
     }
 
@@ -120,9 +131,11 @@ class SessionMentionFixtureDeviceTest {
         }
         field().performClick().performTextInput("@slow")
         compose.waitUntil(5000) { calls.any { it.endsWith(":slow") } }
+        snap("synthetic-mention-loading")
         field().performTextReplacement("@empty")
         compose.waitUntil(5000) { calls.any { it.endsWith(":empty") } }
         compose.onNodeWithText("No matching chats").assertIsDisplayed()
+        snap("synthetic-mention-empty")
         // Wait beyond the deliberately non-cooperative old request.
         compose.waitUntil(5000) { compose.onAllNodesWithText("Searching chats…").fetchSemanticsNodes().isEmpty() }
         Thread.sleep(900)
@@ -130,6 +143,7 @@ class SessionMentionFixtureDeviceTest {
         field().performTextReplacement("@error")
         compose.waitUntil(5000) { calls.any { it.endsWith(":error") } }
         compose.onNodeWithText("Could not search chats. You can keep typing.").assertIsDisplayed()
+        snap("synthetic-mention-error")
         field().performTextReplacement("@next")
         compose.waitUntil(5000) { calls.any { it.endsWith(":next") } }
         compose.onNodeWithText("Fresh $team").assertIsDisplayed()
