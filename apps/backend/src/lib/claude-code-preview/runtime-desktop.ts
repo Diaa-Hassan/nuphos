@@ -79,7 +79,7 @@ export function runtimeDesktopEvents(
   const forward = (data: string): void => {
     if (data.startsWith('{')) {
       holding = (JSON.parse(data) as { owner?: string }).owner === 'human'
-      stream.send(data)
+      stream.send(JSON.stringify({ t: 'control', owner: holding ? 'human' : 'agent' }))
 
       return
     }

@@ -10,12 +10,15 @@ const update = Buffer.from([3, 0, 0, 0, 0, 0, 5, 0, 3, 20])
 const key = Buffer.from([4, 1, 0, 0, 0, 0, 0, 65])
 const pointer = Buffer.from([5, 4, 2, 128, 1, 144])
 const paste = Buffer.concat([Buffer.from([6, 0, 0, 0, 0, 0, 0, 2]), Buffer.from('hi')])
+const fence = Buffer.concat([Buffer.from([248, 0, 0, 0, 0, 0, 0, 1, 3]), Buffer.from('abc')])
 
 test('the handshake and view-only messages pass; input waits for the desktop to be held', () => {
   const filter = clientInputFilter()
 
   expect(filter.push(handshake, false)).toEqual(handshake)
-  expect(filter.push(Buffer.concat([key, update, pointer, paste]), false)).toEqual(update)
+  expect(filter.push(Buffer.concat([key, update, pointer, fence, paste]), false)).toEqual(
+    Buffer.concat([update, fence]),
+  )
   expect(filter.push(Buffer.concat([key, pointer, paste]), true)).toEqual(
     Buffer.concat([key, pointer, paste]),
   )
@@ -43,4 +46,15 @@ test('an unknown message type, or a foreign protocol, ends the stream', () => {
 
   filter.push(handshake, true)
   expect(filter.push(Buffer.from([7, 0, 0]), true)).toBeNull()
+})
+
+test('a paste, or a backlog, beyond 256 KiB ends the stream', () => {
+  const filter = clientInputFilter()
+
+  filter.push(handshake, true)
+  expect(filter.push(Buffer.from([6, 0, 0, 0, 0, 4, 0, 1]), true)).toBeNull()
+  const backlog = clientInputFilter()
+
+  backlog.push(handshake, true)
+  expect(backlog.push(Buffer.alloc(256 * 1024 + 1, 0), true)).toBeNull()
 })

@@ -5,8 +5,10 @@
 // this does not know ends the stream rather than guessing its length.
 
 const VERSION = /^RFB 003\.00[78]\n$/u
-/** KeyEvent, PointerEvent, ClientCutText, and QEMU's extended key event. */
-const INPUT = new Set([4, 5, 6, 255])
+/** KeyEvent, PointerEvent, ClientCutText, SetDesktopSize, xvp, and QEMU's extended key event. */
+const INPUT = new Set([4, 5, 6, 251, 252, 255])
+/** A clipboard paste larger than this, or more unparsed bytes than this, ends the stream. */
+const MAX_PENDING = 256 * 1024
 
 /** Bytes of the message at the head of `bytes`: 0 while incomplete, null when unknown. */
 function messageSize(bytes: Buffer): number | null {
@@ -24,8 +26,14 @@ function messageSize(bytes: Buffer): number | null {
       return 8 // KeyEvent
     case 5:
       return 6 // PointerEvent
-    case 6:
-      return bytes.length < 8 ? 0 : 8 + Math.abs(bytes.readInt32BE(4)) // ClientCutText (extended: negative)
+    case 6: {
+      if (bytes.length < 8) return 0
+      const length = Math.abs(bytes.readInt32BE(4)) // ClientCutText (extended: negative)
+
+      return length > MAX_PENDING ? null : 8 + length
+    }
+    case 248:
+      return bytes.length < 9 ? 0 : 9 + (bytes[8] ?? 0) // ClientFence, answering the server's
     case 251:
       return bytes.length < 7 ? 0 : 8 + 16 * (bytes[6] ?? 0) // SetDesktopSize
     case 252:
@@ -49,6 +57,7 @@ export function clientInputFilter(): ClientInputFilter {
   return {
     push(bytes, allowInput) {
       buffer = Buffer.concat([buffer, bytes])
+      if (buffer.length > MAX_PENDING) return null
       const out: Buffer[] = []
 
       for (;;) {
