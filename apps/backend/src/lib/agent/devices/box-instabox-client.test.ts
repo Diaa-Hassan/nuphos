@@ -1,27 +1,24 @@
-import { beforeEach, describe, expect, mock, test } from 'bun:test'
+import { beforeEach, describe, expect, test } from 'bun:test'
+
+import { useInstaboxMachines } from '@/lib/test/doubles/instabox-machines'
 
 // instabox as the client sees it: nothing here talks to a network.
 const calls: string[] = []
 let machines: { sandboxId: string }[] = []
 let killFails = false
 
-void mock.module('@insforge/instabox-sdk', () => ({
-  InstaboxError: class InstaboxError extends Error {
-    status = 0
-  },
-  Sandbox: {
-    list: (opts: { metadata?: Record<string, string> }) => {
-      calls.push(`list ${opts.metadata?.deviceId ?? ''}`)
+useInstaboxMachines({
+  listMachines: (_conn, metadata) => {
+    calls.push(`list ${metadata.deviceId ?? ''}`)
 
-      return Promise.resolve(machines)
-    },
-    kill: (sandboxId: string) => {
-      calls.push(`kill ${sandboxId}`)
-
-      return killFails ? Promise.reject(new Error('instabox is down')) : Promise.resolve()
-    },
+    return Promise.resolve(machines)
   },
-}))
+  killMachine: (_conn, sandboxId) => {
+    calls.push(`kill ${sandboxId}`)
+
+    return killFails ? Promise.reject(new Error('instabox is down')) : Promise.resolve()
+  },
+})
 
 const { killBoxMachine } = await import('./box-instabox-client')
 const conn = { apiKey: 'test-key', requestTimeoutMs: 1_000, operationTimeoutMs: 1_000 }

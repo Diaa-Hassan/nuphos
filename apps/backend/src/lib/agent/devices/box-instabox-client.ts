@@ -1,10 +1,12 @@
 // The instabox connection shared by the Box provider: the deployment's key,
 // bounded timeouts, and the commands a fresh machine runs.
 
-import { InstaboxError, Sandbox } from '@insforge/instabox-sdk'
+import { InstaboxError } from '@insforge/instabox-sdk'
 
 import { config } from '@/config'
 import { AppError } from '@/lib/errors'
+
+import { killMachine, listMachines } from './instabox-machines'
 
 /** Installing the CLI and the agents on a fresh machine. */
 export const INSTALL_TIMEOUT_MS = 9 * 60_000
@@ -71,9 +73,7 @@ export async function killBoxMachine(
   sandboxId: string | undefined,
   deviceId: string,
 ): Promise<void> {
-  const machines = sandboxId
-    ? [{ sandboxId }]
-    : await Sandbox.list({ ...conn, metadata: { deviceId } })
+  const machines = sandboxId ? [{ sandboxId }] : await listMachines(conn, { deviceId })
 
   for (const machine of machines) await kill(machine.sandboxId, conn)
 }
@@ -84,7 +84,7 @@ export async function kill(
   conn: ReturnType<typeof connection> = connection(QUICK_TIMEOUT_MS),
 ): Promise<void> {
   try {
-    await Sandbox.kill(sandboxId, conn)
+    await killMachine(conn, sandboxId)
   } catch (error) {
     if (error instanceof InstaboxError && error.status === 404) return
     throw error
