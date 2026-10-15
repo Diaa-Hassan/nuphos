@@ -105,7 +105,17 @@ test('the Claude Code sign-in helper ships in the image and writes where the age
   assert.match(dockerfile, /test -r \/opt\/nuphos-runtime\/claude-login\.mjs/u)
   const login = readFileSync(new URL('../image/claude-login.mjs', import.meta.url), 'utf8')
 
-  // The credential is read from the runtime's own config dir when it has one, else ~/.claude.
-  assert.ok(login.includes("join(configDir ?? join(home, '.claude'), '.credentials.json')"))
+  // The credential is read from the config dir the caller passed (default ~/.claude under
+  // the caller's home). Only the CLI entrypoint reads the environment: a caller that
+  // passes a temp home can never reach the real login of the machine the test runs on.
+  assert.ok(login.includes("configDir = join(home, '.claude')"))
+  assert.ok(login.includes("join(configDir, '.credentials.json')"))
+  const [library, entrypoint] = login.split(
+    'import.meta.url === pathToFileURL(process.argv[1]).href',
+  )
+
+  assert.doesNotMatch(library, /process\.env\.(HOME|CLAUDE_)/u)
+  assert.match(entrypoint, /home: process\.env\.HOME/u)
+  assert.match(entrypoint, /configDir: process\.env\.CLAUDE_CONFIG_DIR/u)
   assert.ok(CLAUDE_AUTH_FILE.startsWith('/home/node/'))
 })
