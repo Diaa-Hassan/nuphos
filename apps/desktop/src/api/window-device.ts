@@ -33,7 +33,5 @@ export type WindowDeviceApi = {
   boxPause(deviceId: string): Promise<AgentDevice>
   boxResume(deviceId: string): Promise<AgentDevice>
   boxDelete(deviceId: string): Promise<{ ok: true }>
-  boxRename(deviceId: string, label: string): Promise<{ ok: true }>
-  boxDesktop(deviceId: string): Promise<{ url: string }>
   boxJoinToken(): Promise<{ token: string; expiresAt: string; apiUrl: string | null }>
 }

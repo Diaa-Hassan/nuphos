@@ -67,10 +67,12 @@ test('lists every cloud Box and each computer while its agents are connected', (
   assert.equal(boxState(box('a', 'paused')), 'paused')
 })
 
-test('polls fast while a cloud Box is starting or its host is away', () => {
-  assert.equal(boxPollMs([box('a', 'running')]), 10_000)
-  assert.equal(boxPollMs([box('a', 'creating')]), 2_000)
-  assert.equal(boxPollMs([box('a', 'paused')]), 2_000)
+test('polls only around a sign-in, while a Box starts, or while a running Box reconnects', () => {
+  assert.equal(boxPollMs([box('a', 'running')], false), 0)
+  assert.equal(boxPollMs([box('a', 'paused')], false), 0)
+  assert.equal(boxPollMs([box('a', 'creating')], false), 2_000)
+  assert.equal(boxPollMs([box('a', 'running', false)], false), 2_000)
+  assert.equal(boxPollMs([box('a', 'running')], true), 1_500)
 })
 
 const agent = (id: string, kind: RuntimeInstance['kind'], deviceId?: string) =>

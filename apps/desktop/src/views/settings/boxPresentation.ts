@@ -6,7 +6,6 @@ export type BoxDevice = AgentDevice & { box: BoxStatus }
 
 // A Box being set up, or a cloud Box whose host is away, changes without the user acting.
 export const BOX_CREATING_POLL_MS = 2_000
-export const BOX_POLL_MS = 10_000
 // A Box still creating after this long will not come up.
 export const BOX_SETUP_TIMEOUT_MS = 5 * 60_000
 
@@ -51,12 +50,19 @@ export function boxState(device: AgentDevice): MachineState {
   return device.online ? 'running' : 'stopped'
 }
 
-export function boxPollMs(devices: AgentDevice[]): number {
-  return devices.some(
-    (device) => device.box !== undefined && (device.box.state === 'creating' || !device.online),
+/**
+ * How soon to look again: quickly around a sign-in, while a Box is starting or while a running
+ * Box's host reconnects; otherwise 0, not at all (actions and a returning window reload the list).
+ */
+export function boxPollMs(devices: AgentDevice[], signingIn: boolean): number {
+  if (signingIn) return 1_500
+
+  return boxes(devices).some(
+    (device) =>
+      device.box.state === 'creating' || (device.box.state === 'running' && !device.online),
   )
     ? BOX_CREATING_POLL_MS
-    : BOX_POLL_MS
+    : 0
 }
 
 const OS_LABEL: Record<string, string> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }

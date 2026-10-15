@@ -10,11 +10,11 @@ const MAX_RETRY_MS = 30_000
 
 /**
  * The signed-in user's devices. Loads on mount, on `reload` and when the window shows again;
- * polls again after the delay `poll` returns (false: not at all), never while the window is hidden, and backs off after
+ * polls again after the delay `poll` returns (0: not at all), never while the window is hidden, and backs off after
  * failures. A first load that fails (an older backend) is not retried. A new `key` starts over
  * from no list, so a caller never reads one taken before its change.
  */
-export function useAgentDevices(poll: (list: AgentDeviceList) => number | false, key = '') {
+export function useAgentDevices(poll: (list: AgentDeviceList) => number, key = '') {
   const [state, setState] = useState<{ key: string; list: AgentDeviceList } | null>(null)
   const [revision, setRevision] = useState(0)
   const pollRef = useRef(poll)
@@ -42,10 +42,10 @@ export function useAgentDevices(poll: (list: AgentDeviceList) => number | false,
           setState({ key, list: next })
           const delay = pollRef.current(next)
 
-          if (delay !== false) schedule(delay)
+          if (delay > 0) schedule(delay)
         },
         () => {
-          if (cancelled || !last || pollRef.current(last) === false) return
+          if (cancelled || !last || pollRef.current(last) === 0) return
           failures += 1
           schedule(Math.min(BOX_CREATING_POLL_MS * 2 ** failures, MAX_RETRY_MS))
         },
@@ -73,5 +73,5 @@ export function useAgentDevices(poll: (list: AgentDeviceList) => number | false,
 
 /** Whether this backend can make Boxes; false until it says so. */
 export function useBoxAvailable(): boolean {
-  return useAgentDevices(() => false).list?.boxAvailable === true
+  return useAgentDevices(() => 0).list?.boxAvailable === true
 }

@@ -27,30 +27,27 @@ export function BoxSection({
   const thisComputer = useThisComputer()
   const [creating, setCreating] = useState(false)
   const [join, setJoin] = useState<BoxJoin | null>(null)
-  const instancesRef = useRef(instances)
   const previous = useRef<AgentDevice[]>([])
-
-  useEffect(() => {
-    instancesRef.current = instances
-  })
-
-  // Quickly while a Box is starting or one of its agents is not signed in yet; never while hidden.
+  // While a sign-in dialog is open, and for two minutes after, the agents' state changes on its own.
+  const signInUntil = useRef(0)
   const { list, reload } = useAgentDevices((next: AgentDeviceList) =>
-    instancesRef.current.some(
-      (instance) => instance.kind === 'local' && instance.local?.signedIn !== true,
-    )
-      ? 1_500
-      : boxPollMs(next.devices),
+    boxPollMs(next.devices, Date.now() < signInUntil.current),
   )
 
   useEffect(() => {
     if (!list) return
-    // The agents under each Box come from the runtime catalog: refresh it with the list.
-    window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
+    // The agents under each Box come from the runtime catalog: refresh it when the list changes.
+    if (JSON.stringify(previous.current) !== JSON.stringify(list.devices))
+      window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
     for (const device of vanishedBoxes(previous.current, list.devices))
       toast.error('Box setup failed', `${device.label} could not start and was removed.`)
     previous.current = list.devices
   }, [list])
+
+  const watchSignIn = (open: boolean) => {
+    signInUntil.current = open ? Infinity : Date.now() + 2 * 60_000
+    reload()
+  }
 
   if (!list?.boxAvailable) return null
 
@@ -118,6 +115,7 @@ export function BoxSection({
               device={device}
               agents={boxAgents(device.deviceId, instances)}
               onChanged={reload}
+              onSignIn={watchSignIn}
             />
           ))}
         </ul>

@@ -8,7 +8,6 @@ import { useRuntimeInstances } from '../../hooks/useRuntimeInstances'
 import { useRuntimeQuotas } from '../../hooks/useRuntimeQuotas'
 import { useWorkspaceTab } from '../../hooks/useWorkspaceTab'
 
-import { AddAgentDialog } from './AddAgentDialog'
 import { BoxSection } from './BoxSection'
 import { RuntimeInstanceCard } from './RuntimeInstanceCard'
 import { RuntimeQuotaHistory } from './RuntimeQuotaHistory'
@@ -34,7 +33,6 @@ export function AgentSection({
   onCount: (count: number) => void
   onLoading: (loading: boolean) => void
 }) {
-  const [adding, setAdding] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   // Apart from the selection, so the panel keeps its agent while it slides shut.
   const [open, setOpen] = useState(false)
@@ -90,14 +88,6 @@ export function AgentSection({
       onKeyDown={closeOnEscape}
       className="t-agents-page flex min-h-0 flex-1 flex-col overflow-hidden"
     >
-      {adding && (
-        <AddAgentDialog
-          key={teamId}
-          teamId={teamId}
-          onClose={() => setAdding(false)}
-          onAdded={select}
-        />
-      )}
       {catalog.error && (
         <div className="m-4 flex items-center gap-3 rounded-lg border border-error/20 bg-error/5 px-4 py-3 text-sm text-error">
           {catalog.error}

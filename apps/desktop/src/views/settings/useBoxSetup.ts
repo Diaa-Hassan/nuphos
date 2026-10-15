@@ -21,7 +21,7 @@ export function useBoxSetup(
   const agents = deviceId ? boxAgents(deviceId, instances) : []
   const { list } = useAgentDevices(
     (next) =>
-      boxSetupPhase(deviceId, next.devices, agents) === 'starting' ? BOX_CREATING_POLL_MS : false,
+      boxSetupPhase(deviceId, next.devices, agents) === 'starting' ? BOX_CREATING_POLL_MS : 0,
     deviceId ?? '',
   )
   const devices = deviceId ? (list?.devices ?? null) : null
