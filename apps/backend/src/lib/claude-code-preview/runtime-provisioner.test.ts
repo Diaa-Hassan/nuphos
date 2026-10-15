@@ -131,30 +131,24 @@ beforeEach(async () => {
 })
 
 describe('runtime object builders', () => {
-  test.each(['codex', 'claude-code'] as const)(
-    '%s agents receive memory budgets across env_clear',
-    (provider) => {
-      const data = runtimeConfigMapObject('openab-runtimes', provider).data as Record<
-        string,
-        string
-      >
-      const parsed = Bun.TOML.parse(data['config.toml']!) as {
-        agent: { env: Record<string, string>; inherit_env?: string[] }
-        pool: { max_sessions: number; session_ttl_hours: number }
-      }
+  test.each(OPENAB_PROVIDERS)('%s agents receive memory budgets across env_clear', (provider) => {
+    const data = runtimeConfigMapObject('openab-runtimes', provider).data as Record<string, string>
+    const parsed = Bun.TOML.parse(data['config.toml']!) as {
+      agent: { env: Record<string, string>; inherit_env?: string[] }
+      pool: { max_sessions?: number; session_ttl_hours: number }
+    }
 
-      // Per-tool budgets stay well under the container limit: the cgroup runs
-      // with memory.oom.group=1, so one tool reaching it kills every pooled session.
-      expect(parsed.agent.env.GOMEMLIMIT).toBe('1536MiB')
-      expect(parsed.agent.env.NODE_OPTIONS).toBe('--max-old-space-size=1536')
-      expect(parsed.agent.env.GOFLAGS).toBe('-p=2')
-      expect(parsed.agent.env.MAKEFLAGS).toBe('-j2')
-      expect(parsed.agent.env.BASH_ENV).toBe('/opt/nuphos-runtime/runtime-guard.sh')
-      expect(parsed.pool.max_sessions).toBe(8)
-      expect(parsed.pool.session_ttl_hours).toBe(4)
-      expect(parsed.agent.inherit_env).toBeUndefined()
-    },
-  )
+    // Per-tool budgets stay well under the container limit: the cgroup runs
+    // with memory.oom.group=1, so one tool reaching it kills every pooled session.
+    expect(parsed.agent.env.GOMEMLIMIT).toBe('1536MiB')
+    expect(parsed.agent.env.NODE_OPTIONS).toBe('--max-old-space-size=1536')
+    expect(parsed.agent.env.GOFLAGS).toBe('-p=2')
+    expect(parsed.agent.env.MAKEFLAGS).toBe('-j2')
+    expect(parsed.agent.env.BASH_ENV).toBe('/opt/nuphos-runtime/runtime-guard.sh')
+    expect(parsed.pool).not.toHaveProperty('max_sessions')
+    expect(parsed.pool.session_ttl_hours).toBe(4)
+    expect(parsed.agent.inherit_env).toBeUndefined()
+  })
 
   test('codex keeps full access when a pooled session is restored, not only when created', () => {
     const data = runtimeConfigMapObject('openab-runtimes', 'codex').data as Record<string, string>
