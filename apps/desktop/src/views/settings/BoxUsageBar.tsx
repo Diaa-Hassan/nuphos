@@ -36,9 +36,11 @@ export function BoxUsageBar({
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[12px] text-secondary">
       <span>
-        {usage.usedVcpus === null
-          ? `vCPU usage unavailable · limit ${String(usage.limitVcpus)} vCPU`
-          : `${String(usage.usedVcpus)} of ${String(usage.limitVcpus)} vCPU running`}
+        {usage.limitVcpus === 0
+          ? 'No Box plan'
+          : usage.usedVcpus === null
+            ? `vCPU usage unavailable · limit ${String(usage.limitVcpus)} vCPU`
+            : `${String(usage.usedVcpus)} of ${String(usage.limitVcpus)} vCPU running`}
       </span>
       {canUpgrade && usage.subscribed && (
         <Button size="sm" variant="secondary" disabled={busy} onClick={() => void open()}>

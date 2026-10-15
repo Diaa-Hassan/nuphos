@@ -83,7 +83,7 @@ export function BoxSection({
   }, [revision, teamId])
 
   const owned = boxes(list?.devices ?? [])
-  const blocked = newBoxBlockedReason(usage)
+  const blocked = newBoxBlockedReason(usage, isAdmin)
 
   if (!list?.boxAvailable && owned.length === 0) return null
 

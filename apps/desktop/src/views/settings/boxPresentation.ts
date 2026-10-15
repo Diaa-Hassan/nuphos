@@ -58,10 +58,13 @@ export function boxSetupPhase(
 export const BOX_VCPU_TIERS = [4, 12, 24]
 
 /** Why the team's vCPU limit keeps a new Box from starting; null when one can start. */
-export function newBoxBlockedReason(usage: BoxUsage | null): string | null {
+export function newBoxBlockedReason(usage: BoxUsage | null, isAdmin: boolean): string | null {
+  if (usage?.limitVcpus === 0)
+    return isAdmin
+      ? 'Your team has no Box plan yet. Upgrade to start a Box.'
+      : 'Ask a team administrator to add a Box plan.'
   if (usage?.limitVcpus == null || usage.usedVcpus === null || usage.boxVcpus === null) return null
   if (usage.usedVcpus + usage.boxVcpus <= usage.limitVcpus) return null
-  if (usage.limitVcpus === 0) return 'Your team has no Box plan yet. Upgrade to start a Box.'
 
   return `Your running Boxes use ${String(usage.usedVcpus)} of ${String(usage.limitVcpus)} vCPU, and a new Box needs ${String(usage.boxVcpus)}. Pause a Box or upgrade.`
 }

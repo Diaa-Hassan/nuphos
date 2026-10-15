@@ -98,10 +98,22 @@ test('New Box is blocked when the next Box would pass the team limit', () => {
     billingUrl: null,
   })
 
-  assert.equal(newBoxBlockedReason(null), null)
-  assert.equal(newBoxBlockedReason(usage(null, 40)), null)
-  assert.equal(newBoxBlockedReason(usage(12, null)), null)
-  assert.equal(newBoxBlockedReason(usage(12, 8)), null)
-  assert.match(newBoxBlockedReason(usage(12, 12)) ?? '', /12 of 12 vCPU/)
-  assert.match(newBoxBlockedReason(usage(0, 0)) ?? '', /no Box plan/)
+  assert.equal(newBoxBlockedReason(null, true), null)
+  assert.equal(newBoxBlockedReason(usage(null, 40), true), null)
+  assert.equal(newBoxBlockedReason(usage(12, null), true), null)
+  assert.equal(newBoxBlockedReason(usage(12, 8), true), null)
+  assert.match(newBoxBlockedReason(usage(12, 12), true) ?? '', /12 of 12 vCPU/)
+})
+
+test('without a plan, administrators are told to upgrade and members to ask one', () => {
+  const noPlan = {
+    limitVcpus: 0,
+    subscribed: false,
+    usedVcpus: null,
+    boxVcpus: 4,
+    billingUrl: null,
+  }
+
+  assert.match(newBoxBlockedReason(noPlan, true) ?? '', /Upgrade to start a Box/)
+  assert.equal(newBoxBlockedReason(noPlan, false), 'Ask a team administrator to add a Box plan.')
 })
