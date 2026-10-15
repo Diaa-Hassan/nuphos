@@ -288,13 +288,3 @@ console.log(
 )
 await controller.setUser(owner)
 await signInClaude(owner)
-// Notice a sign-in made from Nuphos without a restart: every 2 s for 10 minutes, then each minute.
-const watchedFrom = Date.now()
-const watchSignIn = (): void => {
-  if (stopping) return
-  if (Object.values(controller.state().agents).some((a) => a.cli?.installed && !a.cli.loggedIn))
-    void controller.refresh(false)
-  setTimeout(watchSignIn, Date.now() - watchedFrom < 600_000 ? 2_000 : 60_000)
-}
-
-watchSignIn()

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 
-import { namedTunnelUrlFromConfig } from './dev-tunnel-config.ts'
+import { namedTunnelUrlFromConfig } from './dev-tunnel.ts'
 
 const config = `
 ingress:
