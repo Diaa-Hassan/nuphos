@@ -66,22 +66,35 @@ export function listDesktops(pool) {
     .map(({ display, sessionId, since }) => ({ display, sessionId, since }))
 }
 
+const writeLock = (pool, display, sessionId, pid) =>
+  writeFileSync(
+    lockFile(pool, display),
+    JSON.stringify({ sessionId, pid, since: new Date().toISOString() }),
+    { mode: 0o600 },
+  )
+
 /**
  * The session's display: its own if it already holds one, else the lowest free
- * one. Slots are files created atomically; a slot whose owner died is reclaimed.
+ * one. Slots are files created atomically; one whose owner died stays taken
+ * until `reap` frees it, so two sessions starting together cannot tear down
+ * each other's fresh claim.
  */
 export function claimDisplay(pool, sessionId, size, pid = process.pid) {
   mkdirSync(pool, { recursive: true, mode: 0o700 })
   for (let display = FIRST_DISPLAY; display < FIRST_DISPLAY + size; display++) {
     const held = readLock(pool, display)
 
-    if (held?.sessionId === sessionId && alive(held.pid)) return display
-    if (held && !alive(held.pid)) teardown(pool, display)
+    if (held?.sessionId === sessionId) {
+      // Its own slot, perhaps from a run that died: the lock names this process now.
+      if (!alive(held.pid)) writeLock(pool, display, sessionId, pid)
+
+      return display
+    }
     try {
       const fd = openSync(lockFile(pool, display), 'wx', 0o600)
 
-      writeFileSync(fd, JSON.stringify({ sessionId, pid, since: new Date().toISOString() }))
       closeSync(fd)
+      writeLock(pool, display, sessionId, pid)
 
       return display
     } catch {
@@ -99,9 +112,8 @@ export function teardown(pool, display) {
   const xdg = xdgDir(pool, display)
 
   kill(`^Xvnc :${String(display)} `)
-  kill(`XDG_RUNTIME_DIR=${xdg} `)
-  for (const line of readLock(pool, display)?.children ?? [])
-    if (alive(line)) process.kill(line, 'SIGTERM')
+  // The session bus and whatever was started with its address (xfce4-session and its children).
+  kill(`${xdg}/bus`)
   rmSync(lockFile(pool, display), { force: true })
   rmSync(xdg, { recursive: true, force: true })
 }
@@ -149,6 +161,8 @@ export async function startDisplay(pool, display, home) {
       `nuphos-${String(display)}`,
       '-nolisten',
       'tcp',
+      '-FrameRate',
+      '10',
     ])
     for (let i = 0; i < 50 && !existsSync(socket); i++) await sleep(200)
     if (!existsSync(socket)) throw new Error(`Xvnc :${String(display)} did not start`)
@@ -160,13 +174,7 @@ export async function startDisplay(pool, display, home) {
       { env, stdio: 'ignore' },
     )
   }
-  if (
-    spawnSync('pgrep', ['-f', `^xfce4-session.*|XDG_RUNTIME_DIR=${xdg}`], { stdio: 'ignore' })
-      .status !== 0 ||
-    !xfceRunning(display)
-  ) {
-    detached('env', [`XDG_RUNTIME_DIR=${xdg}`, 'xfce4-session'])
-  }
+  if (!xfceRunning(display)) detached('env', [`XDG_RUNTIME_DIR=${xdg}`, 'xfce4-session'])
 
   return env
 }
@@ -224,7 +232,7 @@ async function serve() {
 }
 
 /** Displays whose session is gone, and Xvnc servers (:2 and up) that no session holds. */
-function reap(pool) {
+export function reap(pool) {
   const held = new Set()
 
   if (existsSync(pool))

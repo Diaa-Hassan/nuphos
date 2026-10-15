@@ -5,6 +5,7 @@ import { createLocalTunnelBus } from '@/lib/agent/devices/local-runtime/bus'
 import { createMemoryPresenceStore } from '@/lib/agent/devices/local-runtime/presence'
 import { holderChannel, streamChannel } from '@/lib/agent/devices/local-runtime/protocol'
 import { useAgentDb } from '@/lib/test/doubles/agent-db'
+import { useRuntimeCatalog } from '@/lib/test/doubles/runtime-catalog'
 
 import { runtimeDesktopEvents, runtimeDesktopTarget } from './runtime-desktop'
 
@@ -17,6 +18,13 @@ const runtimeId = localRuntimeId({ userId: 'owner', deviceId: 'box', provider: '
 let conversation: Record<string, unknown> | null
 
 useAgentDb({ getReadableConversation: () => conversation })
+useRuntimeCatalog({
+  requireRuntimeInstance: (async (_team: string, _runtime: string, user?: string) => {
+    if (user !== 'owner') throw new Error('runtime not found')
+
+    return { id: runtimeId, label: 'Box', status: 'active', kind: 'local', provider: 'claude-code' }
+  }) as never,
+})
 
 const presence = createMemoryPresenceStore()
 const bus = createLocalTunnelBus()
@@ -36,6 +44,7 @@ test('only the owner reaches a display the Box reports as this conversation’s'
     userId: 'owner',
     deviceId: 'box',
     teamId: 'team',
+    sessionId: 'chat',
     display: 2,
     viewer: 'owner',
   })
@@ -84,14 +93,16 @@ test('frames cross the tunnel both ways, after the host learns the display and t
   })
   events.onOpen(new Event('open'), ws)
   await Bun.sleep(20)
-  expect(toHost).toEqual([JSON.stringify({ t: 'open', display: 2, viewer: 'owner' })])
+  expect(toHost).toEqual([
+    JSON.stringify({ t: 'open', sessionId: 'chat', display: 2, viewer: 'owner' }),
+  ])
   events.onMessage(new MessageEvent('message', { data: 'UkZC' }), ws)
   await Bun.sleep(20)
   expect(toHost.at(-1)).toBe('UkZC')
   expect(toClient).toEqual([
-    `echo:${JSON.stringify({ t: 'open', display: 2, viewer: 'owner' })}`,
+    `echo:${JSON.stringify({ t: 'open', sessionId: 'chat', display: 2, viewer: 'owner' })}`,
     'echo:UkZC',
   ])
-  events.onMessage(new MessageEvent('message', { data: 'x'.repeat(4 * 1024 * 1024 + 1) }), ws)
+  events.onMessage(new MessageEvent('message', { data: 'x'.repeat(64 * 1024 + 1) }), ws)
   expect(closed).toEqual([1008, 'Invalid desktop frame'])
 })

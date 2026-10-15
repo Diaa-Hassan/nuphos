@@ -1,4 +1,4 @@
-import { writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { connect } from 'node:net'
 import path from 'node:path'
 
@@ -14,11 +14,13 @@ const CONTROL_RENEW_MS = 20_000
 
 /**
  * One viewer of one session's desktop, multiplexed on the device tunnel like
- * the other streams. The first frame names the display and the viewer; from
- * then on frames are RFB bytes in base64 both ways, except a control frame
- * from the viewer, which hands the desktop to them or back to the agent: while
- * a human holds it, that display's computer-use proxy refuses input tools. The
- * stream closing hands it back.
+ * the other streams. The first frame names the session, the display and the
+ * viewer, and the display is connected only if its lock is that session's.
+ * From then on frames are RFB bytes in base64 both ways: the viewer is the
+ * owner and may always type. A control frame from the viewer hands the desktop
+ * to them or back to the agent: while a human holds it, that display's
+ * computer-use proxy refuses input tools. The stream closing hands it back.
+ * Two viewers of one desktop share the lock, last writer wins.
  */
 export class VncStream implements SocketLike {
   readyState = 0
@@ -58,14 +60,15 @@ export class VncStream implements SocketLike {
     try {
       const frame = JSON.parse(data) as {
         t?: string
+        sessionId?: string
         display?: number
         viewer?: string
         owner?: string
       }
-      const { display } = frame
+      const { display, sessionId } = frame
 
-      if (frame.t === 'open' && !this.socket && display !== undefined && Number.isInteger(display))
-        this.open(display, frame.viewer ?? '')
+      if (frame.t === 'open' && !this.socket && sessionId && typeof display === 'number')
+        this.open(sessionId, display, frame.viewer ?? '')
       else if (frame.t === 'control' && this.control) this.handOver(frame.owner === 'human')
       else throw new Error('Invalid desktop frame')
     } catch {
@@ -73,7 +76,21 @@ export class VncStream implements SocketLike {
     }
   }
 
-  private open(display: number, viewer: string): void {
+  /** The lock file is the authority on whose display this is (desktop-session.mjs). */
+  private holder(display: number): string | undefined {
+    try {
+      const lock = JSON.parse(
+        readFileSync(path.join(this.pool, `${String(display)}.lock`), 'utf8'),
+      ) as { sessionId?: string }
+
+      return lock.sessionId
+    } catch {
+      return undefined
+    }
+  }
+
+  private open(sessionId: string, display: number, viewer: string): void {
+    if (this.holder(display) !== sessionId) throw new Error('Not this session’s display')
     this.viewer = viewer.replace(/[^\w-]/gu, '')
     this.control = path.join(this.pool, `${String(display)}.xdg`, 'instabox-control')
     const socket = connect(this.port(display), '127.0.0.1')
