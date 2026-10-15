@@ -49,6 +49,8 @@ class ReviewVisualFixtureDeviceTest {
             } } }
         }
         compose.onNodeWithContentDescription("Ask Nuphos anything").performTextInput("Review this change before sending.")
+        androidx.test.espresso.Espresso.closeSoftKeyboard()
+        compose.waitForIdle()
         capture("composer")
     }
     @Test fun quotaPicker() {
