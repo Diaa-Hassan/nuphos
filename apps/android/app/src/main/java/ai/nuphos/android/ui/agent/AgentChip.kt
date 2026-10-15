@@ -14,25 +14,23 @@ import androidx.compose.ui.unit.dp
 import ai.nuphos.android.session.RuntimeSelections
 
 /**
- * The Agent that the next chat starts on, shown in the composer control row
- * next to the IAM and permission-mode chips — the same place Desktop keeps
- * its runtime selector. Tapping opens the Agent picker sheet.
+ * The current Agent, shown next to Send. Tapping opens its picker or usage details.
  */
 @Composable
-fun AgentChip(selection: RuntimeSelections.Selection?, enabled: Boolean, onClick: () -> Unit) {
+fun AgentChip(selection: RuntimeSelections.Selection?, enabled: Boolean, onClick: () -> Unit, labelOverride: String? = null, modifier: Modifier = Modifier) {
     val selected = selection?.selected
-    val label = when {
+    val label = labelOverride ?: when {
         selection?.reselectionRequired == true -> "Choose an available Agent"
         selected != null -> selected.label
         else -> "Choose an Agent"
     }
     FilterChip(
-        selected = selected != null,
+        modifier = modifier,
+        selected = selected != null || labelOverride != null,
         enabled = enabled,
         onClick = onClick,
-        // Capped so a long Agent name truncates instead of pushing the IAM and
-        // mode chips off screen in the scrolling row.
+        // Leave room for Send even on narrow screens.
         label = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 160.dp)) },
-        leadingIcon = { Icon(Icons.Outlined.AutoAwesome, contentDescription = "Agent for new chats", modifier = Modifier.size(16.dp)) },
+        leadingIcon = { Icon(Icons.Outlined.AutoAwesome, contentDescription = if (labelOverride == null) "Agent for new chats" else "Conversation Agent", modifier = Modifier.size(16.dp)) },
     )
 }

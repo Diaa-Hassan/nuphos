@@ -39,6 +39,11 @@ class AccountParityFixtureDeviceTest {
     private val authSnapshot = mutableMapOf<String, Any?>()
     private lateinit var app: NuphosApplication
     private var accessSnapshot: Any? = null
+    private val extraAuthSessions = mutableListOf<AuthSession>()
+    private fun settleAuth(session: AuthSession) {
+        val scope = AuthSession::class.java.getDeclaredField("scope").also { it.isAccessible = true }.get(session) as CoroutineScope
+        runBlocking { scope.coroutineContext[Job]!!.children.toList().forEach { it.cancelAndJoin() } }
+    }
     private var savedToken: String? = null
     private var preferences: Map<String, *> = emptyMap<String, Any>()
     @Volatile private var consentReadMode = "valid"
@@ -64,6 +69,7 @@ class AccountParityFixtureDeviceTest {
     private val network = object : ExternalResource() {
         override fun before() {
             app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as NuphosApplication
+            settleAuth(app.authSession)
             savedToken = app.tokenStore.read()
             preferences = app.getSharedPreferences("nuphos.prefs", Context.MODE_PRIVATE).all.toMap()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -152,6 +158,7 @@ class AccountParityFixtureDeviceTest {
                     draftNavigation && request.method == "GET" && path == "/teams/bbbbbbbbbbbbbbbbbbbbbbbb/connectors" -> """{}"""
                     draftNavigation && request.method == "GET" && path == "/teams/bbbbbbbbbbbbbbbbbbbbbbbb/members" -> """{"members":[]}"""
                     draftNavigation && request.method == "GET" && path == "/agent/plan-approval-policy" && request.url.queryParameter("teamId") == "bbbbbbbbbbbbbbbbbbbbbbbb" -> """{"requesterApprovalRequired":true,"minimumOtherApprovals":0}"""
+                    request.method == "GET" && path.matches(Regex("/teams/[a-f0-9]{24}/agent-runtimes/quota")) -> """{"quotas":[]}"""
                     request.method == "GET" && path == "/agent/conversations" -> """{"conversations":[]}"""
                     request.method == "GET" && path == "/agent/plans" -> """{"plans":[]}"""
                     else -> { unexpected += read; status = 599; "{}" }
@@ -169,6 +176,8 @@ class AccountParityFixtureDeviceTest {
 
         override fun after() {
             releaseHeld.countDown()
+            extraAuthSessions.forEach(::settleAuth)
+            settleAuth(app.authSession)
             // The inner rule has closed Activity. Restore exact in-memory identity and access.
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
                 authSnapshot.forEach { (name, value) ->
@@ -207,7 +216,7 @@ class AccountParityFixtureDeviceTest {
     private fun count(method: String, path: String) = requests.count { it.method == method && it.path == path }
     private fun awaitText(text: String) {
         try {
-            compose.waitUntil(8_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(8_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         } catch (e: Throwable) {
             val file = java.io.File(app.cacheDir, "account-fixture-failure.png")
             java.io.FileOutputStream(file).use { output ->
@@ -229,22 +238,44 @@ class AccountParityFixtureDeviceTest {
     private fun enter(label: String, value: String) = compose.onNodeWithText(label).performScrollTo().performTextReplacement(value)
     private fun submits() = count("POST", "/auth/account-deletion")
 
+    @Test fun restoredAcceptedConsentNeverShowsTheNoticeWhileRemoteReadIsPending() {
+        awaitText("Before you use AI agents")
+        compose.waitUntil(8_000) { !app.authSession.consentBusy }
+        accepted = true
+        heldPath = "/auth/ai-consent"
+        val restored = AuthSession(app, app.tokenStore).also { extraAuthSessions += it }
+        compose.runOnIdle {
+            compose.activity.setContent {
+                ai.nuphos.android.ui.theme.NuphosTheme { ai.nuphos.android.ui.NuphosRoot(restored) }
+            }
+        }
+        compose.waitUntil(3_000) { heldEntered.count == 0L }
+        compose.onNodeWithText("Before you use AI agents").assertDoesNotExist()
+        releaseHeld.countDown()
+        compose.waitUntil(8_000) { restored.aiAllowed && !restored.consentBusy }
+        compose.onNodeWithText("Before you use AI agents").assertDoesNotExist()
+        assertEquals(0, count("PUT", "/auth/ai-consent"))
+    }
+
     @Test fun rootActivityRecreationRetainsTextAndConfirmedWithdrawalFencesOldComposer() {
         draftTeam = true
         awaitText("Before you use AI agents")
         tap("Agree and continue")
-        compose.waitUntil(8_000) { compose.onAllNodesWithContentDescription("Ask Nuphos anything").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(8_000) { compose.onAllNodes(hasContentDescription("Ask Nuphos anything") and isEnabled()).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         val text = "  activity draft\n  "
         compose.onNodeWithContentDescription("Ask Nuphos anything").performTextReplacement(text)
         val auth = app.authSession
         val generation = auth.generation
         val destination = ai.nuphos.android.session.ComposerDrafts.Destination.NewChat
         val lease = auth.composerDrafts.bind(requireNotNull(auth.user).id, "aaaaaaaaaaaaaaaaaaaaaaaa", destination)!!
+        assertEquals("The loaded composer must save the draft before recreation", text, lease.text)
         compose.activityRule.scenario.recreate()
-        compose.waitUntil(8_000) { compose.onAllNodesWithContentDescription("Ask Nuphos anything").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithContentDescription("Ask Nuphos anything").assertTextEquals(text)
+        compose.waitUntil(8_000) { compose.onAllNodes(hasContentDescription("Ask Nuphos anything") and isEnabled()).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         assertSame(auth, (compose.activity.application as NuphosApplication).authSession)
         assertEquals(generation, auth.generation)
+        assertEquals("Recreation changed the original draft lease", text, lease.text)
+        assertEquals("Recreation changed the bound draft", text, auth.composerDrafts.bind(requireNotNull(auth.user).id, "aaaaaaaaaaaaaaaaaaaaaaaa", destination)!!.text)
+        compose.onNodeWithContentDescription("Ask Nuphos anything").assertTextEquals(text)
         compose.onNodeWithContentDescription("Profile").performClick()
         tap("Withdraw AI sharing consent")
         compose.onNodeWithText("Withdraw").performClick()
@@ -275,16 +306,16 @@ class AccountParityFixtureDeviceTest {
         fun input() = compose.onNodeWithContentDescription("Ask Nuphos anything")
         fun backToHistory() {
             compose.onNodeWithContentDescription("Back").performClick()
-            compose.waitUntil(8_000) { compose.onAllNodesWithText("Draft chat one", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(8_000) { compose.onAllNodesWithText("Draft chat one", useUnmergedTree = true).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         }
         fun openChat(title: String) {
             // On the small API 33 screen, expanded text and the IME can cover a row.
             val collapse = compose.onAllNodesWithContentDescription("Collapse composer")
-            if (collapse.fetchSemanticsNodes().isNotEmpty()) collapse.onFirst().performClick()
+            if (collapse.fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty()) collapse.onFirst().performClick()
             compose.runOnIdle { compose.activity.window.insetsController?.hide(android.view.WindowInsets.Type.ime()) }
-            compose.waitUntil(8_000) { compose.onAllNodesWithText(title, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(8_000) { compose.onAllNodesWithText(title, useUnmergedTree = true).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
             compose.onNodeWithText(title, useUnmergedTree = true).performScrollTo().performClick()
-            compose.waitUntil(8_000) { compose.onAllNodesWithContentDescription("Back").fetchSemanticsNodes().isNotEmpty() }
+            compose.waitUntil(8_000) { compose.onAllNodesWithContentDescription("Back").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         }
         try {
             input().performTextReplacement(" new first team ")
@@ -408,7 +439,7 @@ class AccountParityFixtureDeviceTest {
         awaitText("Agree and continue")
         tap("Agree and continue")
         compose.waitUntil(8_000) { count("GET", "/teams") > 0 }
-        compose.waitUntil(8_000) { compose.onAllNodesWithContentDescription("Profile").fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(8_000) { compose.onAllNodesWithContentDescription("Profile").fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         compose.onNodeWithContentDescription("Profile").performClick()
         tap("Withdraw AI sharing consent")
         compose.onNodeWithText("Withdraw").performClick()
@@ -442,7 +473,7 @@ class AccountParityFixtureDeviceTest {
         tap("Not now — manage my account")
         tap("Account deletion request")
         awaitText("Request permanent deletion")
-        compose.waitUntil(8_000) { compose.onAllNodes(hasText("Send verification code") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(8_000) { compose.onAllNodes(hasText("Send verification code") and isEnabled()).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         tap("Confirm with my password")
         // Appending one character must remain too short: the old password cannot survive.
         compose.onNodeWithText("Account password").performScrollTo().performTextInput("x")
@@ -468,7 +499,7 @@ class AccountParityFixtureDeviceTest {
     @Test fun emailCodeAmbiguousSubmitReconcilesUnknownStatusBeforeAnyManualRetry() {
         ambiguousSubmission = true
         deletion()
-        compose.waitUntil(8_000) { compose.onAllNodes(hasText("Send verification code") and isEnabled()).fetchSemanticsNodes().isNotEmpty() }
+        compose.waitUntil(8_000) { compose.onAllNodes(hasText("Send verification code") and isEnabled()).fetchSemanticsNodes(atLeastOneRootRequired = false).isNotEmpty() }
         tap("Send verification code")
         awaitText("Code sent — check your inbox")
         assertTrue("Code email body or authentication was incorrect", validEmailBody)

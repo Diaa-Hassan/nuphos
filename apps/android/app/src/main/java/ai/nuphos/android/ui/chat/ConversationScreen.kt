@@ -320,10 +320,13 @@ fun ConversationScreen(
                 val draftAuth = ai.nuphos.android.ui.LocalAuthSession.current
                 val draftAccount = draftAuth.user?.id
                 val draftTeam = session.teamId
-                val draft = remember(draftAccount, draftTeam, draftAuth.generation, ai.nuphos.android.session.AiAccess.revision) {
+                val draft = remember(draftAccount, draftTeam, sessionId, draftAuth.generation, ai.nuphos.android.session.AiAccess.revision) {
                     draftAccount?.let { draftAuth.composerDrafts.bind(it, draftTeam, ai.nuphos.android.session.ComposerDrafts.Destination.Chat(sessionId), ai.nuphos.android.session.AiAccess.bind(draftAuth.token.orEmpty())) }
                 }
+                val quotas = ai.nuphos.android.ui.agent.rememberRuntimeQuotas(draftAuth.token, session.teamId)
                 ChatComposer(
+                    agentLabel = session.runtimeDeviceLabel,
+                    agentQuota = session.runtimeId?.let { quotas[it] },
                     draft = draft,
                     draftingEnabled = draft != null && draftAuth.aiAllowed && store.selectedTeam != null,
                     isStreaming = session.isStreaming && !session.isNative,

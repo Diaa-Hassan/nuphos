@@ -1,5 +1,8 @@
 package ai.nuphos.android.ui.chat
 
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -8,11 +11,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandHorizontally
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -135,6 +136,8 @@ fun ChatComposer(
     onModeChange: ((PermissionMode) -> Unit)? = null,
     agent: RuntimeSelections.Selection? = null,
     agentEnabled: Boolean = true,
+    agentLabel: String? = null,
+    agentQuota: ai.nuphos.android.data.RuntimeQuota? = null,
     onChooseAgent: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -148,7 +151,7 @@ fun ChatComposer(
         if (!draftingEnabled) return
         if (draft != null) draft.write(value) else localText = value
     }
-    val attachments = remember { mutableStateListOf<ComposerAttachment>() }
+    val attachments = remember(draft) { mutableStateListOf<ComposerAttachment>() }
     DisposableEffect(attachments) {
         onDispose {
             // Successful Send clears this list after ownership moves to the session.
@@ -157,6 +160,7 @@ fun ChatComposer(
         }
     }
     var menu by remember { mutableStateOf(false) }
+    var showAgentUsage by remember { mutableStateOf(false) }
     var showIam by remember { mutableStateOf(false) }
     var showMode by remember { mutableStateOf(false) }
     var focused by remember { mutableStateOf(false) }
@@ -261,24 +265,18 @@ fun ChatComposer(
             }
 
             if (showControls) {
-                // The row normally shows with the expanded composer, but while
-                // no Agent is chosen the chip is the only way to pick one, so
-                // it stays on screen even when the composer is collapsed.
-                val agentUnresolved = onChooseAgent != null && agent?.selected == null
                 AnimatedVisibility(
-                    visible = expanded || agentUnresolved,
+                    visible = expanded,
                     enter = fadeIn() + expandVertically(),
                     exit = fadeOut() + shrinkVertically(),
                 ) {
-                    // Scrolls sideways: an Agent label plus IAM and mode will not
-                    // always fit one phone width.
+                    // IAM and permission mode remain in the expandable control row.
                     Row(
                         Modifier
                             .horizontalScroll(rememberScrollState())
                             .padding(horizontal = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        if (onChooseAgent != null) AgentChip(agent, enabled = agentEnabled, onClick = onChooseAgent)
                         FilterChip(
                             selected = !resolvedSelection.isEmpty,
                             onClick = { showIam = true },
@@ -344,18 +342,7 @@ fun ChatComposer(
                         }
                     },
                 )
-                AnimatedVisibility(
-                    visible = !expanded,
-                    enter = fadeIn() + expandHorizontally(),
-                    exit = fadeOut() + shrinkHorizontally(),
-                ) {
-                    TrailingButton(
-                        isStreaming = isStreaming,
-                        hasPayload = hasPayload && canSubmit && !picking,
-                        onStop = onStop,
-                        onSend = ::send,
-                    )
-                }
+
             }
 
             AnimatedVisibility(
@@ -376,12 +363,7 @@ fun ChatComposer(
                 }
             }
 
-            AnimatedVisibility(
-                visible = expanded,
-                enter = fadeIn() + expandVertically(),
-                exit = fadeOut() + shrinkVertically(),
-            ) {
-                Row(
+            Row(
                     Modifier.padding(start = 6.dp, end = 6.dp, bottom = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -401,6 +383,12 @@ fun ChatComposer(
                         }
                     }
                     Spacer(Modifier.weight(1f))
+                    if (onChooseAgent != null || agentLabel != null) {
+                        AgentChip(agent, enabled = agentEnabled,
+                            onClick = onChooseAgent ?: { showAgentUsage = true },
+                            labelOverride = agentLabel, modifier = Modifier.weight(3f, fill = false))
+                        Spacer(Modifier.width(8.dp))
+                    }
                     if (isStreaming && hasText && canSubmit) {
                         IconButton(onClick = ::send, modifier = Modifier.size(36.dp)) {
                             Icon(Icons.Outlined.PlaylistAdd, contentDescription = "Queue message")
@@ -412,9 +400,14 @@ fun ChatComposer(
                         onStop = onStop,
                         onSend = ::send,
                     )
-                }
             }
         }
+    }
+    if (showAgentUsage) {
+        AlertDialog(onDismissRequest = { showAgentUsage = false },
+            title = { Text(agentLabel ?: "Agent usage") },
+            text = { ai.nuphos.android.ui.agent.RuntimeUsage(agentQuota) },
+            confirmButton = { TextButton(onClick = { showAgentUsage = false }) { Text("Done") } })
     }
     if (showIam && store != null) {
         CredentialPickerSheet(

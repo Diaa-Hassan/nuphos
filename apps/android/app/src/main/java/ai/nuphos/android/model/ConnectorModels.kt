@@ -25,6 +25,17 @@ data class ConnectorProvider(
     val oauth: Boolean = false,
     val note: String? = null,
 ) {
+    val category: String get() = when (key) {
+        "aws", "gcp", "azure", "cloudflare", "linode", "hetzner", "tencent", "aliyun", "volcengine", "huawei", "zeabur", "onprem" -> "Infrastructure"
+        "betterstack", "uptimeKuma", "grafana", "sentry", "posthog" -> "Observability"
+        "tailscale" -> "Networking"
+        "vanta", "secureframe", "sonarqube" -> "Compliance"
+        "github", "gitlab" -> "Source control"
+        "linear", "jira", "asana" -> "Project management"
+        "notion", "upstash" -> "Document"
+        "resend" -> "Email"
+        else -> "Communication"
+    }
     val canAdd get() = fields.isNotEmpty() || oauth || key == "github"
     val callbackHost get() = "$key-callback"
 

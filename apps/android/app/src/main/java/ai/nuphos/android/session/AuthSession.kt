@@ -60,7 +60,7 @@ class AuthSession(
     var profileError: String? by mutableStateOf(null)
         private set
     val aiAllowed: Boolean get() = token?.let { AiAccess.allows(it) } == true
-    val composerDrafts = ComposerDrafts()
+    val composerDrafts = ComposerDrafts(ai.nuphos.android.data.ComposerDraftPreferences(app))
     val runtimeSelections = RuntimeSelections()
     var workspaceWriteReview = WorkspaceWriteReview()
         private set
