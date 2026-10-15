@@ -99,32 +99,36 @@ export function BoxRow({
             {state === 'error' ? 'Retry' : 'Resume'}
           </Button>
         )}
-        <Menu>
-          <MenuTrigger
-            aria-label={`Manage ${device.label}`}
-            disabled={busy}
-            className="flex h-7 w-7 items-center justify-center rounded-md text-tertiary hover:bg-zGray-800/60 hover:text-main"
-          >
-            <Ellipsis className="h-4 w-4" />
-          </MenuTrigger>
-          <MenuContent align="end">
-            {actions.pause && (
-              <MenuItem
-                onClick={() => void run('Could not pause Box', () => api.boxPause(device.deviceId))}
-              >
-                Pause
-              </MenuItem>
-            )}
-            {actions.remove && (
-              <>
-                <MenuSeparator />
-                <MenuItem destructive onClick={() => setConfirmDelete(true)}>
-                  Delete
+        {(actions.pause || actions.remove) && (
+          <Menu>
+            <MenuTrigger
+              aria-label={`Manage ${device.label}`}
+              disabled={busy}
+              className="flex h-7 w-7 items-center justify-center rounded-md text-tertiary hover:bg-zGray-800/60 hover:text-main"
+            >
+              <Ellipsis className="h-4 w-4" />
+            </MenuTrigger>
+            <MenuContent align="end">
+              {actions.pause && (
+                <MenuItem
+                  onClick={() =>
+                    void run('Could not pause Box', () => api.boxPause(device.deviceId))
+                  }
+                >
+                  Pause
                 </MenuItem>
-              </>
-            )}
-          </MenuContent>
-        </Menu>
+              )}
+              {actions.remove && (
+                <>
+                  <MenuSeparator />
+                  <MenuItem destructive onClick={() => setConfirmDelete(true)}>
+                    Delete
+                  </MenuItem>
+                </>
+              )}
+            </MenuContent>
+          </Menu>
+        )}
       </div>
       {state === 'running' && agents.length > 0 && (
         <ul className="basis-full space-y-1 pl-12">
