@@ -1,7 +1,6 @@
 // `nuphos agent`: this computer's local agents without Electron, on the user's own Node
 // next to the staged openab and adapters, with the Box's credential or the shared session.
 
-import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import path from 'node:path'
@@ -19,11 +18,12 @@ import {
   stableDeviceId,
 } from '../device-identity-core.ts'
 
-import { LOCAL_AGENT_PROVIDERS, findAgentCli, probeAgentCli, readAgentUsage } from './agent-cli.ts'
+import { LOCAL_AGENT_PROVIDERS, probeAgentCli, readAgentUsage } from './agent-cli.ts'
 import { prepareAgentHome } from './agent-home.ts'
-import { agentCliEnv, agentEnv, readBundle } from './config.ts'
+import { agentEnv, readBundle } from './config.ts'
 import { LocalRuntimeController } from './controller.ts'
-import { enableDesktopPool } from './desktop-pool.ts'
+import { signInClaude } from './cli-sign-in.ts'
+import { enableDesktopPool, listDesktops, watchDesktops } from './desktop-pool.ts'
 import { deviceCredentialFor, exitRevoked, tunnelUrlFor } from './device-credential.ts'
 import { LocalExecStream } from './exec-stream.ts'
 import { LocalFileStream } from './file-stream.ts'
@@ -89,11 +89,9 @@ function currentToken(): string | null {
 
 // A Linux Box with Xvnc gives every session its own desktop (see desktop-session.mjs).
 const desktopPool = enableDesktopPool(bundleRoot, dataDir)
+const desktopWrapper = path.join(bundleRoot, 'desktop-session.mjs')
 
-if (desktopPool)
-  console.log(
-    `Desktops for sessions: up to ${process.env.NUPHOS_DESKTOP_POOL_SIZE ?? '?'} in ${desktopPool}.`,
-  )
+if (desktopPool) console.log('Each session gets its own desktop on this computer.')
 const deviceCredential = await deviceCredentialFor({
   dataDir,
   apiUrl: apiUrl(),
@@ -176,8 +174,8 @@ const controller: LocalRuntimeController = new LocalRuntimeController({
       }),
     })
   },
-  createTunnel: (runtime, status, onChange) =>
-    new RuntimeTunnelClient({
+  createTunnel: (runtime, status, onChange) => {
+    tunnel = new RuntimeTunnelClient({
       connectBackend: () => {
         const fresh = deviceCredential?.credential ?? currentToken()
 
@@ -208,14 +206,26 @@ const controller: LocalRuntimeController = new LocalRuntimeController({
           'acp.v1',
         ])
       },
-      status,
+      // Which sessions hold a desktop here rides along with the agents' status.
+      status: () => ({
+        ...status(),
+        ...(desktopPool ? { desktops: listDesktops(desktopWrapper, desktopPool) } : {}),
+      }),
       onChange: (connected, superseded) => {
         onChange(connected, superseded)
         if (superseded) stop('Another Nuphos app on this computer took over the local agent.')
       },
-    }),
+    })
+
+    return tunnel
+  },
   log,
 })
+
+let tunnel: RuntimeTunnelClient | undefined
+
+// A desktop appearing or going changes the status; the pool directory says when.
+if (desktopPool) watchDesktops(desktopPool, () => tunnel?.sendStatus())
 
 /** One line per agent whenever what the user would see changes. */
 function report(): void {
@@ -238,32 +248,6 @@ function report(): void {
   if (summary === lastSummary) return
   lastSummary = summary
   console.log(`${new Date().toLocaleTimeString()} ${device.label}\n${summary}`)
-}
-
-/** Sign in only when the same credential store used by the agent is not authenticated. */
-async function signInClaude(ownerId: string): Promise<void> {
-  const cli = controller.state().agents['claude-code'].cli
-
-  if (!cli?.installed || cli.loggedIn || !process.stdin.isTTY) return
-  const cliPath = findAgentCli('claude-code', process.env)
-  const userDir = path.join(dataDir, 'users', ownerId)
-  const agentHome = prepareAgentHome('claude-code', userDir, path.join(userDir, 'workspace'))
-
-  if (!cliPath || !agentHome) return
-  console.log(
-    process.platform === 'darwin'
-      ? 'Sign Claude Code in for Nuphos (updates the Claude login used by your terminal):'
-      : 'Sign Claude Code in for Nuphos (a separate sign-in from your own terminal):',
-  )
-  await new Promise((resolve) => {
-    spawn(cliPath, ['auth', 'login', '--claudeai'], {
-      env: agentCliEnv({ provider: 'claude-code', env: process.env, cliPath, agentHome }),
-      stdio: 'inherit',
-    })
-      .on('exit', resolve)
-      .on('error', resolve)
-  })
-  await controller.refresh(true, ['claude-code'])
 }
 
 function stop(message = 'Stopping the local agents…'): void {
@@ -297,4 +281,4 @@ setInterval(() => {
 
   if (!stopping && signedOut.length) void controller.refresh(false, signedOut)
 }, 30_000)
-await signInClaude(owner)
+await signInClaude(controller, dataDir, owner)

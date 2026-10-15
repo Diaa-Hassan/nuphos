@@ -54,6 +54,7 @@ const UNFILTERABLE_PAGE_KEYS = new Set([
   'team.new-tab',
   'team.browser',
   'team.terminal',
+  'team.desktop',
   'team.files',
   'team.agent',
   // Cloudflare IAM is a status panel: summary card, warnings and granted-scope

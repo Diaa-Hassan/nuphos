@@ -81,6 +81,16 @@ export const localRuntimeStatusSchema = z.object({
   localExec: z.boolean().optional(),
   localTerminal: z.boolean().optional(),
   localCua: z.boolean().optional(),
+  /** Desktops this computer runs for conversations (a Box: one X display per session). */
+  desktops: z
+    .array(
+      z.object({
+        display: z.number().int().min(2).max(255),
+        sessionId: z.string().min(1).max(128),
+      }),
+    )
+    .max(64)
+    .optional(),
   agents: z.object({
     'claude-code': localAgentStatusSchema.optional(),
     codex: localAgentStatusSchema.optional(),

@@ -21,6 +21,7 @@ import { ArchivedChatsView } from '../../views/ArchivedChatsView'
 import { AuditLogView } from '../../views/AuditLogView'
 import { BrowserView } from '../../views/BrowserView'
 import { TerminalView } from '../../views/TerminalView'
+import { DesktopView } from '../../views/DesktopView'
 import { MonitoringView } from '../../views/MonitoringView'
 import { PlansView } from '../../views/PlansView'
 import { RuntimeFilesView } from '../../views/RuntimeFilesView'
@@ -86,6 +87,8 @@ export function renderTeamToolPages(ctx: ScopeRenderContext): React.ReactNode | 
   }
 
   if (active === 'team.terminal') return <TerminalView teamId={scope.teamId} filter={filter} />
+
+  if (active === 'team.desktop') return <DesktopView filter={filter} />
 
   if (active === 'team.browser') {
     return (
