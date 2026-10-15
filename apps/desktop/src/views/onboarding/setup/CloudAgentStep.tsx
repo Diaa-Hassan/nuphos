@@ -1,12 +1,12 @@
 import { RadioGroup } from '@base-ui/react/radio-group'
-import { Cloud, Laptop, Server } from 'lucide-react'
+import { Box, Cloud, Laptop, Server } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '../../../components/ui/button'
 
 import { RadioCard, SetupScreen } from './SetupChrome'
 
-export type CloudChoice = 'managed' | 'self-hosted'
+export type CloudChoice = 'box' | 'self-hosted'
 
 function Comparison() {
   const columns = [
@@ -49,17 +49,14 @@ function Comparison() {
 /** Step 2: why a cloud agent, then which kind — or, for non-admins, who adds one. */
 export function CloudAgentStep({
   isAdmin,
-  busy,
   onSkip,
   onChoose,
 }: {
   isAdmin: boolean
-  /** Leaving is removing an unsigned agent this flow created. */
-  busy: boolean
   onSkip: () => void
   onChoose: (choice: CloudChoice) => void
 }) {
-  const [choice, setChoice] = useState<CloudChoice>('managed')
+  const [choice, setChoice] = useState<CloudChoice>('box')
 
   return (
     <SetupScreen
@@ -68,13 +65,11 @@ export function CloudAgentStep({
       actions={
         <>
           {isAdmin && (
-            <Button variant="ghost" disabled={busy} onClick={onSkip}>
+            <Button variant="ghost" onClick={onSkip}>
               Skip for now
             </Button>
           )}
-          <Button disabled={busy} onClick={() => (isAdmin ? onChoose(choice) : onSkip())}>
-            Continue
-          </Button>
+          <Button onClick={() => (isAdmin ? onChoose(choice) : onSkip())}>Continue</Button>
         </>
       }
     >
@@ -89,12 +84,12 @@ export function CloudAgentStep({
             aria-label="Cloud agent type"
           >
             <RadioCard
-              value="managed"
-              selected={choice === 'managed'}
-              icon={<Cloud className="h-4 w-4" />}
-              title="Nuphos Cloud"
+              value="box"
+              selected={choice === 'box'}
+              icon={<Box className="h-4 w-4" />}
+              title="New Box"
               badge="Recommended"
-              description="We run and update the agent for you. Sign in with Claude, ChatGPT, xAI or Google."
+              description="A cloud computer Nuphos runs for you, with Claude Code and Codex. Sign in with your own account."
             />
             <RadioCard
               value="self-hosted"

@@ -101,3 +101,29 @@ export type LocalRuntimeActivityPage = {
   entries: LocalRuntimeActivityEntry[]
   nextCursor: string | null
 }
+
+export type BoxState = 'creating' | 'running' | 'paused' | 'error'
+
+/** A Box: a device Nuphos runs in a sandbox for its owner. */
+export type BoxStatus = {
+  provider: 'instabox'
+  /** Set once the machine exists. */
+  sandboxId?: string
+  state: BoxState
+}
+
+/** One of the signed-in user's devices; `box` is set when Nuphos hosts it. */
+export type AgentDevice = {
+  deviceId: string
+  label: string
+  platform: string
+  allowLocalExec?: boolean
+  online?: boolean
+  box?: BoxStatus
+}
+
+export type AgentDeviceList = {
+  devices: AgentDevice[]
+  /** False or missing when this backend cannot create Boxes. */
+  boxAvailable?: boolean
+}

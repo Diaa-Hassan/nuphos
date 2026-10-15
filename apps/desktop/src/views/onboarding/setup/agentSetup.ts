@@ -76,7 +76,7 @@ export function unsignedAgentToRemove(
   return next === 'managed' ? null : created
 }
 
-export type SetupScreen = 'local' | 'cloud' | 'managed' | 'self-hosted' | 'done'
+export type SetupScreen = 'local' | 'cloud' | 'box' | 'self-hosted' | 'done'
 
 /** Which of the two stepper steps a screen belongs to; the completion screen has none. */
 export function setupStep(screen: SetupScreen): 1 | 2 | undefined {

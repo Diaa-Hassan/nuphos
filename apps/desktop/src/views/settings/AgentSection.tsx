@@ -9,6 +9,7 @@ import { useRuntimeInstances } from '../../hooks/useRuntimeInstances'
 import { useRuntimeQuotas } from '../../hooks/useRuntimeQuotas'
 
 import { AddAgentDialog } from './AddAgentDialog'
+import { BoxSection } from './BoxSection'
 import { RuntimeInstanceCard } from './RuntimeInstanceCard'
 import { AgentUsageSkeleton } from './AgentUsageSkeleton'
 import { RuntimeQuotaHistory } from './RuntimeQuotaHistory'
@@ -108,6 +109,7 @@ export function AgentSection({
           </button>
         </div>
       )}
+      <BoxSection teamId={teamId} instances={catalog.instances} />
       {catalog.loading && instances.length === 0 && (
         <div className="min-h-0 flex-1 overflow-hidden p-5 lg:p-8">
           <div className="mx-auto w-full max-w-5xl">
