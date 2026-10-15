@@ -9,8 +9,10 @@ export type AgentDeviceBox = {
   provider: 'instabox'
   /** Set once the machine is ordered; a row without one is still being created. */
   sandboxId?: string
-  /** The team it was ordered in, for the per-team cap. */
+  /** Asset scope; independent of the host's transport owner. */
   teamId: string
+  createdBy?: string
+  access?: { everyone: boolean; userIds: string[] }
 }
 
 export type AgentDevice = {
@@ -198,4 +200,9 @@ export async function isActiveTeamMember(userId: string, teamId: string): Promis
     )
 
   return Boolean(team?.members.some((m) => m.userId.equals(userObjectId) && !m.deletedAt))
+}
+
+/** Never infer a legacy Box's team from its owner. */
+export async function listTeamBoxes(teamId: string): Promise<AgentDevice[]> {
+  return agentDevices().find({ 'box.teamId': teamId }).toArray()
 }

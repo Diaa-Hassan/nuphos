@@ -6,6 +6,7 @@ import {
   decodeAuditCursor,
   listDeviceExecAudit,
 } from '@/lib/agent/devices/audit'
+import { deviceAccessDeps, requireDeviceAccess } from '@/lib/agent/devices/box-access'
 import {
   boxBackendUrl,
   boxDesktopUrl,
@@ -39,10 +40,12 @@ import { zv } from '@/lib/validate'
 
 import { agent } from './router'
 import { createAgentDeviceBoxRoutes } from './routes-devices-box'
+import { readTeamIdCandidate } from './team-scope'
 
 import type { DeviceExecAuditPage } from '@/lib/agent/devices/audit'
-import type { HolderMessage } from '@/lib/agent/devices/local-runtime/protocol'
+import type { DeviceAccessDeps } from '@/lib/agent/devices/box-access'
 import type { BoxState } from '@/lib/agent/devices/box-instabox'
+import type { HolderMessage } from '@/lib/agent/devices/local-runtime/protocol'
 import type { AgentDevice, AgentDeviceRegistration } from '@/lib/agent/devices/store'
 import type { AuthVariables } from '@/middleware/auth'
 
@@ -74,6 +77,7 @@ const auditQuerySchema = z.object({
 })
 
 export type AgentDeviceRouteDependencies = {
+  access: DeviceAccessDeps
   upsertAgentDevice: (userId: string, device: AgentDeviceRegistration) => Promise<void>
   getAgentDevice: (userId: string, deviceId: string) => Promise<AgentDevice | null>
   listDeviceExecAudit: (
@@ -108,6 +112,7 @@ export type AgentDeviceRouteDependencies = {
 }
 
 const defaultDependencies: AgentDeviceRouteDependencies = {
+  access: deviceAccessDeps,
   upsertAgentDevice,
   getAgentDevice,
   issueJoinToken: issueDeviceJoinToken,
@@ -171,8 +176,14 @@ export function createAgentDeviceRoutes(deps: AgentDeviceRouteDependencies = def
     '/devices/:deviceId/credential',
     zv('param', z.object({ deviceId: z.string().trim().min(1).max(128) })),
     async (c) => {
-      const userId = c.get('userId')
       const { deviceId } = c.req.valid('param')
+      const { userId } = await requireDeviceAccess(
+        c.get('userId'),
+        readTeamIdCandidate(c),
+        deviceId,
+        'manage',
+        deps.access,
+      )
 
       if (!(await deps.revokeCredential(userId, deviceId)))
         throw new AppError(404, 'credential_not_found', 'This device has no credential to revoke')
@@ -187,8 +198,14 @@ export function createAgentDeviceRoutes(deps: AgentDeviceRouteDependencies = def
     zv('param', z.object({ deviceId: z.string().trim().min(1).max(128) })),
     zv('query', auditQuerySchema),
     async (c) => {
-      const userId = c.get('userId')
       const { deviceId } = c.req.valid('param')
+      const { userId } = await requireDeviceAccess(
+        c.get('userId'),
+        readTeamIdCandidate(c),
+        deviceId,
+        'manage',
+        deps.access,
+      )
       const { limit, before } = c.req.valid('query')
       const device = await deps.getAgentDevice(userId, deviceId)
 

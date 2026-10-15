@@ -101,7 +101,7 @@ export async function createBox(
     label,
     platform: 'linux',
     allowLocalExec: true,
-    box: { provider: 'instabox' as const, teamId },
+    box: { provider: 'instabox' as const, teamId, createdBy: userId },
   }
 
   await insertBoxAgentDevice(userId, registration)

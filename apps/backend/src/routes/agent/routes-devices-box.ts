@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { listAccessibleDevices, requireDeviceAccess } from '@/lib/agent/devices/box-access'
 import { AppError } from '@/lib/errors'
 import { zv } from '@/lib/validate'
 
@@ -87,7 +88,7 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   // The caller's own devices, online or not; a Box carries its machine's state.
   routes.get('/devices', async (c) => {
     const userId = c.get('userId')
-    const devices = await deps.listDevices(userId)
+    const devices = await listAccessibleDevices(userId, readTeamIdCandidate(c), deps.access)
 
     return c.json({
       boxAvailable: deps.box?.available() ?? false,
@@ -115,7 +116,14 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
 
   // The Box's desktop, to watch and take over what its agents do.
   routes.post('/devices/:deviceId/box/desktop', zv('param', deviceParam), async (c) => {
-    const url = await requireBoxes().desktop(c.get('userId'), c.req.valid('param').deviceId)
+    const device = await requireDeviceAccess(
+      c.get('userId'),
+      readTeamIdCandidate(c),
+      c.req.valid('param').deviceId,
+      'manage',
+      deps.access,
+    )
+    const url = await requireBoxes().desktop(device.userId, device.deviceId)
 
     return c.json({ url })
   })
@@ -129,7 +137,15 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
       const { deviceId } = c.req.valid('param')
       const { label } = c.req.valid('json')
 
-      if (!(await deps.renameDevice(c.get('userId'), deviceId, label)))
+      const device = await requireDeviceAccess(
+        c.get('userId'),
+        readTeamIdCandidate(c),
+        deviceId,
+        'manage',
+        deps.access,
+      )
+
+      if (!(await deps.renameDevice(device.userId, deviceId, label)))
         throw new AppError(404, 'not_found', `No device ${deviceId}`)
 
       return c.json({ ok: true })
@@ -137,23 +153,41 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   )
 
   routes.post('/devices/:deviceId/box/pause', zv('param', deviceParam), async (c) => {
-    const userId = c.get('userId')
-    const device = await requireBoxes().pause(userId, c.req.valid('param').deviceId)
+    const target = await requireDeviceAccess(
+      c.get('userId'),
+      readTeamIdCandidate(c),
+      c.req.valid('param').deviceId,
+      'manage',
+      deps.access,
+    )
+    const device = await requireBoxes().pause(target.userId, target.deviceId)
 
     return c.json(await viewOrGone(device, false))
   })
 
   routes.post('/devices/:deviceId/box/resume', zv('param', deviceParam), async (c) => {
-    const userId = c.get('userId')
-    const device = await requireBoxes().resume(userId, c.req.valid('param').deviceId)
+    const target = await requireDeviceAccess(
+      c.get('userId'),
+      readTeamIdCandidate(c),
+      c.req.valid('param').deviceId,
+      'manage',
+      deps.access,
+    )
+    const device = await requireBoxes().resume(target.userId, target.deviceId)
 
     return c.json(await viewOrGone(device))
   })
 
   // Deletes the machine, revokes its credential and forgets the device.
   routes.delete('/devices/:deviceId/box', zv('param', deviceParam), async (c) => {
-    const userId = c.get('userId')
     const { deviceId } = c.req.valid('param')
+    const { userId } = await requireDeviceAccess(
+      c.get('userId'),
+      readTeamIdCandidate(c),
+      deviceId,
+      'manage',
+      deps.access,
+    )
 
     await requireBoxes().destroy(userId, deviceId)
     if (await deps.revokeCredential(userId, deviceId)) await deps.disconnect(userId, deviceId)

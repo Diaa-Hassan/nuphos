@@ -6,9 +6,10 @@ import { createAgentDeviceRoutes } from '@/routes/agent/routes-devices'
 import { nextBoxLabel } from '@/routes/agent/routes-devices-box'
 
 import type { DeviceExecAuditEntry } from '@/lib/agent/devices/audit'
-import type { AgentDeviceRouteDependencies } from '@/routes/agent/routes-devices'
 import type { AgentDeviceRegistration, AgentDevice } from '@/lib/agent/devices/store'
+import type { NuphosTeamRole } from '@/lib/identity/types'
 import type { AuthVariables } from '@/middleware/auth'
+import type { AgentDeviceRouteDependencies } from '@/routes/agent/routes-devices'
 
 let upserted: { userId: string; device: AgentDeviceRegistration }[]
 let devices: Record<string, AgentDevice>
@@ -17,6 +18,7 @@ let auditQueries: { ownerUserId: string; deviceId: string; limit: number; cursor
 let issued: { userId: string; options: { label?: string; expiresInSec?: number } }[]
 let credentials: Set<string>
 let disconnected: string[]
+let role: NuphosTeamRole | null
 
 function key(userId: string, deviceId: string): string {
   return `${userId}:${deviceId}`
@@ -34,6 +36,12 @@ function buildApp(box: BoxDeps | null = null) {
   app.route(
     '/agent',
     createAgentDeviceRoutes({
+      access: {
+        getDevice: async (owner, id) => devices[key(owner, id)] ?? null,
+        listDevices: async (owner) => Object.values(devices).filter((d) => d.userId === owner),
+        listBoxes: async (team) => Object.values(devices).filter((d) => d.box?.teamId === team),
+        role: async (_actor, team) => (team === 'team-1' ? role : null),
+      },
       upsertAgentDevice: async (userId, device) => {
         upserted.push({ userId, device })
         devices[key(userId, device.deviceId)] = {
@@ -89,6 +97,7 @@ function buildApp(box: BoxDeps | null = null) {
 }
 
 beforeEach(() => {
+  role = 'ADMINISTRATOR'
   upserted = []
   devices = {}
   auditEntries = []
@@ -236,6 +245,7 @@ describe('agent device routes', () => {
   })
 
   test('DELETE .../credential revokes the caller own device and drops its tunnel', async () => {
+    registerDevice('user-1', 'd1')
     credentials.add(key('user-1', 'd1'))
     const response = await buildApp().request('/agent/devices/d1/credential', { method: 'DELETE' })
 
@@ -259,7 +269,7 @@ describe('agent device routes', () => {
       label: 'Box',
       platform: 'linux',
       allowLocalExec: true,
-      box: { provider: 'instabox' as const, sandboxId: `m_${deviceId}`, teamId: 't1' },
+      box: { provider: 'instabox' as const, sandboxId: `m_${deviceId}`, teamId: 'team-1' },
       createdAt: new Date(),
       updatedAt: new Date(),
     }
@@ -306,7 +316,7 @@ describe('agent device routes', () => {
       credentialHash: 'secret-hash',
     }
     devices[key('user-2', 'b2')] = boxDevice('user-2', 'b2')
-    const response = await buildApp(fakeBox([])).request('/agent/devices')
+    const response = await buildApp(fakeBox([])).request('/agent/devices?teamId=team-1')
     const body = (await response.json()) as {
       boxAvailable: boolean
       devices: Record<string, unknown>[]
@@ -314,14 +324,14 @@ describe('agent device routes', () => {
 
     expect(response.status).toBe(200)
     expect(body.boxAvailable).toBe(true)
-    expect(body.devices).toHaveLength(1)
+    expect(body.devices).toHaveLength(2)
     expect(body.devices[0]).toMatchObject({
       deviceId: 'b1',
       online: false,
       box: { state: 'paused' },
     })
     expect(JSON.stringify(body)).not.toContain('secret-hash')
-    const plain = (await (await buildApp().request('/agent/devices')).json()) as {
+    const plain = (await (await buildApp().request('/agent/devices?teamId=team-1')).json()) as {
       boxAvailable: boolean
     }
 
@@ -338,7 +348,7 @@ describe('agent device routes', () => {
     devices[key('user-1', 'b1')] = boxDevice('user-1', 'b1')
     devices[key('user-2', 'b2')] = boxDevice('user-2', 'b2')
     const app = buildApp(fakeBox([]))
-    const renamed = await app.request('/agent/devices/b1', {
+    const renamed = await app.request('/agent/devices/b1?teamId=team-1', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ label: 'Build box' }),
@@ -346,7 +356,7 @@ describe('agent device routes', () => {
 
     expect(renamed.status).toBe(200)
     expect(devices[key('user-1', 'b1')]?.label).toBe('Build box')
-    const other = await app.request('/agent/devices/b2', {
+    const other = await app.request('/agent/devices/b2?teamId=team-other', {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ label: 'Mine now' }),
@@ -362,7 +372,7 @@ describe('agent device routes', () => {
     machineState = 'running'
     devices[key('user-1', 'b1')] = { ...boxDevice('user-1', 'b1'), credentialHash: 'h' }
     devices[key('user-1', 'b3')] = boxDevice('user-1', 'b3')
-    await buildApp(fakeBox(calls)).request('/agent/devices')
+    await buildApp(fakeBox(calls)).request('/agent/devices?teamId=team-1')
     // b3 never joined: nothing to restart there.
     expect(calls).toEqual(['heal b1'])
   })
@@ -395,18 +405,90 @@ describe('agent device routes', () => {
 
     devices[key('user-1', 'b1')] = boxDevice('user-1', 'b1')
     credentials.add(key('user-1', 'b1'))
-    const paused = await app.request('/agent/devices/b1/box/pause', { method: 'POST' })
+    const paused = await app.request('/agent/devices/b1/box/pause?teamId=team-1', {
+      method: 'POST',
+    })
 
     expect(paused.status).toBe(200)
     expect(await paused.json()).toMatchObject({ deviceId: 'b1', box: { state: 'paused' } })
-    const resumed = await app.request('/agent/devices/b1/box/resume', { method: 'POST' })
+    const resumed = await app.request('/agent/devices/b1/box/resume?teamId=team-1', {
+      method: 'POST',
+    })
 
     expect(await resumed.json()).toMatchObject({ box: { state: 'running' } })
-    const removed = await app.request('/agent/devices/b1/box', { method: 'DELETE' })
+    const removed = await app.request('/agent/devices/b1/box?teamId=team-1', { method: 'DELETE' })
 
     expect(removed.status).toBe(200)
     expect(calls).toEqual(['pause b1', 'resume b1', 'destroy b1'])
     expect(disconnected).toEqual([key('user-1', 'b1')])
     expect(devices[key('user-1', 'b1')]).toBeUndefined()
+  })
+  test('Box routes deny a creator with use only, removed admins and cross-team calls before provider dispatch', async () => {
+    const calls: string[] = []
+    const target = boxDevice('user-1', 'b1')
+
+    devices[key('user-1', 'b1')] = target
+    const app = buildApp(fakeBox(calls))
+
+    for (const currentRole of ['EDITOR', null] as const) {
+      role = currentRole
+      for (const action of ['pause', 'resume', 'desktop']) {
+        const result = await app.request(`/agent/devices/b1/box/${action}?teamId=team-1`, {
+          method: 'POST',
+        })
+
+        expect(result.status).toBe(404)
+      }
+      expect(
+        (await app.request('/agent/devices/b1/box?teamId=team-1', { method: 'DELETE' })).status,
+      ).toBe(404)
+    }
+    role = 'ADMINISTRATOR'
+    expect(
+      (await app.request('/agent/devices/b1/box/pause?teamId=team-2', { method: 'POST' })).status,
+    ).toBe(404)
+    expect(calls).toEqual([])
+    expect(devices[key('user-1', 'b1')]).toBe(target)
+  })
+
+  test('admin dispatch uses the Box transport owner, never the viewing admin', async () => {
+    devices[key('host-owner', 'b1')] = boxDevice('host-owner', 'b1')
+    const owners: string[] = []
+    const provider = fakeBox([])
+
+    provider.pause = async (owner, id) => {
+      owners.push(owner)
+
+      return devices[key(owner, id)]!
+    }
+    const result = await buildApp(provider).request('/agent/devices/b1/box/pause?teamId=team-1', {
+      method: 'POST',
+    })
+
+    expect(result.status).toBe(200)
+    expect(owners).toEqual(['host-owner'])
+  })
+
+  test('list omits legacy Boxes from other creators, missing-team rows and revoked viewers', async () => {
+    role = 'EDITOR'
+    devices[key('host-owner', 'b1')] = boxDevice('host-owner', 'b1')
+    const target = devices[key('host-owner', 'b1')]!
+
+    target.box!.access = { everyone: false, userIds: ['user-1'] }
+    const app = buildApp(fakeBox([]))
+    const list = async () =>
+      (await (await app.request('/agent/devices?teamId=team-1')).json()) as { devices: unknown[] }
+
+    expect((await list()).devices).toHaveLength(1)
+    target.box!.access.userIds = []
+    expect((await list()).devices).toHaveLength(0)
+    delete target.box!.access
+    expect((await list()).devices).toHaveLength(0)
+    role = 'ADMINISTRATOR'
+    target.box!.teamId = ''
+    expect((await list()).devices).toHaveLength(0)
+    target.box!.teamId = 'team-1'
+    role = null
+    expect((await list()).devices).toHaveLength(0)
   })
 })
