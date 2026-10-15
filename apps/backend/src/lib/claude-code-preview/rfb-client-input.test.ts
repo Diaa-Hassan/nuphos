@@ -1,0 +1,46 @@
+import { expect, test } from 'bun:test'
+
+import { clientInputFilter } from './rfb-client-input'
+
+// Run with: cd apps/backend && bun test src/lib/claude-code-preview/rfb-client-input.test.ts
+
+const version = Buffer.from('RFB 003.008\n')
+const handshake = Buffer.concat([version, Buffer.from([1]), Buffer.from([1])])
+const update = Buffer.from([3, 0, 0, 0, 0, 0, 5, 0, 3, 20])
+const key = Buffer.from([4, 1, 0, 0, 0, 0, 0, 65])
+const pointer = Buffer.from([5, 4, 2, 128, 1, 144])
+const paste = Buffer.concat([Buffer.from([6, 0, 0, 0, 0, 0, 0, 2]), Buffer.from('hi')])
+
+test('the handshake and view-only messages pass; input waits for the desktop to be held', () => {
+  const filter = clientInputFilter()
+
+  expect(filter.push(handshake, false)).toEqual(handshake)
+  expect(filter.push(Buffer.concat([key, update, pointer, paste]), false)).toEqual(update)
+  expect(filter.push(Buffer.concat([key, pointer, paste]), true)).toEqual(
+    Buffer.concat([key, pointer, paste]),
+  )
+})
+
+test('messages split across frames are reassembled before the type decides', () => {
+  const filter = clientInputFilter()
+
+  expect(filter.push(version.subarray(0, 5), false)).toEqual(Buffer.alloc(0))
+  expect(
+    filter.push(
+      Buffer.concat([version.subarray(5), Buffer.from([1, 1]), key.subarray(0, 3)]),
+      false,
+    ),
+  ).toEqual(handshake)
+  expect(filter.push(Buffer.concat([key.subarray(3), update.subarray(0, 4)]), false)).toEqual(
+    Buffer.alloc(0),
+  )
+  expect(filter.push(update.subarray(4), false)).toEqual(update)
+})
+
+test('an unknown message type, or a foreign protocol, ends the stream', () => {
+  expect(clientInputFilter().push(Buffer.from('GET / HTTP/1.1\r\n'), true)).toBeNull()
+  const filter = clientInputFilter()
+
+  filter.push(handshake, true)
+  expect(filter.push(Buffer.from([7, 0, 0]), true)).toBeNull()
+})

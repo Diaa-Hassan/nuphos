@@ -28,6 +28,8 @@ export function listDesktops(wrapper: string, pool: string): SessionDesktop[] {
 }
 
 /** Returns the pool directory, or null where this computer cannot host desktops. */
+// TODO(team Box): a Box shared by a team runs every session as the same OS user,
+// so this pool must stay off there until sessions get Unix users of their own.
 export function enableDesktopPool(bundleRoot: string, dataDir: string): string | null {
   const wrapper = path.join(bundleRoot, 'desktop-session.mjs')
 

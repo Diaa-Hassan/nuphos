@@ -64,7 +64,12 @@ test('only the owner reaches a display the Box reports as this conversation’s'
   )
 })
 
-test('frames cross the tunnel both ways, after the host learns the display and the viewer', async () => {
+const b64 = (bytes: number[] | Buffer) => Buffer.from(bytes).toString('base64')
+const handshake = b64(Buffer.concat([Buffer.from('RFB 003.008\n'), Buffer.from([1, 1])]))
+const key = b64([4, 1, 0, 0, 0, 0, 0, 65])
+const update = b64([3, 0, 0, 0, 0, 0, 5, 0, 3, 20])
+
+test('frames cross the tunnel both ways; input waits until the viewer holds the desktop', async () => {
   const toHost: string[] = []
   const toClient: string[] = []
   let closed: unknown[] | undefined
@@ -96,13 +101,25 @@ test('frames cross the tunnel both ways, after the host learns the display and t
   expect(toHost).toEqual([
     JSON.stringify({ t: 'open', sessionId: 'chat', display: 2, viewer: 'owner' }),
   ])
-  events.onMessage(new MessageEvent('message', { data: 'UkZC' }), ws)
+  events.onMessage(new MessageEvent('message', { data: handshake }), ws)
+  events.onMessage(new MessageEvent('message', { data: key }), ws)
+  events.onMessage(new MessageEvent('message', { data: update }), ws)
   await Bun.sleep(20)
-  expect(toHost.at(-1)).toBe('UkZC')
+  // The key press never reached the host; the update request did.
+  expect(toHost.slice(1)).toEqual([handshake, update])
   expect(toClient).toEqual([
     `echo:${JSON.stringify({ t: 'open', sessionId: 'chat', display: 2, viewer: 'owner' })}`,
-    'echo:UkZC',
+    `echo:${handshake}`,
+    `echo:${update}`,
   ])
+  events.onMessage(new MessageEvent('message', { data: '{"t":"control","owner":"human"}' }), ws)
+  events.onMessage(new MessageEvent('message', { data: key }), ws)
+  await Bun.sleep(20)
+  expect(toHost.slice(3)).toEqual(['{"t":"control","owner":"human"}', key])
+  events.onMessage(new MessageEvent('message', { data: '{"t":"control","owner":"agent"}' }), ws)
+  events.onMessage(new MessageEvent('message', { data: key }), ws)
+  await Bun.sleep(20)
+  expect(toHost).toHaveLength(6)
   events.onMessage(new MessageEvent('message', { data: 'x'.repeat(64 * 1024 + 1) }), ws)
   expect(closed).toEqual([1008, 'Invalid desktop frame'])
 })

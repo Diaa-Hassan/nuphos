@@ -26,6 +26,10 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 
+// Every display runs as the Box's one Unix user, with no X authority and no VNC
+// password: sessions on a Box are not a security boundary from each other, any
+// more than their shells are. That is by design: a Box is one owner's device
+// (a local runtime admits only its owner) and every session on it is theirs.
 const FIRST_DISPLAY = 2
 const GEOMETRY = '1280x800'
 const PROXY = '/usr/local/bin/instabox-computer-use-proxy'
@@ -66,12 +70,8 @@ export function listDesktops(pool) {
     .map(({ display, sessionId, since }) => ({ display, sessionId, since }))
 }
 
-const writeLock = (pool, display, sessionId, pid) =>
-  writeFileSync(
-    lockFile(pool, display),
-    JSON.stringify({ sessionId, pid, since: new Date().toISOString() }),
-    { mode: 0o600 },
-  )
+const lockEntry = (sessionId, pid) =>
+  JSON.stringify({ sessionId, pid, since: new Date().toISOString() })
 
 /**
  * The session's display: its own if it already holds one, else the lowest free
@@ -86,15 +86,17 @@ export function claimDisplay(pool, sessionId, size, pid = process.pid) {
 
     if (held?.sessionId === sessionId) {
       // Its own slot, perhaps from a run that died: the lock names this process now.
-      if (!alive(held.pid)) writeLock(pool, display, sessionId, pid)
+      // (A reap that read the dead pid just before may still clear it; rare, and the
+      // next claim takes a fresh slot.)
+      if (!alive(held.pid)) writeFileSync(lockFile(pool, display), lockEntry(sessionId, pid))
 
       return display
     }
     try {
       const fd = openSync(lockFile(pool, display), 'wx', 0o600)
 
+      writeFileSync(fd, lockEntry(sessionId, pid))
       closeSync(fd)
-      writeLock(pool, display, sessionId, pid)
 
       return display
     } catch {
@@ -112,7 +114,7 @@ export function teardown(pool, display) {
   const xdg = xdgDir(pool, display)
 
   kill(`^Xvnc :${String(display)} `)
-  // The session bus and whatever was started with its address (xfce4-session and its children).
+  // The session bus, by its address; xfce4-session and its clients end with Xvnc.
   kill(`${xdg}/bus`)
   rmSync(lockFile(pool, display), { force: true })
   rmSync(xdg, { recursive: true, force: true })

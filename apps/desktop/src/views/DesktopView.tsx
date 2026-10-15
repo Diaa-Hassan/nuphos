@@ -10,8 +10,9 @@ type Phase = 'connecting' | 'connected' | 'closed'
 
 /**
  * A conversation's own desktop on its Box, watched over the Box's tunnel;
- * `filter` is the X display number. View-only until the owner takes it over,
- * which also makes the agent's input tools on that desktop wait.
+ * `filter` is the X display number. View-only until the owner takes it over:
+ * the backend drops the viewer's input until then, and taking over also makes
+ * the agent's input tools on that desktop wait.
  */
 export function DesktopView({ teamId, filter }: { teamId: string; filter: string }) {
   const { conversationId, tabId } = useWorkspaceTab()

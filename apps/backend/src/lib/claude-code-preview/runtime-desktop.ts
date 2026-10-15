@@ -3,11 +3,12 @@
 // device tunnel relays to the host's Xvnc for that display (see the host's
 // vnc-stream.ts). The first frame tells the host the session, the display and
 // the viewer; the host connects only if that display's lock is the session's.
-// The viewer is the owner, who may always type; a control frame tells the host
-// to hand the desktop to them, which pauses the agent's input tools on it (the
-// lock that display's computer-use proxy respects), and the stream closing
-// hands it back. Links carry ids only: the route is the authorization, and a
-// Box runs one person's conversations only (a local runtime is its owner's).
+// The viewer only watches until a control frame hands the desktop to them: this
+// route drops their input messages until then, whatever their client does, and
+// the host turns the frame into the lock that pauses the agent's input tools on
+// that display. The stream closing hands it back. Links carry ids only: the
+// route is the authorization, and a Box runs one person's conversations only (a
+// local runtime is its owner's).
 
 import { getReadableConversation } from '@/lib/agent/db'
 import { parseLocalRuntimeId } from '@/lib/agent/devices/local-runtime/address'
@@ -16,6 +17,7 @@ import { runtimePresenceStore } from '@/lib/agent/devices/local-runtime/presence
 import { DeviceRuntimeSocket } from '@/lib/agent/devices/local-runtime/socket'
 import { AppError } from '@/lib/errors'
 
+import { clientInputFilter } from './rfb-client-input'
 import { requireRuntimeInstance } from './runtime-catalog'
 
 import type { DeviceRuntimeSocketDeps } from '@/lib/agent/devices/local-runtime/socket'
@@ -68,8 +70,23 @@ export function runtimeDesktopEvents(
 ): WSEvents {
   const { sessionId, display, viewer, ...device } = target
   const stream = new DeviceRuntimeSocket({ ...device, purpose: 'vnc' }, deps)
+  const input = clientInputFilter()
+  let holding = false
   const close = () => {
     stream.close()
+  }
+  /** What goes on to the host: control frames as they are, RFB bytes minus input the viewer may not send yet. */
+  const forward = (data: string): void => {
+    if (data.startsWith('{')) {
+      holding = (JSON.parse(data) as { owner?: string }).owner === 'human'
+      stream.send(data)
+
+      return
+    }
+    const bytes = input.push(Buffer.from(data, 'base64'), holding)
+
+    if (!bytes) throw new Error('Invalid desktop frame')
+    if (bytes.length) stream.send(bytes.toString('base64'))
   }
 
   return {
@@ -89,7 +106,7 @@ export function runtimeDesktopEvents(
       try {
         if (typeof event.data !== 'string' || event.data.length > MAX_FRAME_CHARS)
           throw new Error('Invalid desktop frame')
-        stream.send(event.data)
+        forward(event.data)
       } catch {
         close()
         ws.close(1008, 'Invalid desktop frame')
