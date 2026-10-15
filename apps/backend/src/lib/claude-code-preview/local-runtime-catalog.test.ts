@@ -94,7 +94,11 @@ describe('local runtime catalog', () => {
       local: { userId: ref.userId, deviceId: ref.deviceId },
       backendUrl: 'http://127.0.0.1:4000',
     })
-    expect(parseLocalRuntimeUrl(endpoint.url)).toEqual({ ...ref, teamId: 't1' })
+    expect(parseLocalRuntimeUrl(endpoint.url)).toEqual({
+      ...ref,
+      teamId: 't1',
+      actorId: ref.userId,
+    })
   })
 
   test('each agent the computer runs is its own option with its own provider', async () => {

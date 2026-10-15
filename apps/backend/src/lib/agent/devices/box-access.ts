@@ -1,7 +1,11 @@
 import { AppError } from '@/lib/errors'
 import { getTeamMembership } from '@/lib/identity'
 
+import { tunnelBus } from './local-runtime/bus'
+import { holderChannel } from './local-runtime/protocol'
 import { getAgentDevice, listAgentDevicesForUser, listTeamBoxes } from './store'
+
+import type { HolderMessage } from './local-runtime/protocol'
 
 import type { AgentDevice } from './store'
 import type { NuphosTeamRole } from '@/lib/identity/types'
@@ -78,4 +82,32 @@ export async function requireDeviceAccess(
     throw new AppError(404, 'device_not_found', 'Device is not available')
 
   return device
+}
+
+/**
+ * Closes what these people have open on these Boxes (terminal, CUA, chat streams)
+ * and nothing else: the host's tunnel and other viewers stay. A reconnect is
+ * refused by the access check. Best effort: a missed message leaves a stream only
+ * until its next reconnect.
+ */
+export async function revokeBoxStreams(devices: AgentDevice[], actorIds: string[]): Promise<void> {
+  const bus = tunnelBus()
+
+  await Promise.all(
+    devices.flatMap((device) =>
+      actorIds.map((actorId) =>
+        bus
+          .publish(
+            holderChannel(device.userId, device.deviceId),
+            JSON.stringify({ t: 'revoke-actor', actorId } satisfies HolderMessage),
+          )
+          .catch(() => {}),
+      ),
+    ),
+  )
+}
+
+/** For a person who left the team, was removed, or lost a role: every Box of that team. */
+export async function revokeTeamBoxStreams(teamId: string, actorId: string): Promise<void> {
+  await revokeBoxStreams(await listTeamBoxes(teamId).catch(() => []), [actorId])
 }

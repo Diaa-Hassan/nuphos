@@ -215,3 +215,17 @@ export async function isActiveTeamMember(userId: string, teamId: string): Promis
 export async function listTeamBoxes(teamId: string): Promise<AgentDevice[]> {
   return agentDevices().find({ 'box.teamId': teamId }).toArray()
 }
+
+/** Replaces who may use a Box. Callers check `manage` first. */
+export async function setBoxAccess(
+  userId: string,
+  deviceId: string,
+  access: { everyone: boolean; userIds: string[] },
+): Promise<boolean> {
+  const result = await agentDevices().updateOne(
+    { userId, deviceId, box: { $exists: true } },
+    { $set: { 'box.access': access, updatedAt: new Date() } },
+  )
+
+  return result.matchedCount === 1
+}

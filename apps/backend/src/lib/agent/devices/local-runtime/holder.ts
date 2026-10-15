@@ -46,7 +46,7 @@ export async function attachRuntimeTunnel(
   deps: TunnelHolderDeps,
 ): Promise<RuntimeTunnel> {
   const conn = randomUUID()
-  const streams = new Set<string>()
+  const streams = new Map<string, string>()
   const channel = holderChannel(userId, deviceId)
   let status: LocalRuntimeStatus | undefined
   let lastFrameAt = Date.now()
@@ -76,25 +76,23 @@ export async function attachRuntimeTunnel(
     clearInterval(heartbeat)
     heartbeat = undefined
     unsubscribe()
-    for (const s of streams)
+    for (const s of streams.keys())
       void toStream(s, { t: 'close', reason: 'The computer running this agent disconnected' })
     streams.clear()
     void deps.presence.clear(userId, deviceId, conn).catch(() => {})
   }
 
   const openStream = async (message: Extract<HolderMessage, { t: 'open' }>) => {
-    const allowed = await deps.isMember(userId, message.teamId).catch(() => false)
+    // The person acting must still be in the team; the owner's membership is irrelevant.
+    const allowed = await deps.isMember(message.actorId, message.teamId).catch(() => false)
 
     if (ended) return
     if (!allowed) {
-      await toStream(message.s, {
-        t: 'close',
-        reason: 'The owner of this agent is not in this team',
-      })
+      await toStream(message.s, { t: 'close', reason: 'You are not in this team' })
 
       return
     }
-    streams.add(message.s)
+    streams.set(message.s, message.actorId)
     connection.send({
       t: 'open',
       s: message.s,
@@ -117,6 +115,19 @@ export async function attachRuntimeTunnel(
       case 'revoke':
         end()
         connection.close(TUNNEL_CLOSE_REVOKED, 'This computer was disconnected from Nuphos')
+
+        return
+      case 'revoke-actor':
+        for (const [s, actorId] of streams)
+          if (actorId === message.actorId) {
+            streams.delete(s)
+            connection.send({ t: 'close', s })
+            void toStream(s, {
+              t: 'close',
+              code: 4003,
+              reason: 'Your access to this Box was removed',
+            })
+          }
 
         return
       case 'ping':

@@ -36,8 +36,11 @@ export function isLocalRuntimeId(runtimeId: string | undefined): boolean {
  * The address a conversation is pinned to. It names no host: the backend reaches
  * the runtime only through the tunnel its computer holds open.
  */
-export function localRuntimeUrl(ref: LocalAgentRef, teamId: string): string {
+export function localRuntimeUrl(ref: LocalAgentRef, teamId: string, actorId = ref.userId): string {
   const query = new URLSearchParams({ team: teamId })
+
+  // Only someone other than the owner (a Box's member) adds an actor; owners' URLs stay as they were.
+  if (actorId !== ref.userId) query.set('actor', actorId)
 
   if (ref.provider === 'codex') query.set('provider', 'codex')
 
@@ -50,7 +53,7 @@ export function isLocalRuntimeUrl(url: string): boolean {
 
 export function parseLocalRuntimeUrl(
   url: string,
-): (LocalAgentRef & { teamId: string }) | undefined {
+): (LocalAgentRef & { teamId: string; actorId: string }) | undefined {
   if (!isLocalRuntimeUrl(url)) return undefined
   try {
     const parsed = new URL(url)
@@ -59,12 +62,13 @@ export function parseLocalRuntimeUrl(
       .filter(Boolean)
       .map((part) => decodeURIComponent(part))
     const teamId = parsed.searchParams.get('team')
+    const actorId = parsed.searchParams.get('actor') ?? userId
     const provider = parsed.searchParams.get('provider') === 'codex' ? 'codex' : 'claude-code'
 
-    if (rest.length || !userId || !deviceId || !teamId) return undefined
-    if (!SEGMENT.test(userId) || !SEGMENT.test(deviceId) || !SEGMENT.test(teamId)) return undefined
+    if (rest.length || !userId || !deviceId || !teamId || !actorId) return undefined
+    if (![userId, deviceId, teamId, actorId].every((part) => SEGMENT.test(part))) return undefined
 
-    return { userId, deviceId, teamId, provider }
+    return { userId, deviceId, teamId, actorId, provider }
   } catch {
     return undefined
   }

@@ -19,6 +19,12 @@ let issued: { userId: string; options: { label?: string; expiresInSec?: number }
 let credentials: Set<string>
 let disconnected: string[]
 let role: NuphosTeamRole | null
+let revoked: { deviceIds: string[]; actorIds: string[] }[]
+const members = [
+  { id: 'user-1', role: 'ADMINISTRATOR' },
+  { id: 'alice', role: 'EDITOR' },
+  { id: 'bob', role: 'EDITOR' },
+]
 
 function key(userId: string, deviceId: string): string {
   return `${userId}:${deviceId}`
@@ -41,6 +47,17 @@ function buildApp(box: BoxDeps | null = null) {
         listDevices: async (owner) => Object.values(devices).filter((d) => d.userId === owner),
         listBoxes: async (team) => Object.values(devices).filter((d) => d.box?.teamId === team),
         role: async (_actor, team) => (team === 'team-1' ? role : null),
+      },
+      setBoxAccess: async (userId, deviceId, access) => {
+        const device = devices[key(userId, deviceId)]
+
+        if (device?.box) device.box.access = access
+
+        return Boolean(device?.box)
+      },
+      teamMembers: async (team) => (team === 'team-1' ? members : []),
+      revokeStreams: async (targets, actorIds) => {
+        revoked.push({ deviceIds: targets.map((d) => d.deviceId), actorIds })
       },
       upsertAgentDevice: async (userId, device) => {
         upserted.push({ userId, device })
@@ -105,6 +122,7 @@ beforeEach(() => {
   issued = []
   credentials = new Set()
   disconnected = []
+  revoked = []
 })
 
 function auditEntry(overrides: Partial<DeviceExecAuditEntry>): DeviceExecAuditEntry {
@@ -449,6 +467,78 @@ describe('agent device routes', () => {
     ).toBe(404)
     expect(calls).toEqual([])
     expect(devices[key('user-1', 'b1')]).toBe(target)
+  })
+
+  test('only an administrator of the Box’s team sets its access; those who lose it have their streams closed', async () => {
+    devices[key('host-owner', 'b1')] = {
+      ...boxDevice('host-owner', 'b1'),
+      box: {
+        provider: 'instabox',
+        sandboxId: 'm_b1',
+        teamId: 'team-1',
+        access: { everyone: true, userIds: [] },
+      },
+    }
+    const app = buildApp(fakeBox([]))
+    const put = (body: unknown, team = 'team-1') =>
+      app.request(`/agent/devices/b1/box/access?teamId=${team}`, {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+    for (const currentRole of ['EDITOR', null] as const) {
+      role = currentRole
+      expect((await put({ everyone: false, userIds: ['alice'] })).status).toBe(404)
+    }
+    role = 'ADMINISTRATOR'
+    expect((await put({ everyone: false, userIds: ['alice'] }, 'team-2')).status).toBe(404)
+    expect((await put({ everyone: false, userIds: ['outsider'] })).status).toBe(400)
+    expect(devices[key('host-owner', 'b1')]?.box?.access).toEqual({ everyone: true, userIds: [] })
+    expect(revoked).toEqual([])
+
+    const ok = await put({ everyone: false, userIds: ['alice', 'alice'] })
+
+    expect(ok.status).toBe(200)
+    expect(devices[key('host-owner', 'b1')]?.box?.access).toEqual({
+      everyone: false,
+      userIds: ['alice'],
+    })
+    // Bob lost access; Alice kept it and the administrator never depended on the list.
+    expect(revoked).toEqual([{ deviceIds: ['b1'], actorIds: ['bob'] }])
+  })
+
+  test('the device list tells each viewer their level, and only managers see the access list', async () => {
+    devices[key('host-owner', 'b1')] = {
+      ...boxDevice('host-owner', 'b1'),
+      box: {
+        provider: 'instabox',
+        sandboxId: 'm_b1',
+        teamId: 'team-1',
+        access: { everyone: true, userIds: [] },
+      },
+    }
+    const app = buildApp(fakeBox([]))
+    const list = async () =>
+      (await (await app.request('/agent/devices?teamId=team-1')).json()) as {
+        canCreateBox: boolean
+        devices: { access: string; box?: { access?: unknown } }[]
+      }
+
+    machineState = 'running'
+    const admin = await list()
+
+    expect(admin.canCreateBox).toBe(true)
+    expect(admin.devices[0]).toMatchObject({
+      access: 'manage',
+      box: { access: { everyone: true } },
+    })
+    role = 'EDITOR'
+    const member = await list()
+
+    expect(member.canCreateBox).toBe(false)
+    expect(member.devices[0]?.access).toBe('use')
+    expect(member.devices[0]?.box?.access).toBeUndefined()
   })
 
   test('admin dispatch uses the Box transport owner, never the viewing admin', async () => {

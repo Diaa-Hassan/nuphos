@@ -124,6 +124,8 @@ export type HolderMessage =
       s: string
       conn: string
       teamId: string
+      /** Who opened the stream; the tunnel's owner only routes it. */
+      actorId: string
       purpose: TunnelPurpose
       provider?: LocalAgentProvider
     }
@@ -131,6 +133,8 @@ export type HolderMessage =
   | { t: 'close'; s: string }
   | { t: 'supersede'; conn: string; previous?: string }
   | { t: 'revoke' }
+  /** Close what one person opened; the tunnel and everyone else's streams stay. */
+  | { t: 'revoke-actor'; actorId: string }
   | { t: 'ping'; conn: string }
 
 /** The holder → the replica that opened one stream. */

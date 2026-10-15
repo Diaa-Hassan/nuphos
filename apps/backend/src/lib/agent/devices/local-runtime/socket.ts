@@ -19,7 +19,10 @@ export type DeviceRuntimeSocketDeps = {
 }
 
 export type DeviceStreamTarget = {
+  /** The transport owner: routes to the tunnel, grants nothing. */
   userId: string
+  /** Who this stream acts for, already authorized by the caller. */
+  actorId: string
   deviceId: string
   teamId: string
   purpose: TunnelPurpose
@@ -102,7 +105,7 @@ export class DeviceRuntimeSocket {
   }
 
   async connect(): Promise<void> {
-    const { userId, deviceId, teamId, purpose, provider } = this.target
+    const { userId, actorId, deviceId, teamId, purpose, provider } = this.target
 
     try {
       const presence = await this.deps.presence.get(userId, deviceId)
@@ -129,6 +132,7 @@ export class DeviceRuntimeSocket {
           s: this.streamId,
           conn: presence.conn,
           teamId,
+          actorId,
           purpose,
           provider,
         } satisfies HolderMessage),

@@ -43,7 +43,13 @@ export async function dispatchLocalExec(
 
   if (!device.allowLocalExec) throw new AppError(404, 'device_not_found', 'Device is not available')
   const socket = new DeviceRuntimeSocket(
-    { userId: device.userId, deviceId, teamId: options.teamId, purpose: options.purpose ?? 'exec' },
+    {
+      userId: device.userId,
+      actorId: userId,
+      deviceId,
+      teamId: options.teamId,
+      purpose: options.purpose ?? 'exec',
+    },
     options.deps ?? { bus: tunnelBus(), presence: runtimePresenceStore() },
   )
 

@@ -1,7 +1,11 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
-import { listAccessibleDevices, requireDeviceAccess } from '@/lib/agent/devices/box-access'
+import {
+  deviceAccess,
+  listAccessibleDevices,
+  requireDeviceAccess,
+} from '@/lib/agent/devices/box-access'
 import { AppError } from '@/lib/errors'
 import { zv } from '@/lib/validate'
 
@@ -14,6 +18,10 @@ import type { AuthVariables } from '@/middleware/auth'
 // Boxes: cloud machines made for the caller, listed and driven as their devices.
 
 const deviceParam = z.object({ deviceId: z.string().trim().min(1).max(128) })
+const boxAccessSchema = z.object({
+  everyone: z.boolean(),
+  userIds: z.array(z.string().trim().min(1).max(64)).max(500),
+})
 const boxCreateSchema = z.object({
   label: z.string().trim().min(1).max(200).optional(),
   teamId: z.string().trim().min(1).max(64).optional(),
@@ -34,6 +42,8 @@ export function nextBoxLabel(labels: string[]): string {
 async function deviceView(
   deps: AgentDeviceRouteDependencies,
   device: AgentDevice,
+  /** What the viewer may do with it; a manager also sees who may use it. */
+  level: 'use' | 'manage',
   /** Right after a pause the frozen tunnel still looks alive; the caller knows better. */
   online?: boolean,
 ) {
@@ -56,11 +66,13 @@ async function deviceView(
     ...(device.model ? { model: device.model } : {}),
     allowLocalExec: device.allowLocalExec,
     online,
+    access: level,
     createdAt: device.createdAt.toISOString(),
     ...(device.box && state
       ? {
           box: {
             provider: device.box.provider,
+            ...(level === 'manage' && device.box.access ? { access: device.box.access } : {}),
             ...(device.box.sandboxId ? { sandboxId: device.box.sandboxId } : {}),
             state,
           },
@@ -72,7 +84,7 @@ async function deviceView(
 export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   const routes = new Hono<{ Variables: AuthVariables }>()
   const viewOrGone = async (device: AgentDevice, online?: boolean) => {
-    const view = await deviceView(deps, device, online)
+    const view = await deviceView(deps, device, 'manage', online)
 
     if (!view) throw new AppError(404, 'not_found', 'This Box no longer exists')
 
@@ -88,13 +100,20 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   // The caller's own devices, online or not; a Box carries its machine's state.
   routes.get('/devices', async (c) => {
     const userId = c.get('userId')
-    const devices = await listAccessibleDevices(userId, readTeamIdCandidate(c), deps.access)
+    const teamId = readTeamIdCandidate(c)
+    const devices = await listAccessibleDevices(userId, teamId, deps.access)
+    const role = teamId ? await deps.access.role(userId, teamId) : null
 
     return c.json({
       boxAvailable: deps.box?.available() ?? false,
-      devices: (await Promise.all(devices.map((device) => deviceView(deps, device)))).filter(
-        (view) => view !== null,
-      ),
+      canCreateBox: role === 'ADMINISTRATOR',
+      devices: (
+        await Promise.all(
+          devices.map((device) =>
+            deviceView(deps, device, deviceAccess(device, userId, teamId, role) ?? 'use'),
+          ),
+        )
+      ).filter((view) => view !== null),
     })
   })
 
@@ -181,6 +200,42 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   })
 
   // Deletes the machine, revokes its credential and forgets the device.
+  // Who may use a Box: team administrators only. Whoever loses access has their open
+  // terminal, CUA and chat streams on it closed; a one-shot exec already sent finishes.
+  routes.put(
+    '/devices/:deviceId/box/access',
+    zv('param', deviceParam),
+    zv('json', boxAccessSchema),
+    async (c) => {
+      const teamId = readTeamIdCandidate(c)
+      const device = await requireDeviceAccess(
+        c.get('userId'),
+        teamId,
+        c.req.valid('param').deviceId,
+        'manage',
+        deps.access,
+      )
+      const next = c.req.valid('json')
+      const members = await deps.teamMembers(device.box?.teamId ?? '')
+      const memberIds = new Set(members.map((member) => member.id))
+
+      if (next.userIds.some((id) => !memberIds.has(id)))
+        throw new AppError(400, 'not_a_member', 'Only active members of this team can be added')
+      const access = { everyone: next.everyone, userIds: [...new Set(next.userIds)] }
+
+      if (!(await deps.setBoxAccess(device.userId, device.deviceId, access)))
+        throw new AppError(404, 'device_not_found', 'Device is not available')
+      const lost = members
+        .filter((member) => member.role !== 'ADMINISTRATOR')
+        .filter((member) => !access.everyone && !access.userIds.includes(member.id))
+        .map((member) => member.id)
+
+      await deps.revokeStreams([device], lost)
+
+      return c.json({ access })
+    },
+  )
+
   routes.delete('/devices/:deviceId/box', zv('param', deviceParam), async (c) => {
     const { deviceId } = c.req.valid('param')
     const { userId } = await requireDeviceAccess(

@@ -26,21 +26,22 @@ useRuntimeRegistry({
   listTeamRuntimes: async () => [],
   resolveTeamRuntimeEndpoints: async () => [],
 })
+const ownerComputer = {
+  userId: 'owner',
+  deviceId: 'mac-1',
+  label: 'MacBook',
+  platform: 'darwin',
+  allowLocalExec: false,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+}
+
 useAgentDeviceStore({
-  listAgentDevicesForUser: async (userId) =>
-    userId === 'owner'
-      ? [
-          {
-            userId,
-            deviceId: 'mac-1',
-            label: 'MacBook',
-            platform: 'darwin',
-            allowLocalExec: false,
-            createdAt: new Date(0),
-            updatedAt: new Date(0),
-          },
-        ]
-      : [],
+  listAgentDevicesForUser: async (userId) => (userId === 'owner' ? [ownerComputer] : []),
+  // The access check looks the device up by its owner and id.
+  getAgentDevice: async (userId, deviceId) =>
+    userId === 'owner' && deviceId === 'mac-1' ? ownerComputer : null,
+  listTeamBoxes: async () => [],
   isActiveTeamMember: async (_userId, teamId) => teamId === TEAM,
 })
 

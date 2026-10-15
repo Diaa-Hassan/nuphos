@@ -172,7 +172,7 @@ export async function resolveLocalRuntimeEndpoint(
     )
 
   return {
-    url: localRuntimeUrl(ref, teamId),
+    url: localRuntimeUrl(ref, teamId, userId),
     authKey: purpose === 'login' ? 'control' : purpose,
     runtimeId,
     external: true,

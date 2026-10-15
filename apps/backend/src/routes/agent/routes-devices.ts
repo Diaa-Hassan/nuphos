@@ -6,7 +6,11 @@ import {
   decodeAuditCursor,
   listDeviceExecAudit,
 } from '@/lib/agent/devices/audit'
-import { deviceAccessDeps, requireDeviceAccess } from '@/lib/agent/devices/box-access'
+import {
+  deviceAccessDeps,
+  requireDeviceAccess,
+  revokeBoxStreams,
+} from '@/lib/agent/devices/box-access'
 import {
   boxBackendUrl,
   boxDesktopUrl,
@@ -34,8 +38,10 @@ import {
   renameAgentDevice,
   revokeAgentDeviceCredential,
   upsertAgentDevice,
+  setBoxAccess,
 } from '@/lib/agent/devices/store'
 import { AppError } from '@/lib/errors'
+import { getTeamMembers } from '@/lib/identity'
 import { zv } from '@/lib/validate'
 
 import { agent } from './router'
@@ -78,6 +84,13 @@ const auditQuerySchema = z.object({
 
 export type AgentDeviceRouteDependencies = {
   access: DeviceAccessDeps
+  setBoxAccess: (
+    userId: string,
+    deviceId: string,
+    access: { everyone: boolean; userIds: string[] },
+  ) => Promise<boolean>
+  teamMembers: (teamId: string) => Promise<{ id: string; role: string }[]>
+  revokeStreams: (devices: AgentDevice[], actorIds: string[]) => Promise<void>
   upsertAgentDevice: (userId: string, device: AgentDeviceRegistration) => Promise<void>
   getAgentDevice: (userId: string, deviceId: string) => Promise<AgentDevice | null>
   listDeviceExecAudit: (
@@ -113,6 +126,9 @@ export type AgentDeviceRouteDependencies = {
 
 const defaultDependencies: AgentDeviceRouteDependencies = {
   access: deviceAccessDeps,
+  setBoxAccess,
+  teamMembers: (teamId) => getTeamMembers(teamId),
+  revokeStreams: revokeBoxStreams,
   upsertAgentDevice,
   getAgentDevice,
   issueJoinToken: issueDeviceJoinToken,
