@@ -30,6 +30,7 @@ import { LocalFileStream } from './file-stream.ts'
 import { probeLocalModels } from './model-probe.ts'
 import { OpenabProcess } from './openab-process.ts'
 import { RuntimeTunnelClient } from './tunnel-client.ts'
+import { VncStream } from './vnc-stream.ts'
 
 import type { DeviceIdentity } from '../device-identity-core.ts'
 import type { AgentCliStatus, LocalAgentProvider } from './agent-cli.ts'
@@ -195,6 +196,7 @@ const controller: LocalRuntimeController = new LocalRuntimeController({
         return workspace ? new LocalFileStream(workspace) : null
       },
       connectExec: () => new LocalExecStream(),
+      connectVnc: desktopPool ? () => new VncStream(desktopPool) : undefined,
       connectRuntime: (purpose, provider) => {
         const running = runtime(provider)
 

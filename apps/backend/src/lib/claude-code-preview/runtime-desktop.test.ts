@@ -1,0 +1,97 @@
+import { beforeEach, expect, test } from 'bun:test'
+
+import { localRuntimeId } from '@/lib/agent/devices/local-runtime/address'
+import { createLocalTunnelBus } from '@/lib/agent/devices/local-runtime/bus'
+import { createMemoryPresenceStore } from '@/lib/agent/devices/local-runtime/presence'
+import { holderChannel, streamChannel } from '@/lib/agent/devices/local-runtime/protocol'
+import { useAgentDb } from '@/lib/test/doubles/agent-db'
+
+import { runtimeDesktopEvents, runtimeDesktopTarget } from './runtime-desktop'
+
+import type { HolderMessage, LocalRuntimeStatus } from '@/lib/agent/devices/local-runtime/protocol'
+import type { WSContext, WSEvents } from 'hono/ws'
+
+// Run with: cd apps/backend && bun test src/lib/claude-code-preview/runtime-desktop.test.ts
+
+const runtimeId = localRuntimeId({ userId: 'owner', deviceId: 'box', provider: 'claude-code' })
+let conversation: Record<string, unknown> | null
+
+useAgentDb({ getReadableConversation: () => conversation })
+
+const presence = createMemoryPresenceStore()
+const bus = createLocalTunnelBus()
+const status = {
+  agents: {},
+  desktops: [{ display: 2, sessionId: 'chat' }],
+} as unknown as LocalRuntimeStatus
+
+beforeEach(async () => {
+  conversation = { userId: 'owner', teamId: 'team', runtimeId }
+  await presence.claim('owner', 'box', 'conn')
+  await presence.put('owner', 'box', { conn: 'conn', status, seenAt: Date.now() })
+})
+
+test('only the owner reaches a display the Box reports as this conversation’s', async () => {
+  expect(await runtimeDesktopTarget('team', 'owner', 'chat', '2', presence)).toEqual({
+    userId: 'owner',
+    deviceId: 'box',
+    teamId: 'team',
+    display: 2,
+    viewer: 'owner',
+  })
+  for (const [user, display] of [
+    ['mate', '2'],
+    ['owner', '3'],
+    ['owner', 'x'],
+  ] as const) {
+    conversation = { userId: 'owner', teamId: 'team', runtimeId }
+    await expect(runtimeDesktopTarget('team', user, 'chat', display, presence)).rejects.toThrow(
+      'not found',
+    )
+  }
+  conversation = { userId: 'owner', teamId: 'team', runtimeId: 'managed-1' }
+  await expect(runtimeDesktopTarget('team', 'owner', 'chat', '2', presence)).rejects.toThrow(
+    'not found',
+  )
+})
+
+test('frames cross the tunnel both ways, after the host learns the display and the viewer', async () => {
+  const toHost: string[] = []
+  const toClient: string[] = []
+  let closed: unknown[] | undefined
+  const target = await runtimeDesktopTarget('team', 'owner', 'chat', '2', presence)
+  const events = runtimeDesktopEvents(target, { bus, presence }) as Required<WSEvents>
+  const ws = {
+    send: (data: string) => toClient.push(data),
+    close: (...args: unknown[]) => {
+      closed = args
+    },
+  } as unknown as WSContext
+
+  // The Box's end of the tunnel: it answers the open and echoes every frame back.
+  await bus.subscribe(holderChannel('owner', 'box'), (raw) => {
+    const message = JSON.parse(raw) as HolderMessage
+
+    if (message.t === 'open')
+      void bus.publish(streamChannel(message.s), JSON.stringify({ t: 'opened', s: message.s }))
+    if (message.t === 'data') {
+      toHost.push(message.d)
+      void bus.publish(
+        streamChannel(message.s),
+        JSON.stringify({ t: 'data', s: message.s, d: `echo:${message.d}` }),
+      )
+    }
+  })
+  events.onOpen(new Event('open'), ws)
+  await Bun.sleep(20)
+  expect(toHost).toEqual([JSON.stringify({ t: 'open', display: 2, viewer: 'owner' })])
+  events.onMessage(new MessageEvent('message', { data: 'UkZC' }), ws)
+  await Bun.sleep(20)
+  expect(toHost.at(-1)).toBe('UkZC')
+  expect(toClient).toEqual([
+    `echo:${JSON.stringify({ t: 'open', display: 2, viewer: 'owner' })}`,
+    'echo:UkZC',
+  ])
+  events.onMessage(new MessageEvent('message', { data: 'x'.repeat(4 * 1024 * 1024 + 1) }), ws)
+  expect(closed).toEqual([1008, 'Invalid desktop frame'])
+})

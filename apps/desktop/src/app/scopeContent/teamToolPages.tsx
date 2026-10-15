@@ -88,7 +88,7 @@ export function renderTeamToolPages(ctx: ScopeRenderContext): React.ReactNode | 
 
   if (active === 'team.terminal') return <TerminalView teamId={scope.teamId} filter={filter} />
 
-  if (active === 'team.desktop') return <DesktopView filter={filter} />
+  if (active === 'team.desktop') return <DesktopView teamId={scope.teamId} filter={filter} />
 
   if (active === 'team.browser') {
     return (

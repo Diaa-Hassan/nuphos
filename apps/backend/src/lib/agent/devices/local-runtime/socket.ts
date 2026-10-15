@@ -111,7 +111,8 @@ export class DeviceRuntimeSocket {
         !presence ||
         (purpose === 'exec' && presence.status?.localExec !== true) ||
         (purpose === 'terminal' && presence.status?.localTerminal !== true) ||
-        (purpose === 'cua' && presence.status?.localCua !== true)
+        (purpose === 'cua' && presence.status?.localCua !== true) ||
+        (purpose === 'vnc' && !presence.status?.desktops)
       ) {
         throw new Error(OFFLINE_REASON)
       }

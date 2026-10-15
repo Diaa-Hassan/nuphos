@@ -1,6 +1,6 @@
 import { z } from 'zod'
 
-export type TunnelPurpose = 'transport' | 'control' | 'exec' | 'file' | 'terminal' | 'cua'
+export type TunnelPurpose = 'transport' | 'control' | 'exec' | 'file' | 'terminal' | 'cua' | 'vnc'
 
 export const LOCAL_AGENT_PROVIDERS = ['claude-code', 'codex'] as const
 

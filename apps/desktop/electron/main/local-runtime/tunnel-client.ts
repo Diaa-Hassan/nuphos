@@ -2,6 +2,8 @@ import type { LocalAgentProvider } from './agent-cli.ts'
 import type { LocalModelCatalog } from './model-probe.ts'
 
 export type TunnelPurpose = 'transport' | 'control'
+/** What a backend stream may ask this computer for: an agent, or one of its local tools. */
+type StreamPurpose = TunnelPurpose | 'exec' | 'file' | 'terminal' | 'cua' | 'vnc'
 
 /** Lists only the agents running right now; the owner sees exactly these. */
 export type LocalRuntimeTunnelStatus = {
@@ -24,7 +26,7 @@ type BackendFrame =
   | {
       t: 'open'
       s: string
-      purpose: TunnelPurpose | 'exec' | 'file' | 'terminal' | 'cua'
+      purpose: StreamPurpose
       provider?: LocalAgentProvider
     }
   | { t: 'data'; s: string; d: string }
@@ -51,6 +53,7 @@ export type TunnelClientDeps = {
   connectExec?: () => SocketLike
   /** Computer Use, only where the Codex App can provide it. */
   connectCua?: () => SocketLike
+  connectVnc?: () => SocketLike
   activity?: {
     open(id: string, purpose: string): void
     data(id: string, raw: string, incoming: boolean): void
@@ -248,22 +251,20 @@ export class RuntimeTunnelClient {
     }
   }
 
-  private open(
-    s: string,
-    purpose: TunnelPurpose | 'exec' | 'file' | 'terminal' | 'cua',
-    provider: LocalAgentProvider,
-  ): void {
+  private open(s: string, purpose: StreamPurpose, provider: LocalAgentProvider): void {
     if (this.streams.has(s)) return
+    const { connectTerminal, connectFile, connectExec, connectCua, connectVnc } = this.deps
+    const local = {
+      terminal: connectTerminal,
+      file: connectFile,
+      exec: connectExec,
+      cua: connectCua,
+      vnc: connectVnc,
+    }
     const runtime =
-      purpose === 'terminal'
-        ? this.deps.connectTerminal?.()
-        : purpose === 'file'
-          ? this.deps.connectFile?.()
-          : purpose === 'exec'
-            ? this.deps.connectExec?.()
-            : purpose === 'cua'
-              ? this.deps.connectCua?.()
-              : this.deps.connectRuntime(purpose, provider)
+      purpose === 'transport' || purpose === 'control'
+        ? this.deps.connectRuntime(purpose, provider)
+        : local[purpose]?.()
 
     if (!runtime) {
       this.send({ t: 'close', s, reason: 'The local agent is not running' })
