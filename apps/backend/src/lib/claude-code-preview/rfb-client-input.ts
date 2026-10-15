@@ -5,8 +5,8 @@
 // this does not know ends the stream rather than guessing its length.
 
 const VERSION = /^RFB 003\.00[78]\n$/u
-/** KeyEvent, PointerEvent, ClientCutText, SetDesktopSize, xvp, and QEMU's extended key event. */
-const INPUT = new Set([4, 5, 6, 251, 252, 255])
+/** KeyEvent, PointerEvent, ClientCutText, xvp, SetDesktopSize, and QEMU's extended key event. */
+const INPUT = new Set([4, 5, 6, 250, 251, 255])
 /** A clipboard paste larger than this, or more unparsed bytes than this, ends the stream. */
 const MAX_PENDING = 256 * 1024
 
@@ -25,7 +25,7 @@ function messageSize(bytes: Buffer): number | null {
     case 4:
       return 8 // KeyEvent
     case 5:
-      return 6 // PointerEvent
+      return bytes.length < 2 ? 0 : (bytes[1] ?? 0) & 0x80 ? 7 : 6 // PointerEvent; extended has a marker bit
     case 6: {
       if (bytes.length < 8) return 0
       const length = Math.abs(bytes.readInt32BE(4)) // ClientCutText (extended: negative)
@@ -34,10 +34,10 @@ function messageSize(bytes: Buffer): number | null {
     }
     case 248:
       return bytes.length < 9 ? 0 : 9 + (bytes[8] ?? 0) // ClientFence, answering the server's
+    case 250:
+      return 4 // xvp
     case 251:
       return bytes.length < 7 ? 0 : 8 + 16 * (bytes[6] ?? 0) // SetDesktopSize
-    case 252:
-      return 4 // xvp
     case 255:
       return bytes.length < 2 ? 0 : bytes[1] === 0 ? 12 : null // QEMU key event; audio is not ours
     default:
