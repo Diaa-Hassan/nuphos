@@ -95,7 +95,6 @@ export async function createBox(
 ): Promise<AgentDevice> {
   const url = backendUrl()
   const deviceId = randomUUID()
-  const now = new Date()
   const registration = {
     deviceId,
     label,
@@ -104,10 +103,11 @@ export async function createBox(
     box: { provider: 'instabox' as const, teamId, createdBy: userId },
   }
 
-  await insertBoxAgentDevice(userId, registration)
+  const created = await insertBoxAgentDevice(userId, registration)
+
   void order(userId, teamId, deviceId, label, url)
 
-  return { ...registration, userId, createdAt: now, updatedAt: now }
+  return created
 }
 
 async function order(

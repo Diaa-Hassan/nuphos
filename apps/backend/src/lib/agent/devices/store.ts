@@ -109,10 +109,19 @@ export async function insertJoinedAgentDevice(
 export async function insertBoxAgentDevice(
   userId: string,
   device: AgentDeviceRegistration & { box: AgentDeviceBox },
-): Promise<void> {
+): Promise<AgentDevice> {
   const now = new Date()
+  const created: AgentDevice = {
+    ...device,
+    userId,
+    box: { ...device.box, createdBy: userId, access: { everyone: false, userIds: [userId] } },
+    createdAt: now,
+    updatedAt: now,
+  }
 
-  await agentDevices().insertOne({ ...device, userId, createdAt: now, updatedAt: now })
+  await agentDevices().insertOne(created)
+
+  return created
 }
 
 /**
