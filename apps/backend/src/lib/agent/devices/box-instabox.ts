@@ -44,9 +44,6 @@ export { BOX_TEMPLATE, boxBackendUrl, boxesAvailable, boxesEnabled } from './box
 export { boxState } from './box-instabox-state'
 export type { BoxState } from './box-instabox-state'
 
-/** Orders one person may place in `CREATE_WINDOW_MS`. */
-export const MAX_CREATES_PER_WINDOW = 3
-const CREATE_WINDOW_MS = 10 * 60_000
 /** The machine joins within this; a token left unused expires with it. */
 const JOIN_TOKEN_TTL_SEC = 60 * 60
 /** How long a resume may take before the tunnel is back. */
@@ -92,17 +89,6 @@ async function killByDevice(deviceId: string): Promise<void> {
   for (const machine of machines) await kill(machine.sandboxId)
 }
 
-const recentCreates = new Map<string, number[]>()
-
-function checkCreateRate(userId: string): void {
-  const now = Date.now()
-  const recent = (recentCreates.get(userId) ?? []).filter((at) => now - at < CREATE_WINDOW_MS)
-
-  if (recent.length >= MAX_CREATES_PER_WINDOW)
-    throw new AppError(429, 'box_rate_limited', 'Too many Boxes ordered recently; try again later')
-  recentCreates.set(userId, [...recent, now])
-}
-
 /**
  * Registers the device row at once and returns; ordering, installing and
  * joining run in the background. The row shows `creating` until the host joins.
@@ -114,8 +100,6 @@ export async function createBox(
   label: string,
 ): Promise<AgentDevice> {
   const url = backendUrl()
-
-  checkCreateRate(userId)
   const deviceId = randomUUID()
   const now = new Date()
   const registration = {
