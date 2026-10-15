@@ -22,6 +22,7 @@ export type DeviceStreamTarget = {
   userId: string
   deviceId: string
   teamId: string
+  actorId?: string
   purpose: TunnelPurpose
   provider?: LocalAgentProvider
   instanceId?: string
@@ -103,7 +104,7 @@ export class DeviceRuntimeSocket {
   }
 
   async connect(): Promise<void> {
-    const { userId, deviceId, teamId, purpose, provider, instanceId } = this.target
+    const { userId, deviceId, teamId, actorId, purpose, provider, instanceId } = this.target
 
     try {
       const presence = await this.deps.presence.get(userId, deviceId)
@@ -134,6 +135,7 @@ export class DeviceRuntimeSocket {
           s: this.streamId,
           conn: presence.conn,
           teamId,
+          actorId: actorId ?? userId,
           purpose,
           provider,
           ...(instanceId ? { instanceId } : {}),

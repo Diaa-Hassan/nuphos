@@ -92,12 +92,15 @@ export function boxAgents(deviceId: string, instances: RuntimeInstance[]): Runti
   )
 }
 
-/** A provider's agent on this machine still waiting for sign-in: New Agent signs it in before adding another. */
-export function idleAgent(agents: RuntimeInstance[], provider: LocalAgentProvider): string | null {
-  return (
-    agents.find((agent) => agent.provider === provider && agent.local?.signedIn !== true)?.id ??
-    null
-  )
+/** What New Agent does for a provider: add an agent when the host can, else sign in the one it has. */
+export function newAgentAction(
+  agents: RuntimeInstance[],
+  provider: LocalAgentProvider,
+): { create: true } | { signIn: string } | null {
+  if (agents.some((agent) => agent.local?.agentInstances === true)) return { create: true }
+  const idle = agents.find((agent) => agent.provider === provider && agent.local?.signedIn !== true)
+
+  return idle ? { signIn: idle.id } : null
 }
 
 export type BoxSetupPhase = 'idle' | 'starting' | 'ready' | 'error' | 'timeout'

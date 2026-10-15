@@ -1,17 +1,17 @@
 import { expect, test } from 'bun:test'
 
 import { createLocalTunnelBus } from './bus'
-import { createLocalAgentInstance } from './instances'
 import { attachRuntimeTunnel } from './holder'
+import { createLocalAgentInstance } from './instances'
 import { createMemoryPresenceStore } from './presence'
-import { DeviceRuntimeSocket } from './socket'
 import { holderChannel, streamChannel } from './protocol'
+import { DeviceRuntimeSocket } from './socket'
 
 import type { HolderMessage } from './protocol'
 import type { DeviceRuntimeSocketDeps } from './socket'
 
 const instance = { instanceId: '11111111-1111-4111-8111-111111111111', provider: 'claude-code' as const, label: 'Work' }
-const target = { userId: 'owner', deviceId: 'box', teamId: 'team' }
+const target = { userId: 'owner', actorId: 'owner', deviceId: 'box', teamId: 'team' }
 
 function setup(capable = true) {
   const bus = createLocalTunnelBus()
@@ -66,6 +66,7 @@ test('the holder forwards the selected instance id and never opens an unknown on
     send(frame) { if (frame.t === 'open') opened.push(frame) },
     close() {},
   }, { bus, presence, isMember: async () => true, heartbeatMs: 60_000 })
+
   tunnel.receive(JSON.stringify({ t: 'status', status: {
     agents: { 'claude-code': { cli: { installed: true, loggedIn: true } } },
     instances: [{ ...instance, cli: { installed: true, loggedIn: false } }],
@@ -74,6 +75,7 @@ test('the holder forwards the selected instance id and never opens an unknown on
   await new Promise((resolve) => setTimeout(resolve, 5))
   const exact = new DeviceRuntimeSocket({ ...target, purpose: 'control', provider: instance.provider, instanceId: instance.instanceId }, { bus, presence })
   const missing = new DeviceRuntimeSocket({ ...target, purpose: 'control', provider: instance.provider, instanceId: '22222222-2222-4222-8222-222222222222' }, { bus, presence })
+
   try {
     await exact.connect()
     await missing.connect()

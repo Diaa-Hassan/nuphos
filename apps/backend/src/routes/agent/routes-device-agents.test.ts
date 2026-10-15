@@ -12,7 +12,7 @@ const device = { userId: 'owner', deviceId: 'box', label: 'Box', platform: 'linu
 function app(overrides: Partial<DeviceAgentRouteDeps> = {}) {
   const calls: unknown[] = []
   const deps: DeviceAgentRouteDeps = {
-    getDevice: async (userId) => userId === 'owner' ? device : null,
+    requireAccess: async () => device,
     isMember: async (_userId, teamId) => teamId === '69e989027ab63e8d6a0ffcb6',
     getPresence: async () => ({ conn: 'c1', seenAt: Date.now(), status: { agents: {}, agentInstances: true } }),
     createInstance: async (target, instance) => { calls.push({ target, instance });
@@ -39,12 +39,12 @@ test('create dispatches exact retry id and provider and returns a usable runtime
 
   expect(response.status).toBe(201)
   expect(await response.json()).toEqual({ instanceId: id, provider: 'claude-code', label: 'Work', runtimeId: `local_owner_box_claude-code_${id}` })
-  expect(calls).toEqual([{ target: { userId: 'owner', deviceId: 'box', teamId: '69e989027ab63e8d6a0ffcb6' }, instance: { instanceId: id, provider: 'claude-code', label: 'Work' } }])
+  expect(calls).toEqual([{ target: { userId: 'owner', actorId: 'owner', deviceId: 'box', teamId: '69e989027ab63e8d6a0ffcb6' }, instance: { instanceId: id, provider: 'claude-code', label: 'Work' } }])
 })
 
 test('unknown devices and hosts without instance support never receive create', async () => {
   for (const override of [
-    { getDevice: async () => null },
+    { requireAccess: async () => { throw Object.assign(new Error('Unavailable'), { status: 404 }) } },
     { getPresence: async () => ({ conn: 'c1', seenAt: Date.now(), status: { agents: {} } }) },
   ]) {
     const { create, calls } = app(override)
@@ -61,4 +61,20 @@ test('invalid provider and path-shaped instance ids are refused', async () => {
   expect((await create({ provider: 'unknown' })).status).toBe(400)
   expect((await create({ provider: 'codex', instanceId: '../../auth' })).status).toBe(400)
   expect(calls).toEqual([])
+})
+
+
+test('management authorizes the actor and dispatches to the durable transport owner', async () => {
+  const { create, calls } = app({
+    requireAccess: async (actorId, teamId, deviceId, level) => {
+      expect([actorId, teamId, deviceId, level]).toEqual(['owner', '69e989027ab63e8d6a0ffcb6', 'box', 'manage'])
+
+      return { ...device, userId: 'transport-owner' }
+    },
+  })
+  const response = await create({ provider: 'codex', instanceId: id })
+
+  expect(response.status).toBe(201)
+  expect(calls).toMatchObject([{ target: { actorId: 'owner', userId: 'transport-owner' } }])
+  expect(await response.json()).toMatchObject({ runtimeId: `local_transport-owner_box_codex_${id}` })
 })

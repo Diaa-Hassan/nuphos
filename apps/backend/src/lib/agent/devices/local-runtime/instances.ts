@@ -18,7 +18,7 @@ const responseSchema = z.discriminatedUnion('ok', [
 /** The Box persists its inventory before acknowledging. Retrying an instance id
  * must be idempotent on the host; no second tunnel or cloud credential is used. */
 export function createLocalAgentInstance(
-  target: { userId: string; deviceId: string; teamId: string },
+  target: { userId: string; actorId: string; deviceId: string; teamId: string },
   instance: AgentInstance,
   options: { deps?: DeviceRuntimeSocketDeps; timeoutMs?: number } = {},
 ): Promise<AgentInstance> {

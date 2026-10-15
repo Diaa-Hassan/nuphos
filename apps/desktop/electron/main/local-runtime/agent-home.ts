@@ -187,6 +187,11 @@ export function prepareIsolatedAgentHome(
 
   try {
     mkdirSync(home, { recursive: true, mode: 0o700 })
+    // A keychain store would be shared across instances; keep each login in its own home.
+    const config = path.join(home, 'config.toml')
+
+    if (!existsSync(config))
+      writeFileSync(config, 'cli_auth_credentials_store = "file"\n', { mode: 0o600 })
 
     return home
   } catch {

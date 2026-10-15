@@ -9,6 +9,9 @@ export type AgentDeviceBoxState = 'creating' | 'running' | 'paused' | 'stopped' 
 /** A cloud machine Nuphos created for this device; absent for a person's own computer. */
 export type AgentDeviceBox = {
   provider: 'instabox'
+  teamId?: string
+  createdBy?: string
+  access?: { everyone: boolean; userIds: string[] }
   sandboxId: string
   state: AgentDeviceBoxState
   /** Why `state` is `error`, for the person who created it. */
@@ -209,4 +212,10 @@ export async function isActiveTeamMember(userId: string, teamId: string): Promis
     )
 
   return Boolean(team?.members.some((m) => m.userId.equals(userObjectId) && !m.deletedAt))
+}
+
+
+/** Never infer a legacy Box's team from its owner. */
+export async function listTeamBoxes(teamId: string): Promise<AgentDevice[]> {
+  return agentDevices().find({ 'box.teamId': teamId }).toArray()
 }

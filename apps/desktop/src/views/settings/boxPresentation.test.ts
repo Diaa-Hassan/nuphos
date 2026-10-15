@@ -10,7 +10,7 @@ import {
   boxes,
   boxPollMs,
   boxState,
-  idleAgent,
+  newAgentAction,
   machineLine,
   machines,
   vanishedBoxes,
@@ -130,16 +130,25 @@ test('a machine reads as its OS and model', () => {
   assert.equal(machineLine(box('a', 'running')), 'Linux · instabox')
 })
 
-const local = (id: string, provider: RuntimeInstance['provider'], signedIn: boolean | null) =>
-  ({ id, provider, kind: 'local', local: { deviceId: 'a', signedIn } }) as RuntimeInstance
+const local = (
+  id: string,
+  provider: RuntimeInstance['provider'],
+  signedIn: boolean | null,
+  agentInstances?: boolean,
+) =>
+  ({
+    id,
+    provider,
+    kind: 'local',
+    local: { deviceId: 'a', signedIn, agentInstances },
+  }) as RuntimeInstance
 
-test('New Agent signs in a waiting agent of that provider before adding another', () => {
-  const agents = [local('claude', 'claude-code', true), local('codex', 'codex', null)]
+test('New Agent adds an agent on a capable host, and only signs in the existing one on an older host', () => {
+  const old = [local('claude', 'claude-code', true), local('codex', 'codex', null)]
+  const capable = [local('claude', 'claude-code', true, true), local('codex', 'codex', null, true)]
 
-  assert.equal(idleAgent(agents, 'codex'), 'codex')
-  assert.equal(idleAgent(agents, 'claude-code'), null)
-  assert.equal(
-    idleAgent([...agents, local('claude-2', 'claude-code', false)], 'claude-code'),
-    'claude-2',
-  )
+  assert.deepEqual(newAgentAction(capable, 'codex'), { create: true })
+  assert.deepEqual(newAgentAction(capable, 'claude-code'), { create: true })
+  assert.deepEqual(newAgentAction(old, 'codex'), { signIn: 'codex' })
+  assert.equal(newAgentAction(old, 'claude-code'), null)
 })

@@ -143,6 +143,7 @@ export type HolderMessage =
       s: string
       conn: string
       teamId: string
+      actorId?: string
       purpose: TunnelPurpose
       provider?: LocalAgentProvider
       instanceId?: string

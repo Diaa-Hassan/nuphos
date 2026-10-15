@@ -21,7 +21,12 @@ const status = localRuntimeStatusSchema.parse({
   ],
 })
 const deps: LocalRuntimeCatalogDeps = {
-  listDevices: async () => [{ ...ref, label: 'Box', platform: 'linux', allowLocalExec: true, createdAt: new Date(0), updatedAt: new Date(0) }],
+  access: {
+    getDevice: async (userId) => userId === 'owner' ? { ...ref, label: 'Box', platform: 'linux', allowLocalExec: true, createdAt: new Date(0), updatedAt: new Date(0) } : null,
+    listDevices: async () => [{ ...ref, label: 'Box', platform: 'linux', allowLocalExec: true, createdAt: new Date(0), updatedAt: new Date(0) }],
+    listBoxes: async () => [],
+    role: async () => null,
+  },
   isMember: async (userId, teamId) => userId === 'owner' && teamId === 'team',
   getPresence: async () => ({ conn: 'c1', seenAt: Date.now(), status }),
   wakeDevice: async () => {},
@@ -75,4 +80,32 @@ describe('multiple instances of one provider', () => {
 
     expect(parsed.instances![0]!.usage).toEqual({ five_hour: { utilization: 12 } })
   })
+})
+
+
+test('Box instance use and login apply actor ACL before reading transport presence', async () => {
+  let reads = 0
+  const box = { userId: 'owner', deviceId: ref.deviceId, label: 'Team Box', platform: 'linux', allowLocalExec: true, createdAt: new Date(0), updatedAt: new Date(0), box: { provider: 'instabox' as const, sandboxId: 's1', state: 'running' as const, updatedAt: new Date(0), teamId: 'team', createdBy: 'owner', access: { everyone: false, userIds: ['member'] } } }
+  const boxDeps: LocalRuntimeCatalogDeps = {
+    ...deps,
+    access: {
+      getDevice: async () => box,
+      listDevices: async () => [box],
+      listBoxes: async (teamId) => teamId === 'team' ? [box] : [],
+      role: async (actorId) => actorId === 'admin' ? 'ADMINISTRATOR' : 'EDITOR',
+    },
+    isMember: async () => true,
+    getPresence: async (owner) => { reads++; expect(owner).toBe('owner');
+
+ return { conn: 'c1', seenAt: Date.now(), status } },
+  }
+  const id = localRuntimeId({ ...ref, instanceId: a })
+
+  expect((await resolveLocalRuntimeEndpoint('team', id, 'member', 'transport', boxDeps)).runtimeId).toBe(id)
+  reads = 0
+  await expect(resolveLocalRuntimeEndpoint('team', id, 'member', 'login', boxDeps)).rejects.toMatchObject({ code: 'runtime_not_found' })
+  await expect(resolveLocalRuntimeEndpoint('team', id, 'unlisted', 'transport', boxDeps)).rejects.toMatchObject({ code: 'runtime_not_found' })
+  await expect(resolveLocalRuntimeEndpoint('other', id, 'admin', 'login', boxDeps)).rejects.toMatchObject({ code: 'runtime_not_found' })
+  expect(reads).toBe(0)
+  expect((await resolveLocalRuntimeEndpoint('team', id, 'admin', 'login', boxDeps)).runtimeId).toBe(id)
 })

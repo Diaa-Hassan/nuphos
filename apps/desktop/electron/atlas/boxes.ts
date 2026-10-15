@@ -1,5 +1,3 @@
-import { randomUUID } from 'node:crypto'
-
 import { readDeviceMetrics } from '../main/device-metrics.ts'
 
 import { call } from './client.ts'
@@ -49,17 +47,18 @@ export function createBox(label?: string, teamId?: string): Promise<AgentDevice>
     { retry: false },
   )
 }
-/** Add another agent on a device. One id per call, so a retried request never makes two. */
+/** Add another agent on a device. A cold host can take most of a minute, so wait past the backend's own 60s. */
 export function createDeviceAgent(
   deviceId: string,
   teamId: string,
   provider: LocalAgentProvider,
 ): Promise<DeviceAgentInstance> {
-  return call('POST', `/agent/devices/${encodeURIComponent(deviceId)}/agents`, {
-    teamId,
-    provider,
-    instanceId: randomUUID(),
-  })
+  return call(
+    'POST',
+    `/agent/devices/${encodeURIComponent(deviceId)}/agents`,
+    { teamId, provider },
+    { retry: false, timeoutMs: 65_000 },
+  )
 }
 export function pauseBox(deviceId: string): Promise<{ box: BoxStatus }> {
   return call('POST', `${box(deviceId)}/pause`, undefined, { retry: false })

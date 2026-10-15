@@ -251,7 +251,9 @@ export function scheduleAgentRestart(
 export function runtimeStateOf(
   deps: Pick<LocalRuntimeControllerDeps, 'bundle' | 'dataDir'>,
   agents: Record<LocalAgentProvider, Agent>,
-  context: { online: boolean; superseded: boolean; userId: string | null },
+  online: boolean,
+  superseded: boolean,
+  userId: string | null,
   instances?: LocalRuntimeState['instances'],
 ): LocalRuntimeState {
   const bundle = deps.bundle()
@@ -259,11 +261,12 @@ export function runtimeStateOf(
   return {
     ...(instances ? { instances } : {}),
     agents: agentStatesOf(agents, {
-      ...context,
+      online,
+      superseded,
       available: (provider) => bundle?.adapters[provider] !== undefined,
     }),
-    workspace: context.userId ? userDir(deps.dataDir(), context.userId, 'workspace') : null,
-    userId: context.userId,
+    workspace: userId ? userDir(deps.dataDir(), userId, 'workspace') : null,
+    userId,
   }
 }
 

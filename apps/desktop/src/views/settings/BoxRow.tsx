@@ -14,8 +14,8 @@ import { AGENT_PROVIDER } from '../../types/runtime'
 
 import { visibleAgent } from './agentPresentation'
 import { BoxMetrics } from './BoxMetrics'
-import { MachineIcon } from './BoxParts'
-import { BOX_BADGE, boxActions, boxState, idleAgent, machineLine } from './boxPresentation'
+import { AgentTile, MachineIcon } from './BoxParts'
+import { BOX_BADGE, boxActions, boxState, machineLine, newAgentAction } from './boxPresentation'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
 import { inputClasses } from './styles'
 
@@ -64,13 +64,18 @@ export function BoxRow({
     }
   }
 
+  // An older host cannot add agents; the backend still refuses with 409 if this is stale.
+  const canAddAgents = agents.some((agent) => agent.local?.agentInstances === true)
   const addAgent = (provider: LocalAgentProvider) => {
-    const idle = idleAgent(agents, provider)
+    const action = newAgentAction(agents, provider)
 
-    if (idle) return setSigningIn(idle)
+    if (!action) return
+    if ('signIn' in action) return setSigningIn(action.signIn)
     void run('Could not add agent', async () => {
       const { runtimeId } = await api.boxCreateAgent(device.deviceId, teamId, provider)
 
+      // Details first; the sign-in opens over them once the catalog lists the new agent.
+      onSelect(runtimeId)
       setSigningIn(runtimeId)
     })
   }
@@ -232,11 +237,24 @@ export function BoxRow({
                 {PROVIDERS.map((provider) => (
                   <MenuItem
                     key={provider}
-                    disabled={busy}
+                    disabled={busy || !newAgentAction(agents, provider)}
                     icon={<AgentProviderIcon provider={provider} className="h-4 w-4" />}
                     onClick={() => addAgent(provider)}
                   >
-                    {AGENT_PROVIDER[provider].label}
+                    {canAddAgents
+                      ? AGENT_PROVIDER[provider].label
+                      : `Sign in to ${AGENT_PROVIDER[provider].label}`}
+                  </MenuItem>
+                ))}
+                {!canAddAgents && (
+                  <MenuItem disabled>Update the Box host to add more agents</MenuItem>
+                )}
+                {agents.filter((agent) => agent.local?.instanceId && agent.local.signedIn !== true).map((agent) => (
+                  <MenuItem key={agent.id} disabled={busy} onClick={() => {
+                    onSelect(agent.id)
+                    setSigningIn(agent.id)
+                  }}>
+                    Continue signing in to {agent.label} ({agent.local?.instanceId?.slice(0, 8)})
                   </MenuItem>
                 ))}
               </MenuContent>
@@ -268,21 +286,3 @@ export function BoxRow({
   )
 }
 
-/** Open the same agent details panel as the usage table. */
-function AgentTile({ agent, onSelect }: { agent: RuntimeInstance; onSelect: () => void }) {
-  const label = AGENT_PROVIDER[agent.provider].label
-
-  return (
-    <li className="shrink-0">
-      <button
-        type="button"
-        title={label}
-        aria-label={`Open ${label} details`}
-        onClick={onSelect}
-        className="flex h-10 w-10 items-center justify-center rounded-lg bg-zGray-800/40 transition-colors hover:bg-zGray-800/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zViolet-500/60"
-      >
-        <AgentProviderIcon provider={agent.provider} className="h-5 w-5" />
-      </button>
-    </li>
-  )
-}

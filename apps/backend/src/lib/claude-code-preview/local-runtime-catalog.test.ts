@@ -27,11 +27,15 @@ function device(userId: string, deviceId: string, label: string): AgentDevice {
 }
 
 const deps: LocalRuntimeCatalogDeps = {
-  listDevices: async (userId) =>
-    userId === 'owner' ? [device('owner', 'mac-1', 'Olivia’s MacBook')] : [],
+  access: {
+    getDevice: async (userId) => userId === 'owner' ? device('owner', 'mac-1', 'Olivia’s MacBook') : null,
+    listDevices: async (userId) => userId === 'owner' ? [device('owner', 'mac-1', 'Olivia’s MacBook')] : [],
+    listBoxes: async () => [],
+    role: async () => null,
+  },
   isMember: async (userId, teamId) => teams.has(`${userId}:${teamId}`),
   getPresence: async () => presence,
-  wakeDevice: async () => undefined,
+  wakeDevice: async () => {},
 }
 
 function online(loggedIn: boolean | null = true, codex = false): LocalRuntimePresence {
@@ -59,7 +63,7 @@ describe('local runtime catalog', () => {
     expect(listed).toMatchObject({
       id: runtimeId,
       kind: 'local',
-      label: 'Olivia’s MacBook · Claude Code',
+      label: 'Claude Code in Olivia’s MacBook',
       local: { ownerUserId: 'owner', deviceId: 'mac-1', signedIn: true },
     })
     expect(await listOwnLocalRuntimes('t2', 'owner', deps)).toEqual([])
@@ -96,8 +100,8 @@ describe('local runtime catalog', () => {
     const listed = await listOwnLocalRuntimes('t1', 'owner', deps)
 
     expect(listed.map((instance) => [instance.label, instance.provider])).toEqual([
-      ['Olivia’s MacBook · Claude Code', 'claude-code'],
-      ['Olivia’s MacBook · Codex', 'codex'],
+      ['Claude Code in Olivia’s MacBook', 'claude-code'],
+      ['Codex in Olivia’s MacBook', 'codex'],
     ])
     const codex = await resolveLocalRuntimeEndpoint(
       't1',

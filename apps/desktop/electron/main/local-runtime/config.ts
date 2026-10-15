@@ -140,23 +140,32 @@ export function openabConfigToml(launch: LocalRuntimeLaunch): string {
  */
 export function agentLoginEnv(launch: AgentCliLaunch): Record<string, string> {
   if (/\s/u.test(launch.cliPath)) return {}
+  // OpenAB's own HOME is isolated. macOS login needs the real user's Keychain.
+  const home = launch.env.HOME ?? ''
+
+  if (process.platform === 'darwin' && (!home || /\s/u.test(home))) return {}
+  const prefix = process.platform === 'darwin'
+    ? ['/usr/bin/env', `HOME=${home}`, `USERPROFILE=${home}`]
+    : []
+
 
   // Next to a headless host (a Box) ship the cloud runtime's login wrappers: they turn the
   // CLI's sign-in into the NDJSON steps openab relays to the Sign in dialog.
   const wrapper = path.join(path.dirname(process.argv[1] ?? ''), `${launch.provider === 'codex' ? 'codex' : 'claude'}-login.mjs`)
   const cliEnv = agentCliEnv(launch)
+
   if (existsSync(wrapper) && !/\s/u.test(process.execPath + wrapper))
     return {
       ...cliEnv,
       ...(launch.provider === 'codex' && cliEnv.CODEX_HOME ? { NUPHOS_CODEX_AUTH_DIRECTORY: cliEnv.CODEX_HOME } : {}),
       CLAUDE_CODE_EXECUTABLE: launch.cliPath,
       CODEX_EXECUTABLE: launch.cliPath,
-      OPENAB_RUNTIME_LOGIN_COMMAND: [process.execPath, wrapper, ...(launch.provider === 'codex' ? ['--install'] : [])].join(' '),
+      OPENAB_RUNTIME_LOGIN_COMMAND: [...prefix, process.execPath, wrapper, ...(launch.provider === 'codex' ? ['--install'] : [])].join(' '),
     }
 
   return {
     ...cliEnv,
-    OPENAB_RUNTIME_LOGIN_COMMAND: [launch.cliPath, ...agentSignInArgs(launch.provider)].join(' '),
+    OPENAB_RUNTIME_LOGIN_COMMAND: [...prefix, launch.cliPath, ...agentSignInArgs(launch.provider)].join(' '),
   }
 }
 

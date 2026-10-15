@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
+import { spawn } from 'node:child_process'
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
 import { test } from 'node:test'
+import { fileURLToPath } from 'node:url'
 
 import { authorizeUrl, isAuthorizationCode, runClaudeLogin } from '../image/claude-login.mjs'
 
@@ -166,6 +169,44 @@ test('host login writes only its selected instance config directory', async () =
     const credential = JSON.parse(await readFile(join(configDir, '.credentials.json'), 'utf8'))
     assert.ok(credential.env.includes('CLAUDE_CONFIG_DIR'))
     assert.ok(credential.env.includes('CLAUDE_SECURESTORAGE_CONFIG_DIR'))
+    await assert.rejects(readFile(join(home, '.claude', '.credentials.json')), { code: 'ENOENT' })
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})
+
+test('the CLI entrypoint keeps the host HOME and passes only the instance config directory', async () => {
+  const { home, script } = await fixture()
+  const configDir = join(home, 'instance-claude')
+  const executable = join(home, 'claude')
+  try {
+    await writeFile(
+      script,
+      FAKE_CLI.replace(
+        /mkdirSync\(process\.env\.HOME[^;]+;\s*writeFileSync\([^;]+;/u,
+        "mkdirSync(process.env.CLAUDE_CONFIG_DIR, { recursive: true }); writeFileSync(process.env.CLAUDE_CONFIG_DIR + '/.credentials.json', JSON.stringify({ home: process.env.HOME, configDir: process.env.CLAUDE_CONFIG_DIR, secure: process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR }));",
+      ),
+    )
+    await writeFile(executable, `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o755 })
+    const child = spawn(process.execPath, [fileURLToPath(new URL('../image/claude-login.mjs', import.meta.url))], {
+      env: {
+        PATH: process.env.PATH,
+        HOME: home,
+        CLAUDE_CODE_EXECUTABLE: executable,
+        CLAUDE_CONFIG_DIR: configDir,
+        CLAUDE_SECURESTORAGE_CONFIG_DIR: configDir,
+      },
+      stdio: ['pipe', 'pipe', 'inherit'],
+    })
+    const frames = []
+    for await (const line of createInterface({ input: child.stdout })) {
+      const frame = JSON.parse(line)
+      frames.push(frame)
+      if (frame.type === 'authorize') child.stdin.write('good-code#state\n')
+    }
+    assert.deepEqual(frames.map((frame) => frame.type), ['authorize', 'authenticated'])
+    const credential = JSON.parse(await readFile(join(configDir, '.credentials.json'), 'utf8'))
+    assert.deepEqual(credential, { home, configDir, secure: configDir })
     await assert.rejects(readFile(join(home, '.claude', '.credentials.json')), { code: 'ENOENT' })
   } finally {
     await rm(home, { recursive: true, force: true })

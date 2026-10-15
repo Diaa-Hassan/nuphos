@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 
-import { agentEnv, deriveControlKey, openabConfigToml, openabEnv } from './config.ts'
+import { agentEnv, agentLoginEnv, deriveControlKey, openabConfigToml, openabEnv } from './config.ts'
 
 import type { LocalRuntimeLaunch } from './config.ts'
 
@@ -135,4 +135,28 @@ test('an explicit default Keychain override wins over a custom terminal config',
     env.CLAUDE_SECURESTORAGE_CONFIG_DIR,
     process.platform === 'darwin' ? '' : launch.agentHome,
   )
+})
+
+
+test('macOS sign-in retains host HOME while OpenAB keeps its own home', { skip: process.platform !== 'darwin' }, () => {
+  const expectedPrefix = '/usr/bin/env HOME=/Users/me USERPROFILE=/Users/me '
+
+  assert.ok(agentLoginEnv(launch).OPENAB_RUNTIME_LOGIN_COMMAND.startsWith(expectedPrefix))
+  assert.equal(openabEnv(launch).HOME, launch.openabHome)
+  assert.equal(agentLoginEnv({ ...launch, env: { ...launch.env, HOME: '/Users/with space' } }).OPENAB_RUNTIME_LOGIN_COMMAND, undefined)
+  const dir = mkdtempSync(path.join(tmpdir(), 'nuphos-login-wrapper-'))
+  const previous = process.argv[1]
+
+  try {
+    process.argv[1] = path.join(dir, 'host.mjs')
+    writeFileSync(path.join(dir, 'claude-login.mjs'), '// fixture is never executed')
+    const env = agentLoginEnv(launch)
+
+    assert.ok(env.OPENAB_RUNTIME_LOGIN_COMMAND.startsWith(expectedPrefix))
+    assert.ok(env.OPENAB_RUNTIME_LOGIN_COMMAND.includes('claude-login.mjs'))
+    assert.equal(env.CLAUDE_CONFIG_DIR, launch.agentHome)
+  } finally {
+    process.argv[1] = previous
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

@@ -67,11 +67,9 @@ export class LocalRuntimeController {
     return runtimeStateOf(
       this.deps,
       this.agents,
-      {
-        online: this.online,
-        superseded: this.superseded,
-        userId: this.userId,
-      },
+      this.online,
+      this.superseded,
+      this.userId,
       this.instances?.states(this.online),
     )
   }
@@ -118,13 +116,11 @@ export class LocalRuntimeController {
         .filter((provider) => restart || !this.agents[provider].process)
         .map((provider) => this.launch(provider)),
     )
-    // Sample after launch so restart generations discard stale readings.
     await Promise.all(this.providers.map((provider) => this.usage.sample(provider, true)))
     await this.instances?.refresh(restart)
 
     return this.state()
   }
-  /** The network may have changed under a sleeping computer: dial now rather than after backoff. */
   reconnect(): void {
     this.tunnel?.reconnectNow()
   }

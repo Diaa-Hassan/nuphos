@@ -1,7 +1,5 @@
-// `nuphos agent`: this computer's local agents without Electron. The CLI runs
-// this bundled file on the user's own Node, next to the staged openab and
-// adapters. It connects either with this computer's own credential, from
-// `nuphos agent --join <token>`, or with the session the CLI and the desktop share.
+// `nuphos agent`: host local agents without Electron, authenticated by this
+// computer's join credential or the session shared with Desktop.
 
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
@@ -290,11 +288,13 @@ await controller.setUser(owner)
 await signInClaude(owner)
 // A sign-in from Nuphos's dialog lands in the agent's own home; notice it without a restart.
 setInterval(() => {
-  const { agents } = controller.state()
+  const { agents, instances = [] } = controller.state()
 
   if (
     !stopping &&
-    Object.values(agents).some((agent) => agent.cli?.installed && !agent.cli.loggedIn)
+    [...Object.values(agents), ...instances].some(
+      (agent) => agent.cli?.installed && !agent.cli.loggedIn,
+    )
   )
     void controller.refresh(false)
 }, 2_000)

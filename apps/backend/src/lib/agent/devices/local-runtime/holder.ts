@@ -87,7 +87,7 @@ export async function attachRuntimeTunnel(
   }
 
   const openStream = async (message: Extract<HolderMessage, { t: 'open' }>) => {
-    const allowed = await deps.isMember(userId, message.teamId).catch(() => false)
+    const allowed = await deps.isMember(message.actorId ?? userId, message.teamId).catch(() => false)
 
     if (ended) return
     if (!allowed) {
