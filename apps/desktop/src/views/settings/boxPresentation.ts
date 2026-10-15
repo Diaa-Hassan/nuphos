@@ -26,25 +26,49 @@ export function boxes(devices: AgentDevice[]): BoxDevice[] {
 }
 
 /**
- * Every machine that runs the user's agents: all Boxes, and one row per own computer.
- * A computer that signed in again leaves its old record behind under the same name; the online
- * or newest one is the current one.
+ * Every machine that runs the user's agents: all Boxes and every online computer. A computer that
+ * signed in again leaves its old record behind under the same name; an offline record shows only
+ * when no record of that machine is online, and then only the newest.
  */
 export function machines(devices: AgentDevice[]): AgentDevice[] {
-  const current = new Map<string, AgentDevice>()
-  const rank = (device: AgentDevice) => [device.online ? 1 : 0, device.createdAt ?? ''] as const
+  const key = (device: AgentDevice) => `${device.platform}\n${device.label}`
+  const live = new Set(devices.filter((device) => device.online).map(key))
+  const newest = new Map<string, AgentDevice>()
 
   for (const device of devices) {
-    const key = device.box ? device.deviceId : `${device.platform}\n${device.label}`
-    const kept = current.get(key)
-    const [online, created] = rank(device)
-    const [keptOnline, keptCreated] = kept ? rank(kept) : [-1, '']
+    if (device.box || device.online || live.has(key(device))) continue
+    const kept = newest.get(key(device))
 
-    if (online > keptOnline || (online === keptOnline && created > keptCreated))
-      current.set(key, device)
+    if (!kept || (device.createdAt ?? '') > (kept.createdAt ?? '')) newest.set(key(device), device)
   }
 
-  return devices.filter((device) => [...current.values()].includes(device))
+  return devices.filter(
+    (device) => device.box || device.online || newest.get(key(device)) === device,
+  )
+}
+
+export type MachineKind = 'box' | 'laptop' | 'desktop'
+
+const MAC_MODEL = /MacBook (?:Pro|Air)|MacBook|Mac mini|Mac Studio|Mac Pro|iMac/i
+const PLATFORM_NAME: Record<string, string> = { darwin: 'macOS', linux: 'Linux', win32: 'Windows' }
+
+export function machineKind(device: AgentDevice): MachineKind {
+  if (device.box) return 'box'
+  const model = MAC_MODEL.exec(device.label)?.[0] ?? ''
+
+  return /MacBook/i.test(model) || (!model && device.platform !== 'linux') ? 'laptop' : 'desktop'
+}
+
+/** "macOS · MacBook Pro · 2 agents"; a Box being made says how long it takes instead. */
+export function machineDetail(device: AgentDevice, agentCount: number): string {
+  if (device.box?.state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
+  const parts = device.box
+    ? ['Box']
+    : [PLATFORM_NAME[device.platform] ?? device.platform, MAC_MODEL.exec(device.label)?.[0]]
+
+  if (agentCount > 0) parts.push(`${agentCount} agent${agentCount === 1 ? '' : 's'}`)
+
+  return parts.filter(Boolean).join(' · ')
 }
 
 export function anyCreating(devices: AgentDevice[]): boolean {

@@ -1,5 +1,5 @@
 import clsx from 'clsx'
-import { Box, Laptop, Loader2 } from 'lucide-react'
+import { Box, Laptop, Loader2, Monitor } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 import { api } from '../../api'
@@ -14,6 +14,8 @@ import {
   anyCreating,
   boxActions,
   boxAgents,
+  machineDetail,
+  machineKind,
   machines,
   vanishedBoxes,
 } from './boxPresentation'
@@ -40,6 +42,14 @@ export function BoxSection({
   const [label, setLabel] = useState('')
   const [creating, setCreating] = useState(false)
   const previous = useRef<AgentDevice[]>([])
+  const [thisDeviceId, setThisDeviceId] = useState<string | null>(null)
+
+  useEffect(() => {
+    void api.deviceGetIdentity().then(
+      (identity) => setThisDeviceId(identity.deviceId),
+      () => {},
+    )
+  }, [])
 
   useEffect(() => {
     if (!list) return
@@ -111,6 +121,7 @@ export function BoxSection({
               teamId={teamId}
               device={device}
               agents={boxAgents(device.deviceId, instances)}
+              isThisComputer={device.deviceId === thisDeviceId}
               onChanged={reload}
             />
           ))}
@@ -125,24 +136,22 @@ const COMPUTER_BADGE: Record<'online' | 'offline', RuntimeStatusView> = {
   offline: { label: 'Offline', tone: 'off' },
 }
 
-function machineDetail(device: AgentDevice, agents: RuntimeInstance[]) {
-  if (device.box?.state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
-  const names = agents.map((agent) => AGENT_PROVIDER[agent.provider].label)
-
-  return [device.box ? 'Box' : device.platform, ...names].join(' · ')
-}
+const MACHINE_ICON = { box: Box, laptop: Laptop, desktop: Monitor }
 
 function MachineRow({
   teamId,
   device,
   agents,
+  isThisComputer,
   onChanged,
 }: {
   teamId: string
   device: AgentDevice
   agents: RuntimeInstance[]
+  isThisComputer: boolean
   onChanged: () => void
 }) {
+  const Icon = MACHINE_ICON[machineKind(device)]
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [signingIn, setSigningIn] = useState<RuntimeInstance | null>(null)
@@ -166,17 +175,22 @@ function MachineRow({
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
       <div className="flex min-w-0 flex-1 basis-52 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zGray-800/70 bg-main">
-          {device.box ? (
-            <Box className="h-4 w-4 text-secondary" />
-          ) : (
-            <Laptop className="h-4 w-4 text-secondary" />
-          )}
+          <Icon className="h-4 w-4 text-secondary" />
         </div>
         <div className="min-w-0">
-          <div className="truncate text-[13px] font-medium text-main" title={device.label}>
-            {device.label}
+          <div className="flex items-center gap-2">
+            <span className="truncate text-[13px] font-medium text-main" title={device.label}>
+              {device.label}
+            </span>
+            {isThisComputer && (
+              <span className="shrink-0 rounded-full border border-zGray-700 px-1.5 py-px text-[10.5px] text-secondary">
+                This Computer
+              </span>
+            )}
           </div>
-          <div className="truncate text-[12px] text-tertiary">{machineDetail(device, agents)}</div>
+          <div className="truncate text-[12px] text-tertiary">
+            {machineDetail(device, agents.length)}
+          </div>
         </div>
       </div>
       <span

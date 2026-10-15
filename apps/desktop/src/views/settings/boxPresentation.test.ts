@@ -9,6 +9,8 @@ import {
   boxSetupPhase,
   boxSetupProblem,
   boxes,
+  machineDetail,
+  machineKind,
   machines,
   vanishedBoxes,
 } from './boxPresentation.ts'
@@ -110,7 +112,7 @@ test('a creating Box that drops out of the list is reported once', () => {
   assert.deepEqual(vanishedBoxes([box('a', 'creating')], [box('a', 'running')]), [])
 })
 
-test('own computers show once per machine: the online or newest record wins', () => {
+test('an offline record shows only when no record of that machine is online, newest first', () => {
   const mac = (deviceId: string, createdAt: string, online = false): AgentDevice => ({
     deviceId,
     label: 'MacBook Pro',
@@ -122,6 +124,8 @@ test('own computers show once per machine: the online or newest record wins', ()
 
   assert.deepEqual(ids([mac('old', '2026-01-01'), mac('new', '2026-02-01')]), ['new'])
   assert.deepEqual(ids([mac('old', '2026-01-01', true), mac('new', '2026-02-01')]), ['old'])
+  // Two live Macs with the same name are two machines.
+  assert.deepEqual(ids([mac('a', '2026-01-01', true), mac('b', '2026-02-01', true)]), ['a', 'b'])
   assert.deepEqual(
     ids([
       mac('m', '2026-01-01'),
@@ -131,4 +135,24 @@ test('own computers show once per machine: the online or newest record wins', ()
     ]),
     ['m', 'l', 'a', 'b'],
   )
+})
+
+test('a machine shows its kind and a short detail line', () => {
+  const computer = (label: string, platform = 'darwin'): AgentDevice => ({
+    deviceId: label,
+    label,
+    platform,
+  })
+
+  assert.equal(machineKind(box('a', 'running')), 'box')
+  assert.equal(machineKind(computer("Yuanlin's MacBook Pro")), 'laptop')
+  assert.equal(machineKind(computer('Office Mac mini')), 'desktop')
+  assert.equal(machineKind(computer('staging-vm', 'linux')), 'desktop')
+  assert.equal(
+    machineDetail(computer("Yuanlin's MacBook Pro"), 2),
+    'macOS · MacBook Pro · 2 agents',
+  )
+  assert.equal(machineDetail(computer('staging-vm', 'linux'), 0), 'Linux')
+  assert.equal(machineDetail(box('a', 'running'), 1), 'Box · 1 agent')
+  assert.match(machineDetail(box('a', 'creating'), 0), /10–30 seconds/)
 })
