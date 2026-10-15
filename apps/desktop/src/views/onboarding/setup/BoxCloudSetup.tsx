@@ -6,6 +6,7 @@ import { AgentProviderIcon } from '../../../components/agent/panel/icons'
 import { Button } from '../../../components/ui/button'
 import { AGENT_PROVIDER } from '../../../types/runtime'
 import { RuntimeLoginBody } from '../../settings/RuntimeLoginBody'
+import { boxSetupProblem } from '../../settings/boxPresentation'
 import { useBoxSetup } from '../../settings/useBoxSetup'
 import { useRuntimeLogin } from '../../settings/useRuntimeLogin'
 
@@ -83,6 +84,7 @@ export function BoxCloudSetup({
   onConnected: (instance: RuntimeInstance) => void
 }) {
   const box = useBoxSetup(teamId, deviceId, onCreated)
+  const problem = boxSetupProblem(box.phase)
   const [pickedId, setPickedId] = useState<string | null>(null)
   const [instance, setInstance] = useState<RuntimeInstance | null>(null)
   const picked = box.agents.find((agent) => agent.id === pickedId) ?? box.agents[0]
@@ -157,14 +159,12 @@ export function BoxCloudSetup({
             Box created
           </li>
           <li className="flex items-center gap-2">
-            {box.phase === 'error' ? (
+            {problem ? (
               <span className="h-2 w-2 rounded-full bg-red-500" />
             ) : (
               <Loader2 className="h-4 w-4 animate-spin" />
             )}
-            {box.phase === 'error'
-              ? 'The Box could not start. Delete it in Settings › Agents and try again.'
-              : 'Starting the computer and its agents, usually 10–30 seconds…'}
+            {problem ?? 'Starting the computer and its agents, usually 10–30 seconds…'}
           </li>
         </ol>
       )}

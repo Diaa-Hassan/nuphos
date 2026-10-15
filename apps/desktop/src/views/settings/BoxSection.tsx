@@ -1,6 +1,6 @@
 import clsx from 'clsx'
-import { Box, Loader2 } from 'lucide-react'
-import { useCallback, useEffect, useState } from 'react'
+import { Box, Laptop, Loader2 } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 import { api } from '../../api'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
@@ -11,22 +11,24 @@ import { AGENT_PROVIDER } from '../../types/runtime'
 
 import {
   BOX_BADGE,
-  BOX_CREATING_POLL_MS,
   anyCreating,
   boxActions,
-  boxState,
   boxAgents,
-  boxes,
+  machines,
+  vanishedBoxes,
 } from './boxPresentation'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
 import { STATUS_DOT } from './runtimePresentation'
 import { inputClasses } from './styles'
+import { useAgentDevices } from './useAgentDevices'
 
-import type { BoxDevice } from './boxPresentation'
-import type { AgentDeviceList } from '../../api'
+import type { RuntimeStatusView } from './runtimePresentation'
+import type { AgentDevice, AgentDeviceList } from '../../api'
 import type { RuntimeInstance } from '../../types/runtime'
 
-/** The signed-in user's own Boxes, above the team's agents. New Box shows only when the backend can make one. */
+const pollWhileCreating = (list: AgentDeviceList) => anyCreating(list.devices)
+
+/** Every machine running the signed-in user's agents: their Boxes and their own computers. */
 export function BoxSection({
   teamId,
   instances,
@@ -34,43 +36,19 @@ export function BoxSection({
   teamId: string
   instances: RuntimeInstance[]
 }) {
-  const [list, setList] = useState<AgentDeviceList | null>(null)
+  const { list, reload } = useAgentDevices(pollWhileCreating)
   const [label, setLabel] = useState('')
   const [creating, setCreating] = useState(false)
-  const [revision, setRevision] = useState(0)
+  const previous = useRef<AgentDevice[]>([])
 
-  const reload = useCallback(() => setRevision((value) => value + 1), [])
-
-  // Loads on mount, after each action and when the window shows again; polls only while a Box is being created.
   useEffect(() => {
-    let cancelled = false
-    let timer: ReturnType<typeof setTimeout> | undefined
-    const load = () => {
-      clearTimeout(timer)
-      void api.boxListDevices().then(
-        (next) => {
-          if (cancelled) return
-          setList(next)
-          if (anyCreating(next.devices)) timer = setTimeout(load, BOX_CREATING_POLL_MS)
-        },
-        () => {},
-      )
-    }
-    const onVisible = () => {
-      if (!document.hidden) load()
-    }
+    if (!list) return
+    for (const device of vanishedBoxes(previous.current, list.devices))
+      toast.error('Box setup failed', `${device.label} could not start and was removed.`)
+    previous.current = list.devices
+  }, [list])
 
-    load()
-    document.addEventListener('visibilitychange', onVisible)
-
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-      document.removeEventListener('visibilitychange', onVisible)
-    }
-  }, [revision])
-
-  const owned = boxes(list?.devices ?? [])
+  const owned = machines(list?.devices ?? [])
 
   if (!list?.boxAvailable && owned.length === 0) return null
 
@@ -93,8 +71,8 @@ export function BoxSection({
         <div className="min-w-0">
           <h2 className="text-[14px] font-semibold text-main">Boxes</h2>
           <p className="mt-0.5 text-[12px] text-tertiary">
-            Linux computers Nuphos runs for you, with their own agents and local exec. Only you can
-            use them.
+            Every machine that runs your agents: cloud Boxes Nuphos runs for you, and your own
+            computers. Only you can use them.
           </p>
         </div>
         {list?.boxAvailable && (
@@ -128,7 +106,7 @@ export function BoxSection({
       {owned.length > 0 && (
         <ul className="mt-3 divide-y divide-zGray-800/60 rounded-xl border border-zGray-800/70">
           {owned.map((device) => (
-            <BoxRow
+            <MachineRow
               key={device.deviceId}
               teamId={teamId}
               device={device}
@@ -142,30 +120,35 @@ export function BoxSection({
   )
 }
 
-function boxDetail(device: BoxDevice, agents: RuntimeInstance[]) {
-  if (boxState(device) === 'creating') return 'Starting the computer, usually 10–30 seconds…'
-  if (agents.length === 0) return device.platform
-
-  return agents.map((agent) => AGENT_PROVIDER[agent.provider].label).join(' · ')
+const COMPUTER_BADGE: Record<'online' | 'offline', RuntimeStatusView> = {
+  online: { label: 'Online', tone: 'online' },
+  offline: { label: 'Offline', tone: 'off' },
 }
 
-function BoxRow({
+function machineDetail(device: AgentDevice, agents: RuntimeInstance[]) {
+  if (device.box?.state === 'creating') return 'Starting the computer, usually 10–30 seconds…'
+  const names = agents.map((agent) => AGENT_PROVIDER[agent.provider].label)
+
+  return [device.box ? 'Box' : device.platform, ...names].join(' · ')
+}
+
+function MachineRow({
   teamId,
   device,
   agents,
   onChanged,
 }: {
   teamId: string
-  device: BoxDevice
+  device: AgentDevice
   agents: RuntimeInstance[]
   onChanged: () => void
 }) {
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [signingIn, setSigningIn] = useState<RuntimeInstance | null>(null)
-  const state = boxState(device)
-  const badge = BOX_BADGE[state]
-  const actions = boxActions(state)
+  const state = device.box?.state
+  const badge = state ? BOX_BADGE[state] : COMPUTER_BADGE[device.online ? 'online' : 'offline']
+  const actions = state ? boxActions(state) : { pause: false, resume: false }
   const run = async (title: string, action: () => Promise<unknown>) => {
     setBusy(true)
     try {
@@ -183,13 +166,17 @@ function BoxRow({
     <li className="flex flex-wrap items-center gap-x-4 gap-y-2 px-4 py-3">
       <div className="flex min-w-0 flex-1 basis-52 items-center gap-3">
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-zGray-800/70 bg-main">
-          <Box className="h-4 w-4 text-secondary" />
+          {device.box ? (
+            <Box className="h-4 w-4 text-secondary" />
+          ) : (
+            <Laptop className="h-4 w-4 text-secondary" />
+          )}
         </div>
         <div className="min-w-0">
           <div className="truncate text-[13px] font-medium text-main" title={device.label}>
             {device.label}
           </div>
-          <div className="truncate text-[12px] text-tertiary">{boxDetail(device, agents)}</div>
+          <div className="truncate text-[12px] text-tertiary">{machineDetail(device, agents)}</div>
         </div>
       </div>
       <span
@@ -204,7 +191,7 @@ function BoxRow({
         {badge.label}
       </span>
       <div className="flex shrink-0 items-center gap-1.5">
-        {state === 'running' &&
+        {(device.box ? state === 'running' : device.online) &&
           agents
             .filter((agent) => agent.local?.signedIn !== true)
             .map((agent) => (
@@ -232,9 +219,11 @@ function BoxRow({
             Resume
           </Button>
         )}
-        <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmDelete(true)}>
-          Delete
-        </Button>
+        {device.box && (
+          <Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirmDelete(true)}>
+            Delete
+          </Button>
+        )}
       </div>
       <ConfirmDialog
         open={confirmDelete}

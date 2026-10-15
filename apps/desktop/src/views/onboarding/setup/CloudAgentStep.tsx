@@ -3,6 +3,7 @@ import { Box, Cloud, Laptop, Server } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '../../../components/ui/button'
+import { useBoxAvailable } from '../../settings/useAgentDevices'
 
 import { RadioCard, SetupScreen } from './SetupChrome'
 
@@ -56,7 +57,10 @@ export function CloudAgentStep({
   onSkip: () => void
   onChoose: (choice: CloudChoice) => void
 }) {
-  const [choice, setChoice] = useState<CloudChoice>('box')
+  const boxAvailable = useBoxAvailable()
+  const [picked, setChoice] = useState<CloudChoice>('box')
+  // Without Boxes on this backend, your own server is the way to a cloud agent.
+  const choice = boxAvailable ? picked : 'self-hosted'
 
   return (
     <SetupScreen
@@ -83,14 +87,16 @@ export function CloudAgentStep({
             className="space-y-2"
             aria-label="Cloud agent type"
           >
-            <RadioCard
-              value="box"
-              selected={choice === 'box'}
-              icon={<Box className="h-4 w-4" />}
-              title="New Box"
-              badge="Recommended"
-              description="A cloud computer Nuphos runs for you, with Claude Code and Codex. Sign in with your own account."
-            />
+            {boxAvailable && (
+              <RadioCard
+                value="box"
+                selected={choice === 'box'}
+                icon={<Box className="h-4 w-4" />}
+                title="New Box"
+                badge="Recommended"
+                description="A cloud computer Nuphos runs for you, with Claude Code and Codex. Sign in with your own account."
+              />
+            )}
             <RadioCard
               value="self-hosted"
               selected={choice === 'self-hosted'}

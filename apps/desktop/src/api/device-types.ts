@@ -119,6 +119,7 @@ export type AgentDevice = {
   platform: string
   allowLocalExec?: boolean
   online?: boolean
+  createdAt?: string
   box?: BoxStatus
 }
 

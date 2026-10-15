@@ -9,9 +9,11 @@ import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
 import { AGENT_PROVIDER } from '../../types/runtime'
 
 import { nextAddAgentStep } from './addAgentFlow'
+import { boxSetupProblem } from './boxPresentation'
 import { ExternalRuntimeForm } from './ExternalRuntimeForm'
 import { ExternalRuntimePasswordForm } from './ExternalRuntimePasswordForm'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
+import { useBoxAvailable } from './useAgentDevices'
 import { useBoxSetup } from './useBoxSetup'
 
 import type { AddAgentAction, AddAgentStep } from './addAgentFlow'
@@ -98,8 +100,7 @@ function BoxAgentForm({
             'A Box is a Linux computer in the cloud with Claude Code and Codex on it. Its agents keep working when your computer sleeps, and only you can use it.'}
           {box.phase === 'starting' &&
             'Starting the computer and its agents, usually 10–30 seconds…'}
-          {box.phase === 'error' &&
-            'The Box could not start. Delete it in Settings › Agents and try again.'}
+          {boxSetupProblem(box.phase)}
         </p>
       )}
       <div className="flex items-center justify-end gap-2">
@@ -132,6 +133,7 @@ export function AddAgentDialog({
   onAdded?: (runtimeId: string) => void
 }) {
   const [step, setStep] = useState<AddAgentStep>('choose')
+  const boxAvailable = useBoxAvailable()
   const [signingIn, setSigningIn] = useState<RuntimeInstance | null>(null)
   const go = (action: AddAgentAction) => setStep((current) => nextAddAgentStep(current, action))
   const added = (runtimeId: string) => {
@@ -168,12 +170,14 @@ export function AddAgentDialog({
           <div className="max-h-[70vh] overflow-y-auto px-5 py-4">
             {step === 'choose' && (
               <div className="space-y-2">
-                <Choice
-                  icon={<Box className="h-4 w-4" />}
-                  title="New Box"
-                  description="A cloud computer Nuphos runs for you, with Claude Code and Codex. Sign in with your own account."
-                  onClick={() => go('box')}
-                />
+                {boxAvailable && (
+                  <Choice
+                    icon={<Box className="h-4 w-4" />}
+                    title="New Box"
+                    description="A cloud computer Nuphos runs for you, with Claude Code and Codex. Sign in with your own account."
+                    onClick={() => go('box')}
+                  />
+                )}
                 <Choice
                   icon={<Server className="h-4 w-4" />}
                   title="Self-hosted Cloud Agent"

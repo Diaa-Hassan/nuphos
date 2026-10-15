@@ -2,12 +2,10 @@ import { useEffect, useState } from 'react'
 
 import { api } from '../../api'
 import { toast } from '../../components/ui/toast'
-import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
+import { RUNTIME_INSTANCES_CHANGED, useRuntimeInstances } from '../../hooks/useRuntimeInstances'
 
-import { BOX_CREATING_POLL_MS, boxAgents, boxSetupPhase } from './boxPresentation'
-
-import type { AgentDevice } from '../../api'
-import type { RuntimeInstance } from '../../types/runtime'
+import { boxAgents, boxSetupPhase } from './boxPresentation'
+import { useAgentDevices } from './useAgentDevices'
 
 /**
  * Makes a Box and waits for its agents to join the team. `deviceId` is the Box this flow made,
@@ -19,33 +17,20 @@ export function useBoxSetup(
   onCreated: (deviceId: string) => void,
 ) {
   const [creating, setCreating] = useState(false)
-  const [devices, setDevices] = useState<AgentDevice[] | null>(null)
-  const [agents, setAgents] = useState<RuntimeInstance[]>([])
+  const { instances } = useRuntimeInstances(teamId)
+  const agents = deviceId ? boxAgents(deviceId, instances) : []
+  const { list } = useAgentDevices(
+    (next) => boxSetupPhase(deviceId, next.devices, agents) === 'starting',
+    deviceId ?? '',
+  )
+  const devices = deviceId ? (list?.devices ?? null) : null
   const phase = boxSetupPhase(deviceId, devices, agents)
+  const joined = devices?.some((device) => device.deviceId === deviceId && device.online)
 
+  // The team's list refreshes every 10 s on its own; ask now once the Box's agent connects.
   useEffect(() => {
-    if (!deviceId || phase === 'ready' || phase === 'error') return
-    let cancelled = false
-    const timer = setTimeout(() => {
-      void Promise.all([api.boxListDevices(), api.atlasListRuntimeInstances(teamId)]).then(
-        ([list, instances]) => {
-          if (cancelled) return
-          const found = boxAgents(deviceId, instances)
-
-          setDevices(list.devices)
-          setAgents(found)
-          if (found.length > 0) window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
-        },
-        // A failed check is retried by the next tick, which the unchanged state schedules.
-        () => !cancelled && setDevices((previous) => (previous ? [...previous] : [])),
-      )
-    }, BOX_CREATING_POLL_MS)
-
-    return () => {
-      cancelled = true
-      clearTimeout(timer)
-    }
-  }, [teamId, deviceId, phase, devices])
+    if (joined) window.dispatchEvent(new Event(RUNTIME_INSTANCES_CHANGED))
+  }, [joined])
 
   async function create(label?: string) {
     if (creating) return
