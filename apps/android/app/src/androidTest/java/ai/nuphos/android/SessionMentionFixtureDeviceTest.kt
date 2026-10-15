@@ -71,7 +71,7 @@ class SessionMentionFixtureDeviceTest {
                         Column(Modifier.fillMaxSize().padding(top = 48.dp)) {
                             Text("Synthetic fixture · no real service data", Modifier.padding(16.dp))
                             Spacer(Modifier.weight(1f))
-                            ChatComposer(isStreaming = false, mentions = source, onSend = { sends++; true })
+                            ChatComposer(isStreaming = false, showControls = true, mentions = source, onSend = { sends++; true })
                         }
                     }
                 }
@@ -125,7 +125,7 @@ class SessionMentionFixtureDeviceTest {
             }
             NuphosTheme {
                 CompositionLocalProvider(LocalAgentStore provides store) {
-                    ChatComposer(isStreaming = false, mentions = source, onSend = { sends++; true })
+                    ChatComposer(isStreaming = false, showControls = true, mentions = source, onSend = { sends++; true })
                 }
             }
         }

@@ -290,7 +290,7 @@ fun ChatComposer(
                             Icon(Icons.Outlined.Close, contentDescription = "Dismiss chat mentions", modifier = Modifier.size(16.dp))
                         }
                     }
-                    Column(Modifier.heightIn(max = 120.dp).verticalScroll(rememberScrollState())) {
+                    Column(Modifier.heightIn(max = 80.dp).verticalScroll(rememberScrollState())) {
                     when {
                         mentionLoading -> Text("Searching chats…", style = MaterialTheme.typography.bodySmall)
                         mentionFailed -> Text("Could not search chats. You can keep typing.", style = MaterialTheme.typography.bodySmall)
