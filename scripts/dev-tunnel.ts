@@ -180,26 +180,18 @@ async function ensureNamedTunnel(): Promise<boolean> {
   return tunnelEdgeAlive(tunnel.url!)
 }
 
+// Not ~/.cloudflared/config.yml: the named tunnel's ingress has a catch-all that answers 404.
+const QUICK_TUNNEL = ['tunnel', '--config', '/dev/null', '--no-autoupdate', '--no-prechecks']
+
 async function startQuickTunnel(port: number): Promise<string | null> {
   tunnel.kind = 'quick'
   tunnel.status = 'starting'
   tunnel.note = 'starting…'
   pushEvent(tunnel, 'starting quick tunnel (trycloudflare)…')
-  const child = spawn(
-    'cloudflared',
-    // Without `--config`, cloudflared reads ~/.cloudflared/config.yml: the named tunnel's
-    // credentials and ingress, whose catch-all answers 404 to every request.
-    [
-      'tunnel',
-      '--config',
-      '/dev/null',
-      '--url',
-      `http://localhost:${port}`,
-      '--no-autoupdate',
-      '--no-prechecks',
-    ],
-    { detached: true, stdio: ['ignore', 'pipe', 'pipe'] },
-  )
+  const child = spawn('cloudflared', [...QUICK_TUNNEL, '--url', `http://localhost:${port}`], {
+    detached: true,
+    stdio: ['ignore', 'pipe', 'pipe'],
+  })
 
   tunnel.proc = child
   const url = await new Promise<string | null>((resolve) => {

@@ -161,7 +161,10 @@ async function order(
   }
 }
 
-/** A link to watch and use the Box's desktop (VNC in the browser), valid for an hour. */
+/**
+ * A link to watch and use the Box's desktop (VNC in the browser). The link is a
+ * bearer credential for the whole Box, so it is short-lived and never logged.
+ */
 export async function boxDesktopUrl(userId: string, deviceId: string): Promise<string> {
   const device = requireBox(await getAgentDevice(userId, deviceId), deviceId)
   const sandboxId = requireMachine(device)
@@ -173,7 +176,7 @@ export async function boxDesktopUrl(userId: string, deviceId: string): Promise<s
     })
 
     await sandbox.desktop.start()
-    const { url } = await sandbox.desktop.streamUrl({ viewOnly: false, ttlSeconds: 3_600 })
+    const { url } = await sandbox.desktop.streamUrl({ viewOnly: false, ttlSeconds: 15 * 60 })
 
     return url
   } catch (error) {
