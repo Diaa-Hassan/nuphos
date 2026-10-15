@@ -2,10 +2,11 @@ package ai.nuphos.android
 
 import android.graphics.Bitmap
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Box
+import androidx.compose.ui.Alignment
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -42,7 +43,9 @@ class ReviewVisualFixtureDeviceTest {
             val context = LocalContext.current
             val store = remember { AgentStore("synthetic", context) }
             NuphosTheme { Surface(Modifier.fillMaxSize()) { CompositionLocalProvider(LocalAgentStore provides store) {
-                ChatComposer(isStreaming = false, onSend = { false }, showControls = true, agent = selection, onChooseAgent = {})
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.BottomCenter) {
+                    ChatComposer(isStreaming = false, onSend = { false }, showControls = true, agent = selection, onChooseAgent = {})
+                }
             } } }
         }
         compose.onNodeWithContentDescription("Ask Nuphos anything").performTextInput("Review this change before sending.")
@@ -62,7 +65,9 @@ class ReviewVisualFixtureDeviceTest {
                 windows = listOf(RuntimeQuota.Window("5h", 31.0, "2030-01-01T12:00:00Z"), RuntimeQuota.Window("7d", 59.0, "2030-01-07T12:00:00Z"))))) }
         }
         compose.onNodeWithText("5h: 31% used", substring = true).assertIsDisplayed()
-        capture("quota-picker")
+        // RuntimeSetupSheet deliberately sets FLAG_SECURE. Verify quota text through
+        // semantics without exporting a blank or bypassing its screenshot protection.
+        compose.onNodeWithText("7d: 59% used", substring = true).assertIsDisplayed()
     }
     @Test fun connectors() {
         val json = JsonValue.parse("""{"aws":[{"id":"visual-aws","label":"Production account"}],"upstash":[{"id":"visual-redis","label":"Redis cache"}],"github":[{"id":"visual-github","label":"Source repository"}]}""")!!
@@ -80,7 +85,10 @@ class ReviewVisualFixtureDeviceTest {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val mode = InstrumentationRegistry.getArguments().getString("visualMode") ?: "default"
         val directory = File(context.getExternalFilesDir(null), "review-389").apply { mkdirs() }
-        val bitmap = compose.onAllNodes(isRoot()).onLast().captureToImage().asAndroidBitmap()
+        compose.mainClock.advanceTimeBy(1_000)
+        compose.waitForIdle()
+        Thread.sleep(300) // Let the platform dialog window finish drawing.
+        val bitmap = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: error("Screenshot unavailable")
         File(directory, "$mode-$name.png").outputStream().use { check(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it)) }
     }
 }
