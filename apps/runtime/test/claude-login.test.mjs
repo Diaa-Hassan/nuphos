@@ -26,8 +26,10 @@ const URL_LINE =
 // What `claude auth login --claudeai` does without a TTY in the pinned CLI: print the
 // manual URL, then read `code#state` lines from stdin and store the credential. The
 // fixture stores it at the path the test passes as its first argument, never anywhere
-// its environment points, so a wrapper that leaked the wrong HOME or CLAUDE_CONFIG_DIR
-// is caught by the recorded values rather than by a file landing in the real login.
+// its environment points: in a managed runtime HOME is the runtime's real sign-in, and
+// a test run there once overwrote it (NUPS-1172). A wrapper that leaked the wrong HOME
+// or CLAUDE_CONFIG_DIR is caught by the recorded values, not by a file landing in the
+// real login.
 const FAKE_CLI = `
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
