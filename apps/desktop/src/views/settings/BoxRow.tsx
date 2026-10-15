@@ -8,12 +8,14 @@ import { Button } from '../../components/ui/button'
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '../../components/ui/menu'
 import { toast } from '../../components/ui/toast'
 import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
+import { emptyNavigation, pageLocationForNavigation } from '../../lib/appRoutes'
 import { AGENT_PROVIDER } from '../../types/runtime'
 
 import { MachineIcon } from './BoxParts'
 import { BOX_BADGE, boxActions, boxDetail, boxState, machineLine } from './boxPresentation'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
 import { STATUS_DOT } from './runtimePresentation'
+import { inputClasses } from './styles'
 
 import type { AgentDevice } from '../../api'
 import type { RuntimeInstance } from '../../types/runtime'
@@ -37,6 +39,7 @@ export function BoxRow({
 }) {
   const [busy, setBusy] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState(false)
+  const [renaming, setRenaming] = useState<string | null>(null)
   const [signingIn, setSigningIn] = useState<RuntimeInstance | null>(null)
   const state = boxState(device)
   const cloud = device.box !== undefined
@@ -62,16 +65,37 @@ export function BoxRow({
           <MachineIcon device={device} />
         </div>
         <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-1.5">
-            <span className="truncate text-[13px] font-medium text-main" title={device.label}>
-              {device.label}
-            </span>
-            {thisComputer && (
-              <span className="shrink-0 rounded border border-zGray-700 px-1 text-[10.5px] text-secondary">
-                This Computer
+          {renaming === null ? (
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="truncate text-[13px] font-medium text-main" title={device.label}>
+                {device.label}
               </span>
-            )}
-          </div>
+              {thisComputer && (
+                <span className="shrink-0 rounded border border-zGray-700 px-1 text-[10.5px] text-secondary">
+                  This Computer
+                </span>
+              )}
+            </div>
+          ) : (
+            <input
+              autoFocus
+              aria-label="Box name"
+              value={renaming}
+              maxLength={200}
+              className={clsx(inputClasses, 'h-7 text-[13px]')}
+              onChange={(event) => setRenaming(event.target.value)}
+              onBlur={() => setRenaming(null)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') setRenaming(null)
+                if (event.key !== 'Enter') return
+                const label = renaming.trim()
+
+                setRenaming(null)
+                if (label && label !== device.label)
+                  void run('Could not rename Box', () => api.boxRename(device.deviceId, label))
+              }}
+            />
+          )}
           <div className="truncate text-[12px] text-tertiary">
             {machineLine(device)} · {boxDetail(state, agents, device.platform)}
           </div>
@@ -99,36 +123,51 @@ export function BoxRow({
             {state === 'error' ? 'Retry' : 'Resume'}
           </Button>
         )}
-        {(actions.pause || actions.remove) && (
-          <Menu>
-            <MenuTrigger
-              aria-label={`Manage ${device.label}`}
-              disabled={busy}
-              className="flex h-7 w-7 items-center justify-center rounded-md text-tertiary hover:bg-zGray-800/60 hover:text-main"
-            >
-              <Ellipsis className="h-4 w-4" />
-            </MenuTrigger>
-            <MenuContent align="end">
-              {actions.pause && (
-                <MenuItem
-                  onClick={() =>
-                    void run('Could not pause Box', () => api.boxPause(device.deviceId))
-                  }
-                >
-                  Pause
+        <Menu>
+          <MenuTrigger
+            aria-label={`Manage ${device.label}`}
+            disabled={busy}
+            className="flex h-7 w-7 items-center justify-center rounded-md text-tertiary hover:bg-zGray-800/60 hover:text-main"
+          >
+            <Ellipsis className="h-4 w-4" />
+          </MenuTrigger>
+          <MenuContent align="end">
+            {cloud && state === 'running' && (
+              <MenuItem
+                onClick={() =>
+                  void run('Could not open the desktop', async () => {
+                    const { url } = await api.boxDesktop(device.deviceId)
+                    const href = pageLocationForNavigation(
+                      emptyNavigation({ kind: 'team', teamId }, 'team.browser', {
+                        browserUrl: url,
+                      }),
+                    ).href
+
+                    window.dispatchEvent(new CustomEvent('nuphos:open-in-app', { detail: href }))
+                  })
+                }
+              >
+                Open desktop
+              </MenuItem>
+            )}
+            <MenuItem onClick={() => setRenaming(device.label)}>Rename</MenuItem>
+            {actions.pause && (
+              <MenuItem
+                onClick={() => void run('Could not pause Box', () => api.boxPause(device.deviceId))}
+              >
+                Pause
+              </MenuItem>
+            )}
+            {actions.remove && (
+              <>
+                <MenuSeparator />
+                <MenuItem destructive onClick={() => setConfirmDelete(true)}>
+                  Delete
                 </MenuItem>
-              )}
-              {actions.remove && (
-                <>
-                  <MenuSeparator />
-                  <MenuItem destructive onClick={() => setConfirmDelete(true)}>
-                    Delete
-                  </MenuItem>
-                </>
-              )}
-            </MenuContent>
-          </Menu>
-        )}
+              </>
+            )}
+          </MenuContent>
+        </Menu>
       </div>
       {state === 'running' && agents.length > 0 && (
         <ul className="basis-full space-y-1 pl-12">

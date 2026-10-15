@@ -20,6 +20,17 @@ export function pauseBox(deviceId: string): Promise<AgentDevice> {
 export function resumeBox(deviceId: string): Promise<AgentDevice> {
   return call('POST', `${box(deviceId)}/resume`, undefined, { retry: false })
 }
+export function renameBox(deviceId: string, label: string): Promise<{ ok: true }> {
+  return call(
+    'PATCH',
+    `/agent/devices/${encodeURIComponent(deviceId)}`,
+    { label },
+    { retry: false },
+  )
+}
+export function boxDesktop(deviceId: string): Promise<{ url: string }> {
+  return call('POST', `${box(deviceId)}/desktop`, undefined, { retry: false })
+}
 export function boxJoinToken(): Promise<{
   token: string
   expiresAt: string
