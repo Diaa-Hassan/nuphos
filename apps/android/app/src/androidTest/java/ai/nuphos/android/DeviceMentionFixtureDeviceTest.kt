@@ -98,9 +98,11 @@ class DeviceMentionFixtureDeviceTest {
             assertEquals(1, picks); assertEquals(0, sends)
         }
         field().performTextReplacement("@fixture")
+        compose.waitUntil(5000) { compose.onAllNodesWithText("Fixture Mac · Selected").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Fixture Mac · Selected").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(3, selection.ids["deviceIds"]!!.size) }
         field().performTextReplacement("@fixture")
+        compose.waitUntil(5000) { compose.onAllNodesWithText("Fixture chat").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithText("Fixture chat").performScrollTo().performClick()
         field().assertTextEquals("https://nuphos.ai/teams/$team/agent/synthetic-chat ")
         val before = loads.get()
