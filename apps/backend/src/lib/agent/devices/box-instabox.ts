@@ -12,6 +12,8 @@ import { randomUUID } from 'node:crypto'
 import { Sandbox } from '@insforge/instabox-sdk'
 
 import { config } from '@/config'
+import { assertWithinPlan, runningVcpus } from '@/lib/billing/box-plans'
+import { teamBoxPlan } from '@/lib/billing/stripe'
 import { AppError } from '@/lib/errors'
 import { logError, logEvent } from '@/lib/observability'
 
@@ -24,14 +26,15 @@ import {
   boxBackendUrl,
   connection,
   kill,
+  teamMachines,
+  templateVcpus,
   unavailable,
 } from './box-instabox-client'
 
 import { deleteDeviceJoinTokens, issueDeviceJoinToken } from './join-tokens'
 import { isDevicePresent } from './presence'
 import {
-  countAgentDeviceBoxes,
-  countTeamBoxes,
+  countTeamBoxesOrdering,
   deleteAgentDevice,
   getAgentDevice,
   insertBoxAgentDevice,
@@ -45,8 +48,6 @@ export { boxState } from './box-instabox-state'
 export type { BoxState } from './box-instabox-state'
 
 export const BOX_TEMPLATE = 'universal'
-/** Machines one team may have at a time, on the deployment's own key. */
-export const MAX_BOXES_PER_TEAM = 3
 /** Orders one person may place in `CREATE_WINDOW_MS`. */
 export const MAX_CREATES_PER_WINDOW = 3
 const CREATE_WINDOW_MS = 10 * 60_000
@@ -95,6 +96,30 @@ async function killByDevice(deviceId: string): Promise<void> {
   for (const machine of machines) await kill(machine.sandboxId)
 }
 
+/** vCPUs the team's running Boxes use, Boxes still being ordered included, and a new Box's size. */
+export async function teamBoxUsage(teamId: string) {
+  const [machines, ordering, boxVcpus] = await Promise.all([
+    teamMachines(teamId),
+    countTeamBoxesOrdering(teamId),
+    templateVcpus(BOX_TEMPLATE),
+  ])
+
+  return { machines, boxVcpus, usedVcpus: runningVcpus(machines) + ordering * boxVcpus }
+}
+
+/** Starting a Box, new or `resumed`, must keep the team's running Boxes within its plan. */
+async function assertPlanAllows(teamId: string, resumed?: string): Promise<void> {
+  const plan = await teamBoxPlan(teamId)
+
+  if (plan === null) return
+  const { machines, boxVcpus, usedVcpus } = await teamBoxUsage(teamId)
+  const self = machines.find((machine) => machine.sandboxId === resumed)
+
+  // Already running: resuming starts nothing new.
+  if (self && runningVcpus([self]) > 0) return
+  assertWithinPlan(plan, usedVcpus, self?.vcpus ?? boxVcpus)
+}
+
 const recentCreates = new Map<string, number[]>()
 
 function checkCreateRate(userId: string): void {
@@ -118,12 +143,7 @@ export async function createBox(
 ): Promise<AgentDevice> {
   const url = backendUrl()
 
-  if ((await countTeamBoxes(teamId)) >= MAX_BOXES_PER_TEAM)
-    throw new AppError(
-      409,
-      'box_limit',
-      `This team already has ${String(MAX_BOXES_PER_TEAM)} Boxes; delete one first`,
-    )
+  await assertPlanAllows(teamId)
   checkCreateRate(userId)
   const deviceId = randomUUID()
   const now = new Date()
@@ -218,6 +238,7 @@ export async function resumeBox(userId: string, deviceId: string): Promise<Agent
   const sandboxId = requireMachine(device)
   const url = backendUrl()
 
+  await assertPlanAllows(device.box.teamId, sandboxId)
   try {
     const sandbox = await Sandbox.connect(sandboxId, {
       ...connection(QUICK_TIMEOUT_MS),

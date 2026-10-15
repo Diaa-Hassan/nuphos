@@ -1,3 +1,4 @@
+import type { BoxPlanProjection } from '@/lib/billing/box-plans'
 import type { OpenAbProvider } from '@/lib/claude-code-preview/runtime-provider'
 
 export type NuphosUser = {
@@ -51,4 +52,8 @@ export type AuthenticatedIdentity = {
 
 /** Compatibility summary for older clients. Access is always free. */
 export type TeamBillingSummary = { activated: boolean; active: boolean }
-export type TeamBilling = Record<string, unknown>
+/** A team's Stripe customer and its Box plan; older documents may carry retired fields. */
+export type TeamBilling = Record<string, unknown> & {
+  stripeCustomerId?: string
+  boxPlan?: BoxPlanProjection
+}

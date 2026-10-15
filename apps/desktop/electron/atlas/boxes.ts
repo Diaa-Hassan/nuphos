@@ -1,6 +1,6 @@
 import { call } from './client.ts'
 
-import type { AgentDevice, AgentDeviceList } from '../../src/api/device-types.ts'
+import type { AgentDevice, AgentDeviceList, BoxPlanStatus } from '../../src/api/device-types.ts'
 
 // Boxes are personal: the routes act on the signed-in user's own devices.
 const box = (deviceId: string) => `/agent/devices/${encodeURIComponent(deviceId)}/box`
@@ -19,6 +19,18 @@ export function pauseBox(deviceId: string): Promise<AgentDevice> {
 }
 export function resumeBox(deviceId: string): Promise<AgentDevice> {
   return call('POST', `${box(deviceId)}/resume`, undefined, { retry: false })
+}
+/** The team's Box plan and its running vCPUs; checkout and portal answer a page to open. */
+const plan = (teamId: string) => `/teams/${encodeURIComponent(teamId)}/box-plan`
+
+export function getBoxPlan(teamId: string): Promise<BoxPlanStatus> {
+  return call('GET', plan(teamId))
+}
+export function boxPlanCheckout(teamId: string, planId: string): Promise<{ url: string }> {
+  return call('POST', `${plan(teamId)}/checkout`, { plan: planId }, { retry: false })
+}
+export function boxPlanPortal(teamId: string): Promise<{ url: string }> {
+  return call('POST', `${plan(teamId)}/portal`, undefined, { retry: false })
 }
 export function deleteBox(deviceId: string): Promise<{ ok: true }> {
   return call('DELETE', box(deviceId), undefined, { retry: false })

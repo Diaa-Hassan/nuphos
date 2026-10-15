@@ -1,10 +1,12 @@
 // The instabox connection shared by the Box provider: the deployment's key,
 // bounded timeouts, and the commands a fresh machine runs.
 
-import { InstaboxError, Sandbox } from '@insforge/instabox-sdk'
+import { DEFAULT_API_URL, InstaboxError, Sandbox } from '@insforge/instabox-sdk'
 
 import { config } from '@/config'
 import { AppError } from '@/lib/errors'
+
+import type { Template } from '@insforge/instabox-sdk'
 
 /** Installing the CLI and the agents on a fresh machine. */
 export const INSTALL_TIMEOUT_MS = 9 * 60_000
@@ -65,5 +67,38 @@ export async function kill(sandboxId: string): Promise<void> {
   } catch (error) {
     if (error instanceof InstaboxError && error.status === 404) return
     throw error
+  }
+}
+
+/** The vCPUs a new machine of `template` gets: its default size, which the service fixes. */
+export async function templateVcpus(template: string): Promise<number> {
+  const { apiKey, apiUrl = DEFAULT_API_URL } = connection(QUICK_TIMEOUT_MS)
+  const templates = await fetch(`${apiUrl}/v1/templates`, {
+    headers: { 'X-API-Key': apiKey },
+    signal: AbortSignal.timeout(QUICK_TIMEOUT_MS),
+  }).then(
+    async (response) =>
+      response.ok ? ((await response.json()) as { templates: Template[] }).templates : [],
+    () => [],
+  )
+  const vcpus = templates.find((t) => t.id === template)?.defaultSpec.vcpus
+
+  if (!vcpus) throw unavailable('Could not read the Box size', `template ${template}`)
+
+  return vcpus
+}
+
+/** The team's machines with their states and sizes, as instabox knows them. */
+export async function teamMachines(teamId: string) {
+  try {
+    const machines = await Sandbox.list({ ...connection(QUICK_TIMEOUT_MS), metadata: { teamId } })
+
+    return machines.map(({ sandboxId, state, machine }) => ({
+      sandboxId,
+      state,
+      vcpus: machine.spec.vcpus,
+    }))
+  } catch (error) {
+    throw unavailable("Could not read the team's Boxes", error)
   }
 }

@@ -17,13 +17,16 @@ import {
   boxState,
   boxAgents,
   boxes,
+  newBoxBlockedReason,
 } from './boxPresentation'
+import { BoxPlanBar } from './BoxPlanBar'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
 import { STATUS_DOT } from './runtimePresentation'
 import { inputClasses } from './styles'
 
 import type { BoxDevice } from './boxPresentation'
 import type { AgentDeviceList } from '../../api'
+import type { BoxPlanStatus } from '../../api/device-types'
 import type { RuntimeInstance } from '../../types/runtime'
 
 /** The signed-in user's own Boxes, above the team's agents. New Box shows only when the backend can make one. */
@@ -35,6 +38,7 @@ export function BoxSection({
   instances: RuntimeInstance[]
 }) {
   const [list, setList] = useState<AgentDeviceList | null>(null)
+  const [plan, setPlan] = useState<BoxPlanStatus | null>(null)
   const [label, setLabel] = useState('')
   const [creating, setCreating] = useState(false)
   const [revision, setRevision] = useState(0)
@@ -47,6 +51,12 @@ export function BoxSection({
     let timer: ReturnType<typeof setTimeout> | undefined
     const load = () => {
       clearTimeout(timer)
+      void api.boxPlan(teamId).then(
+        (next) => {
+          if (!cancelled) setPlan(next)
+        },
+        () => {},
+      )
       void api.boxListDevices().then(
         (next) => {
           if (cancelled) return
@@ -68,9 +78,10 @@ export function BoxSection({
       clearTimeout(timer)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [revision])
+  }, [revision, teamId])
 
   const owned = boxes(list?.devices ?? [])
+  const blocked = newBoxBlockedReason(plan)
 
   if (!list?.boxAvailable && owned.length === 0) return null
 
@@ -96,6 +107,7 @@ export function BoxSection({
             Linux computers Nuphos runs for you, with their own agents and local exec. Only you can
             use them.
           </p>
+          {plan?.enabled && <BoxPlanBar teamId={teamId} status={plan} />}
         </div>
         {list?.boxAvailable && (
           <form
@@ -114,7 +126,12 @@ export function BoxSection({
               onChange={(event) => setLabel(event.target.value)}
               className={clsx(inputClasses, 'h-8 w-44')}
             />
-            <Button type="submit" size="sm" disabled={creating}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={creating || blocked !== null}
+              title={blocked ?? undefined}
+            >
               {creating ? (
                 <Loader2 className="h-3.5 w-3.5 animate-spin" />
               ) : (
@@ -125,6 +142,9 @@ export function BoxSection({
           </form>
         )}
       </div>
+      {list?.boxAvailable && blocked && (
+        <p className="mt-2 text-right text-[12px] text-tertiary">{blocked}</p>
+      )}
       {owned.length > 0 && (
         <ul className="mt-3 divide-y divide-zGray-800/60 rounded-xl border border-zGray-800/70">
           {owned.map((device) => (

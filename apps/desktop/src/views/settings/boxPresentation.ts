@@ -1,5 +1,5 @@
 import type { RuntimeStatusView } from './runtimePresentation'
-import type { AgentDevice, BoxState, BoxStatus } from '../../api/device-types'
+import type { AgentDevice, BoxPlanStatus, BoxState, BoxStatus } from '../../api/device-types'
 import type { RuntimeInstance } from '../../types/runtime'
 
 export type BoxDevice = AgentDevice & { box: BoxStatus }
@@ -52,4 +52,14 @@ export function boxSetupPhase(
   const device = boxes(devices ?? []).find((candidate) => candidate.deviceId === deviceId)
 
   return device?.box.state === 'error' ? 'error' : 'starting'
+}
+
+/** Why the team's plan keeps a new Box from starting; null when one can start. */
+export function newBoxBlockedReason(status: BoxPlanStatus | null): string | null {
+  if (!status?.enabled) return null
+  if (!status.plan) return 'Boxes need a plan. Choose one to start a Box.'
+  if (status.boxVcpus !== null && status.usedVcpus + status.boxVcpus > status.plan.vcpus)
+    return `Your running Boxes use ${String(status.usedVcpus)} of ${String(status.plan.vcpus)} vCPU, and a new Box needs ${String(status.boxVcpus)}. Pause a Box or upgrade.`
+
+  return null
 }

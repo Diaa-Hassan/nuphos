@@ -37,4 +37,8 @@ export const deviceApi = {
   boxPause: (deviceId: string) => ipcRenderer.invoke('box:pause', deviceId),
   boxResume: (deviceId: string) => ipcRenderer.invoke('box:resume', deviceId),
   boxDelete: (deviceId: string) => ipcRenderer.invoke('box:delete', deviceId),
+  boxPlan: (teamId: string) => ipcRenderer.invoke('box:plan', teamId),
+  boxPlanCheckout: (teamId: string, planId: string) =>
+    ipcRenderer.invoke('box:planCheckout', teamId, planId),
+  boxPlanPortal: (teamId: string) => ipcRenderer.invoke('box:planPortal', teamId),
 }

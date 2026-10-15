@@ -127,3 +127,16 @@ export type AgentDeviceList = {
   /** False or missing when this backend cannot create Boxes. */
   boxAvailable?: boolean
 }
+
+export type BoxPlan = { id: string; usd: number; vcpus: number }
+
+/** A team's Box plan: its running Boxes' vCPUs may not exceed the plan's. */
+export type BoxPlanStatus = {
+  /** False when the backend sells no plans; Boxes are then not capped. */
+  enabled: boolean
+  plan: BoxPlan | null
+  plans: BoxPlan[]
+  usedVcpus: number
+  /** The vCPUs a new Box takes; null when unknown. */
+  boxVcpus: number | null
+}

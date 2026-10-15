@@ -24,4 +24,7 @@ export const deviceApi = {
   boxPause: (deviceId: string) => window.api.boxPause(deviceId),
   boxResume: (deviceId: string) => window.api.boxResume(deviceId),
   boxDelete: (deviceId: string) => window.api.boxDelete(deviceId),
+  boxPlan: (teamId: string) => window.api.boxPlan(teamId),
+  boxPlanCheckout: (teamId: string, planId: string) => window.api.boxPlanCheckout(teamId, planId),
+  boxPlanPortal: (teamId: string) => window.api.boxPlanPortal(teamId),
 }
