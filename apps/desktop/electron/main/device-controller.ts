@@ -33,10 +33,17 @@ export function getDeviceIdentity(): DeviceIdentity {
   return readDeviceIdentity()
 }
 
+// A rename is the person's choice, so it goes through PATCH: registration (PUT) only
+// names a device the backend has never seen, and never overwrites a chosen label.
 export async function updateDeviceLabel(label: string): Promise<DeviceIdentity> {
   const identity = setDeviceLabel(label)
 
-  await syncRegistration(identity)
+  await callJson(
+    'PATCH',
+    `/agent/devices/${encodeURIComponent(identity.deviceId)}`,
+    { label: identity.label },
+    10_000,
+  )
 
   return identity
 }

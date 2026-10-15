@@ -53,15 +53,21 @@ export async function setupAgentDeviceIndexes(): Promise<void> {
   )
 }
 
+/**
+ * Registers the device, or refreshes what it reports about itself. The label is
+ * written only for a new device: a person renames it through `renameAgentDevice`,
+ * and the machine's own re-registration (every Desktop launch, every host start)
+ * must not undo that.
+ */
 export async function upsertAgentDevice(
   userId: string,
-  device: AgentDeviceRegistration,
+  { label, ...device }: AgentDeviceRegistration,
 ): Promise<void> {
   const now = new Date()
 
   await agentDevices().updateOne(
     { userId, deviceId: device.deviceId },
-    { $set: { ...device, userId, updatedAt: now }, $setOnInsert: { createdAt: now } },
+    { $set: { ...device, userId, updatedAt: now }, $setOnInsert: { label, createdAt: now } },
     { upsert: true },
   )
 }
