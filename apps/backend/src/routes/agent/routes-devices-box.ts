@@ -5,7 +5,7 @@ import { listAccessibleDevices, requireDeviceAccess } from '@/lib/agent/devices/
 import { AppError } from '@/lib/errors'
 import { zv } from '@/lib/validate'
 
-import { readTeamIdCandidate, resolveVerifiedTeamId } from './team-scope'
+import { readTeamIdCandidate } from './team-scope'
 
 import type { AgentDeviceRouteDependencies } from './routes-devices'
 import type { AgentDevice } from '@/lib/agent/devices/store'
@@ -102,9 +102,11 @@ export function createAgentDeviceBoxRoutes(deps: AgentDeviceRouteDependencies) {
   routes.post('/devices/boxes', zv('json', boxCreateSchema), async (c) => {
     const box = requireBoxes()
     const { label, teamId: requestedTeamId } = c.req.valid('json')
-    const teamId = await resolveVerifiedTeamId(c, readTeamIdCandidate(c, requestedTeamId))
+    const teamId = readTeamIdCandidate(c, requestedTeamId)
 
     if (!teamId) throw new AppError(400, 'team_required', 'A Box is made inside one of your teams')
+    if ((await deps.access.role(c.get('userId'), teamId)) !== 'ADMINISTRATOR')
+      throw new AppError(403, 'forbidden', 'Only an active team administrator can create a Box')
     const device = await box.create(
       c.get('userId'),
       teamId,

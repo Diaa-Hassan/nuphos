@@ -491,4 +491,24 @@ describe('agent device routes', () => {
     role = null
     expect((await list()).devices).toHaveLength(0)
   })
+  test('Box create rejects ordinary members, removed admins and admins of other teams', async () => {
+    const calls: string[] = []
+    const app = buildApp(fakeBox(calls))
+    const create = (teamId: string) =>
+      app.request('/agent/devices/boxes', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ teamId }),
+      })
+
+    role = 'EDITOR'
+    expect((await create('team-1')).status).toBe(403)
+    role = null
+    expect((await create('team-1')).status).toBe(403)
+    role = 'ADMINISTRATOR'
+    expect((await create('team-2')).status).toBe(403)
+    expect(calls).toEqual([])
+    expect((await create('team-1')).status).toBe(201)
+    expect(calls).toHaveLength(1)
+  })
 })
