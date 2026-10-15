@@ -232,7 +232,7 @@ export function createLocalExecTool(
         if (woke !== true) {
           await audit(deviceId, command, requestedAt, {
             outcome: 'rejected',
-            reason: 'device_unavailable',
+            reason: woke ? 'box_vcpu_limit' : 'device_unavailable',
           })
 
           return {

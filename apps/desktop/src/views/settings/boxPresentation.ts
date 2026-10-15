@@ -1,5 +1,5 @@
 import type { RuntimeStatusView } from './runtimePresentation'
-import type { AgentDevice, BoxPlanStatus, BoxState, BoxStatus } from '../../api/device-types'
+import type { AgentDevice, BoxState, BoxStatus, BoxUsage } from '../../api/device-types'
 import type { RuntimeInstance } from '../../types/runtime'
 
 export type BoxDevice = AgentDevice & { box: BoxStatus }
@@ -54,16 +54,14 @@ export function boxSetupPhase(
   return device?.box.state === 'error' ? 'error' : 'starting'
 }
 
-/** Why the team's plan keeps a new Box from starting; null when one can start. */
-export function newBoxBlockedReason(status: BoxPlanStatus | null): string | null {
-  if (!status?.enabled) return null
-  if (!status.plan) return 'Boxes need a plan. Choose one to start a Box.'
-  if (
-    status.usedVcpus !== null &&
-    status.boxVcpus !== null &&
-    status.usedVcpus + status.boxVcpus > status.plan.vcpus
-  )
-    return `Your running Boxes use ${String(status.usedVcpus)} of ${String(status.plan.vcpus)} vCPU, and a new Box needs ${String(status.boxVcpus)}. Pause a Box or upgrade.`
+/** The vCPU sizes the billing service sells, smallest first. */
+export const BOX_VCPU_TIERS = [4, 12, 24]
 
-  return null
+/** Why the team's vCPU limit keeps a new Box from starting; null when one can start. */
+export function newBoxBlockedReason(usage: BoxUsage | null): string | null {
+  if (usage?.limitVcpus == null || usage.usedVcpus === null || usage.boxVcpus === null) return null
+  if (usage.usedVcpus + usage.boxVcpus <= usage.limitVcpus) return null
+  if (usage.limitVcpus === 0) return 'Your team has no Box plan yet. Upgrade to start a Box.'
+
+  return `Your running Boxes use ${String(usage.usedVcpus)} of ${String(usage.limitVcpus)} vCPU, and a new Box needs ${String(usage.boxVcpus)}. Pause a Box or upgrade.`
 }

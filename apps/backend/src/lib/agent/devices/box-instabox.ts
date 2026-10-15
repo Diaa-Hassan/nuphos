@@ -28,7 +28,7 @@ import {
   unavailable,
 } from './box-instabox-client'
 
-import { startWithinPlan } from './box-instabox-plan'
+import { startWithinLimit } from './box-instabox-limit'
 import { deleteDeviceJoinTokens, issueDeviceJoinToken } from './join-tokens'
 import { isDevicePresent } from './presence'
 import {
@@ -41,7 +41,6 @@ import {
 import type { AgentDevice, AgentDeviceBox } from './store'
 
 export { BOX_TEMPLATE, boxBackendUrl, boxesAvailable, boxesEnabled } from './box-instabox-client'
-export { teamBoxUsage } from './box-instabox-plan'
 export { boxState } from './box-instabox-state'
 export type { BoxState } from './box-instabox-state'
 
@@ -127,7 +126,7 @@ export async function createBox(
     box: { provider: 'instabox' as const, teamId },
   }
 
-  await startWithinPlan(teamId, undefined, () => insertBoxAgentDevice(userId, registration))
+  await startWithinLimit(teamId, undefined, () => insertBoxAgentDevice(userId, registration))
   void order(userId, teamId, deviceId, label, url)
 
   return { ...registration, userId, createdAt: now, updatedAt: now }
@@ -211,7 +210,7 @@ export async function resumeBox(userId: string, deviceId: string): Promise<Agent
   const url = backendUrl()
 
   try {
-    const sandbox = await startWithinPlan(device.box.teamId, sandboxId, () =>
+    const sandbox = await startWithinLimit(device.box.teamId, sandboxId, () =>
       Sandbox.connect(sandboxId, { ...connection(QUICK_TIMEOUT_MS), resume: true }),
     )
 

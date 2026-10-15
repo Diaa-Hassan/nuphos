@@ -10,6 +10,7 @@ mock.module('../atlas/client.ts', {
 
       return Promise.resolve({})
     },
+    readToken: () => Promise.resolve(null),
   },
 })
 const { boxChannels } = await import('./channels-box.ts')
@@ -21,9 +22,7 @@ test('Box IPC channels call the personal device routes', async () => {
   await boxChannels['box:pause'](null, 'dev/1')
   await boxChannels['box:resume'](null, 'dev/1')
   await boxChannels['box:delete'](null, 'dev/1')
-  await boxChannels['box:plan'](null, 'team-1')
-  await boxChannels['box:planCheckout'](null, 'team-1', 'box-20')
-  await boxChannels['box:planPortal'](null, 'team-1')
+  await boxChannels['box:usage'](null, 'team-1')
 
   assert.deepEqual(
     calls.map(([method, route, body]) => [method, route, body]),
@@ -34,9 +33,7 @@ test('Box IPC channels call the personal device routes', async () => {
       ['POST', '/agent/devices/dev%2F1/box/pause', undefined],
       ['POST', '/agent/devices/dev%2F1/box/resume', undefined],
       ['DELETE', '/agent/devices/dev%2F1/box', undefined],
-      ['GET', '/teams/team-1/box-plan', undefined],
-      ['POST', '/teams/team-1/box-plan/checkout', { plan: 'box-20' }],
-      ['POST', '/teams/team-1/box-plan/portal', undefined],
+      ['GET', '/teams/team-1/box-usage', undefined],
     ],
   )
 })

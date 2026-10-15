@@ -128,16 +128,16 @@ export type AgentDeviceList = {
   boxAvailable?: boolean
 }
 
-export type BoxPlan = { id: string; usd: number; vcpus: number }
-
-/** A team's Box plan: its running Boxes' vCPUs may not exceed the plan's. */
-export type BoxPlanStatus = {
-  /** False when the backend sells no plans; Boxes are then not capped. */
-  enabled: boolean
-  plan: BoxPlan | null
-  plans: BoxPlan[]
+/** A team's Box vCPU limit and how much its running Boxes use. */
+export type BoxUsage = {
+  /** Null when unlimited. */
+  limitVcpus: number | null
+  /** Whether the limit comes from the team's own subscription. */
+  subscribed: boolean
   /** Null when the backend could not read the Boxes' state. */
   usedVcpus: number | null
   /** The vCPUs a new Box takes; null when unknown. */
   boxVcpus: number | null
+  /** The billing service for Upgrade; null when this deployment has none. */
+  billingUrl: string | null
 }

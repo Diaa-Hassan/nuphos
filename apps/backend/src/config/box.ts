@@ -1,4 +1,4 @@
-import { optional } from './env'
+import { boundedInt, optional } from './env'
 
 /**
  * Boxes: cloud machines Nuphos creates on instabox for a user, registered as that
@@ -9,13 +9,14 @@ export type BoxConfig = {
   instabox: { apiKey: string; apiUrl?: string } | null
   /** Where a Box downloads the CLI and its runtime bundle; unset means the GitHub release. */
   downloadUrl?: string
-  /** Paid Box plans. Unset means no plans: Boxes are not capped (development, self-hosting). */
-  stripe: { secretKey: string; webhookSecret?: string } | null
+  /** vCPUs a team's running Boxes may use when its document sets no `boxVcpuLimit`; unset is unlimited. */
+  defaultVcpuLimit?: number
+  /** The billing service clients open to buy or change a plan; unset shows no Upgrade. */
+  billingUrl?: string
 }
 
 export function boxConfig(): BoxConfig {
   const apiKey = optional('INSTABOX_API_KEY')
-  const stripeKey = optional('STRIPE_SECRET_KEY')?.trim()
 
   return {
     ...(optional('NUPHOS_BOX_DOWNLOAD_URL')
@@ -27,8 +28,9 @@ export function boxConfig(): BoxConfig {
           ...(optional('INSTABOX_API_URL') ? { apiUrl: optional('INSTABOX_API_URL') } : {}),
         }
       : null,
-    stripe: stripeKey
-      ? { secretKey: stripeKey, webhookSecret: optional('STRIPE_WEBHOOK_SECRET')?.trim() }
-      : null,
+    ...(optional('BOX_DEFAULT_VCPU_LIMIT')
+      ? { defaultVcpuLimit: boundedInt('BOX_DEFAULT_VCPU_LIMIT', 0, { min: 0, max: 10_000 }) }
+      : {}),
+    ...(optional('NUPHOS_BILLING_URL') ? { billingUrl: optional('NUPHOS_BILLING_URL') } : {}),
   }
 }

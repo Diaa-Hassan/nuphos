@@ -16,7 +16,6 @@ import { agentSessions } from '@/routes/agent-sessions'
 import { agentTriggersRoutes } from '@/routes/agent-triggers'
 import { asanaAppRoutes } from '@/routes/asana-app'
 import { auth } from '@/routes/auth'
-import { stripeWebhookRoutes } from '@/routes/box-plan'
 import { claudeCodeRuntimeSkills } from '@/routes/claude-code-runtime-skills'
 import { cloudflareAppRoutes } from '@/routes/cloudflare-app'
 import { desktopRoutes } from '@/routes/desktop'
@@ -97,8 +96,6 @@ app.route('/agent/triggers', agentTriggersRoutes)
 app.route('/agent', agent)
 
 app.route('/agent-journal', agentJournal)
-// Before `/webhooks/:triggerId`, so the static path wins.
-app.route('/webhooks/stripe', stripeWebhookRoutes)
 app.route('/webhooks', webhooksRoutes)
 app.route('/agent-sessions', agentSessions)
 // MCP (Model Context Protocol) server — lets external MCP clients (Claude Code,

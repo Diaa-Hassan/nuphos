@@ -1,7 +1,7 @@
 import type {
   AgentDevice,
   AgentDeviceList,
-  BoxPlanStatus,
+  BoxUsage,
   SleepPreferences,
   SleepState,
   DeviceExecAuditPage,
@@ -34,7 +34,6 @@ export type WindowDeviceApi = {
   boxPause(deviceId: string): Promise<AgentDevice>
   boxResume(deviceId: string): Promise<AgentDevice>
   boxDelete(deviceId: string): Promise<{ ok: true }>
-  boxPlan(teamId: string): Promise<BoxPlanStatus>
-  boxPlanCheckout(teamId: string, planId: string): Promise<{ url: string }>
-  boxPlanPortal(teamId: string): Promise<{ url: string }>
+  boxUsage(teamId: string): Promise<BoxUsage>
+  boxBillingPage(teamId: string, vcpus?: number): Promise<{ url: string }>
 }

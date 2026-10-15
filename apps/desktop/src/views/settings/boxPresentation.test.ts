@@ -89,19 +89,19 @@ test('a new Box is starting until the team lists one of its agents', () => {
   assert.equal(boxSetupPhase('a', [box('a', 'running')], [claude]), 'ready')
 })
 
-test('New Box is blocked without a plan and when the next Box would pass the cap', () => {
-  const plan = { id: 'box-50', usd: 50, vcpus: 12 }
-  const status = (current: typeof plan | null, usedVcpus: number) => ({
-    enabled: true,
-    plan: current,
-    plans: [plan],
+test('New Box is blocked when the next Box would pass the team limit', () => {
+  const usage = (limitVcpus: number | null, usedVcpus: number | null) => ({
+    limitVcpus,
+    subscribed: false,
     usedVcpus,
     boxVcpus: 4,
+    billingUrl: null,
   })
 
   assert.equal(newBoxBlockedReason(null), null)
-  assert.equal(newBoxBlockedReason({ ...status(null, 0), enabled: false }), null)
-  assert.match(newBoxBlockedReason(status(null, 0)) ?? '', /need a plan/)
-  assert.equal(newBoxBlockedReason(status(plan, 8)), null)
-  assert.match(newBoxBlockedReason(status(plan, 12)) ?? '', /12 of 12 vCPU/)
+  assert.equal(newBoxBlockedReason(usage(null, 40)), null)
+  assert.equal(newBoxBlockedReason(usage(12, null)), null)
+  assert.equal(newBoxBlockedReason(usage(12, 8)), null)
+  assert.match(newBoxBlockedReason(usage(12, 12)) ?? '', /12 of 12 vCPU/)
+  assert.match(newBoxBlockedReason(usage(0, 0)) ?? '', /no Box plan/)
 })

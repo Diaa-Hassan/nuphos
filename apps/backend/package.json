@@ -84,7 +84,6 @@
     "posthog-node": "^5.33.4",
     "socket.io-client": "^4.8.3",
     "socks": "^2.8.7",
-    "stripe": "22.3.0",
     "tencentcloud-sdk-nodejs-cvm": "^4.1.255",
     "tencentcloud-sdk-nodejs-sts": "^4.1.100",
     "tencentcloud-sdk-nodejs-tke": "^4.1.258",

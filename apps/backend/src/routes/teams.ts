@@ -1,6 +1,7 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { boxUsageView } from '@/lib/agent/devices/box-instabox-limit'
 import { ACTIVITY_RANGES, getTeamActivity } from '@/lib/agent/team-activity'
 import { getTeamUsageSeries } from '@/lib/agent/usage-summary'
 import { zv } from '@/lib/validate'
@@ -12,7 +13,6 @@ import { asanaAccountsRoutes } from '@/routes/asana-accounts'
 import { awsAccountsRoutes } from '@/routes/aws-accounts'
 import { azureAccountsRoutes } from '@/routes/azure-accounts'
 import { betterStackIntegrationsRoutes } from '@/routes/betterstack-integrations'
-import { boxPlanRoutes } from '@/routes/box-plan'
 import { cloudflareAccountsRoutes } from '@/routes/cloudflare-accounts'
 import { teamClusters } from '@/routes/clusters'
 import { nuphosDashboardsRoutes } from '@/routes/dashboards'
@@ -101,7 +101,8 @@ teamScoped.get('/agent-activity', zv('query', activityQuerySchema), async (c) =>
 )
 // Read-only compatibility for saved dashboard scripts and older desktop clients.
 teamScoped.get('/billing/usage', async (c) => c.json(await getTeamUsageSeries(c.get('teamId'))))
-teamScoped.route('/box-plan', boxPlanRoutes)
+// The team's Box vCPU limit and use, for the Boxes section.
+teamScoped.get('/box-usage', async (c) => c.json(await boxUsageView(c.get('teamId'))))
 teamScoped.route('/favorites', sidebarFavoritesRoutes)
 teamScoped.route('/home-layout', homeLayoutRoutes)
 teamScoped.route('/instructions', instructionsRoutes)

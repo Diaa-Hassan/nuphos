@@ -1,9 +1,8 @@
 import {
-  boxPlanCheckout,
-  boxPlanPortal,
+  boxBillingPage,
   createBox,
   deleteBox,
-  getBoxPlan,
+  getBoxUsage,
   listAgentDevices,
   pauseBox,
   resumeBox,
@@ -22,8 +21,7 @@ export const boxChannels = {
   'box:pause': (_e: unknown, deviceId: unknown) => pauseBox(text(deviceId)),
   'box:resume': (_e: unknown, deviceId: unknown) => resumeBox(text(deviceId)),
   'box:delete': (_e: unknown, deviceId: unknown) => deleteBox(text(deviceId)),
-  'box:plan': (_e: unknown, teamId: unknown) => getBoxPlan(text(teamId)),
-  'box:planCheckout': (_e: unknown, teamId: unknown, planId: unknown) =>
-    boxPlanCheckout(text(teamId), text(planId)),
-  'box:planPortal': (_e: unknown, teamId: unknown) => boxPlanPortal(text(teamId)),
+  'box:usage': (_e: unknown, teamId: unknown) => getBoxUsage(text(teamId)),
+  'box:billingPage': (_e: unknown, teamId: unknown, vcpus?: unknown) =>
+    boxBillingPage(text(teamId), typeof vcpus === 'number' ? vcpus : undefined),
 }
