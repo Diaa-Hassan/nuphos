@@ -323,26 +323,30 @@ fun ChatComposer(
                             devicesFailed -> Text("Could not load computers. You can keep typing.", style = MaterialTheme.typography.bodySmall)
                             computers.isEmpty() -> Text("No matching computers", style = MaterialTheme.typography.bodySmall)
                             else -> computers.forEach { device ->
-                                Text(
-                                    device.label + when {
-                                        device.unavailable -> " · Unavailable"
-                                        resolvedSelection.contains(device) -> " · Selected"
-                                        else -> ""
-                                    },
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = if (device.unavailable) colors.onSurfaceVariant else colors.onSurface,
-                                    modifier = Modifier.fillMaxWidth().clickable(enabled = !device.unavailable, role = Role.Button) {
-                                        if (SessionMention.query(fieldValue) == activeMention && draftingEnabled) {
-                                            // Do not insert text on rejected selection; never interpret typed @text as IAM.
-                                            if (devices.pick(device)) {
-                                                val inserted = SessionMention.insert(text, "@" + device.label)
-                                                field = TextFieldValue(inserted, TextRange(inserted.length))
-                                                updateText(inserted)
-                                            } else devicePickFailed = true
-                                        }
-                                    }.padding(vertical = 8.dp),
-                                )
+                                Column(Modifier.fillMaxWidth().clickable(enabled = !device.unavailable, role = Role.Button) {
+                                    if (SessionMention.query(fieldValue) == activeMention && draftingEnabled) {
+                                        // Do not insert text on rejected selection; never interpret typed @text as IAM.
+                                        if (devices.pick(device)) {
+                                            val inserted = SessionMention.insert(text, "@" + device.label)
+                                            field = TextFieldValue(inserted, TextRange(inserted.length))
+                                            updateText(inserted)
+                                        } else devicePickFailed = true
+                                    }
+                                }.padding(vertical = 8.dp)) {
+                                    Text(
+                                        device.label + when {
+                                            device.unavailable -> " · Unavailable"
+                                            resolvedSelection.contains(device) -> " · Selected"
+                                            else -> ""
+                                        },
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = if (device.unavailable) colors.onSurfaceVariant else colors.onSurface,
+                                    )
+                                    DeviceMention.identity(device, deviceRows)?.let { identity ->
+                                        Text(identity, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                                    }
+                                }
                             }
                         }
                         if (devicePickFailed) Text("Computer selection unavailable. IAM was not changed.", style = MaterialTheme.typography.bodySmall)

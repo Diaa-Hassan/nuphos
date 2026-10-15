@@ -35,7 +35,7 @@ class DeviceMentionFixtureDeviceTest {
     private val team = "507f1f77bcf86cd799439011"
     private val catalog = CredentialCatalog(JsonValue.parse("""{
         "devices":[{"deviceId":"synthetic-mac","label":"Fixture Mac","available":true},
-                   {"deviceId":"synthetic-pc","label":"Fixture PC","available":true},
+                   {"deviceId":"synthetic-pc","label":"Fixture Mac","available":true},
                    {"deviceId":"synthetic-off","label":"Fixture Offline","available":false}]
     }""")!!).allItems
     private val initial = CredentialSelection(mapOf("deviceIds" to setOf("synthetic-pc", "synthetic-off"), "awsRoleIds" to setOf("synthetic-cloud")))
@@ -81,16 +81,20 @@ class DeviceMentionFixtureDeviceTest {
         }
         field().performClick().performTextInput("context\n@fiXTure")
         compose.waitUntil(5000) { compose.onAllNodesWithText("Fixture Mac").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Fixture Mac").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("…-mac").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("…c-pc").performScrollTo().assertIsDisplayed()
+        compose.onNodeWithText("…-mac").performScrollTo()
         compose.onNodeWithContentDescription("Attach").assertIsDisplayed()
         compose.onNodeWithContentDescription("Send").assertIsDisplayed()
         snap("synthetic-device-mention-light")
         compose.runOnIdle { dark = true }
         snap("synthetic-device-mention-dark")
         compose.onNodeWithText("Fixture Offline · Unavailable").performScrollTo().assertIsNotEnabled()
+        snap("synthetic-device-mention-unavailable")
         compose.runOnIdle { assertEquals(initial, selection); assertEquals(0, picks) }
         compose.onNodeWithText("Fixture chat").performScrollTo().assertIsDisplayed()
-        compose.onNodeWithText("Fixture Mac").performScrollTo().performClick()
+        snap("synthetic-device-mention-mixed")
+        compose.onNodeWithText("…-mac").performScrollTo().performClick()
         field().assertTextEquals("context\n@Fixture Mac ")
         compose.runOnIdle {
             assertEquals(setOf("synthetic-mac", "synthetic-pc", "synthetic-off"), selection.ids["deviceIds"])
@@ -99,7 +103,7 @@ class DeviceMentionFixtureDeviceTest {
         }
         field().performTextReplacement("@fixture")
         compose.waitUntil(5000) { compose.onAllNodesWithText("Fixture Mac · Selected").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Fixture Mac · Selected").performScrollTo().performClick()
+        compose.onNodeWithText("…-mac").performScrollTo().performClick()
         compose.runOnIdle { assertEquals(3, selection.ids["deviceIds"]!!.size) }
         field().performTextReplacement("@fixture")
         compose.waitUntil(5000) { compose.onAllNodesWithText("Fixture chat").fetchSemanticsNodes().isNotEmpty() }
@@ -138,7 +142,7 @@ class DeviceMentionFixtureDeviceTest {
         compose.onNodeWithText("My computers").assertDoesNotExist()
         compose.runOnIdle { devices = denied }
         compose.waitUntil(5000) { compose.onAllNodesWithText("Fixture Mac").fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("Fixture Mac").performScrollTo().performClick()
+        compose.onNodeWithText("…-mac").performScrollTo().performClick()
         field().assertTextEquals("@fixture")
         compose.onNodeWithText("Computer selection unavailable. IAM was not changed.").performScrollTo().assertIsDisplayed()
         snap("synthetic-device-mention-denied")

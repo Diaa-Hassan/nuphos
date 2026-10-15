@@ -35,4 +35,16 @@ class DeviceMentionTest {
         assertNull(DeviceMention.select(selected, catalog.allItems.last()))
         assertEquals(setOf("one", "off"), selected.ids["deviceIds"])
     }
+    @Test fun duplicateNamesHaveUniqueVisibleIdentifiersIncludingSuffixCollisions() {
+        val sameName = catalog.allItems.first()
+        val other = catalog.allItems[1]
+        assertEquals("one", DeviceMention.identity(sameName, catalog.allItems))
+        assertEquals("two", DeviceMention.identity(other, catalog.allItems))
+        assertNull(DeviceMention.identity(catalog.allItems.first { it.id == "three" }, catalog.allItems))
+        val a = sameName.copy(id = "device-1abcd")
+        val b = other.copy(id = "device-2abcd", label = sameName.label.uppercase())
+        assertEquals("…1abcd", DeviceMention.identity(a, listOf(a, b)))
+        assertEquals("…2abcd", DeviceMention.identity(b, listOf(a, b)))
+    }
+
 }
