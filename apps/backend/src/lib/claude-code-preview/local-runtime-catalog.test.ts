@@ -31,6 +31,7 @@ const deps: LocalRuntimeCatalogDeps = {
     userId === 'owner' ? [device('owner', 'mac-1', 'Olivia’s MacBook')] : [],
   isMember: async (userId, teamId) => teams.has(`${userId}:${teamId}`),
   getPresence: async () => presence,
+  wakeDevice: async () => undefined,
 }
 
 function online(loggedIn: boolean | null = true, codex = false): LocalRuntimePresence {

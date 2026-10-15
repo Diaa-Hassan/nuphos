@@ -20,6 +20,7 @@ import {
   readMachineKey,
   stableDeviceId,
 } from '../device-identity-core.ts'
+import { readDeviceMetrics } from '../device-metrics.ts'
 
 import { LOCAL_AGENT_PROVIDERS, findAgentCli, probeAgentCli, readAgentUsage } from './agent-cli.ts'
 import { prepareAgentHome } from './agent-home.ts'
@@ -38,7 +39,6 @@ import type { AgentCliStatus, LocalAgentProvider } from './agent-cli.ts'
 const bundleRoot = process.env.NUPHOS_LOCAL_RUNTIME_DIR ?? path.dirname(process.argv[1] ?? '.')
 // Apart from the desktop's, so both can run on one computer as two devices, each
 // with its own runtime tunnel; the device id itself comes from the machine.
-// The CLI sets it, so its default lives in one place (agent.rs).
 const dataDir = process.env.NUPHOS_AGENT_HOME ?? ''
 
 if (!dataDir) {
@@ -98,7 +98,6 @@ const deviceCredential = await deviceCredentialFor({
   joinToken: process.env.NUPHOS_JOIN_TOKEN?.trim() || undefined,
   headers: { 'x-atlas-client': clientVersion },
 })
-// A joined computer is the device the backend registered for it.
 const deviceId = deviceCredential?.deviceId ?? device.deviceId
 const token = deviceCredential ? null : currentToken()
 const owner = deviceCredential?.userId ?? (token ? unverifiedTokenSubject(token) : undefined)
@@ -175,8 +174,10 @@ const controller: LocalRuntimeController = new LocalRuntimeController({
       }),
     })
   },
-  createTunnel: (runtime, status, onChange) =>
+  createTunnel: (runtime, status, onChange, instances) =>
     new RuntimeTunnelClient({
+      instances,
+      sampleMetrics: readDeviceMetrics,
       connectBackend: () => {
         const fresh = deviceCredential?.credential ?? currentToken()
 
@@ -196,8 +197,8 @@ const controller: LocalRuntimeController = new LocalRuntimeController({
         return workspace ? new LocalFileStream(workspace) : null
       },
       connectExec: () => new LocalExecStream(),
-      connectRuntime: (purpose, provider) => {
-        const running = runtime(provider)
+      connectRuntime: (purpose, provider, instanceId) => {
+        const running = runtime(provider, instanceId)
 
         if (!running) return null
         const key = purpose === 'control' ? running.controlKey : running.authKey
@@ -280,7 +281,6 @@ if (!deviceCredential)
     if (!stopping && (!fresh || unverifiedTokenSubject(fresh) !== owner))
       stop('Signed out of Nuphos; stopping the local agents.')
   }, 2_000)
-// A closed terminal or a dropped SSH session stops them too.
 for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP'] as const) process.on(signal, () => stop())
 console.log(`Running this computer's agents for Nuphos as "${device.label}". Press Ctrl-C to stop.`)
 console.log(
@@ -288,3 +288,13 @@ console.log(
 )
 await controller.setUser(owner)
 await signInClaude(owner)
+// A sign-in from Nuphos's dialog lands in the agent's own home; notice it without a restart.
+setInterval(() => {
+  const { agents } = controller.state()
+
+  if (
+    !stopping &&
+    Object.values(agents).some((agent) => agent.cli?.installed && !agent.cli.loggedIn)
+  )
+    void controller.refresh(false)
+}, 2_000)

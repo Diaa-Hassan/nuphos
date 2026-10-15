@@ -139,7 +139,7 @@ export function WorkspaceMainPane({ ws, user }: { ws: WorkspaceController; user:
     >
       <div className="flex flex-1 min-h-0">
         <div className="flex flex-1 min-h-0 min-w-0 flex-col overflow-hidden workspace-content-surface">
-          {activeTab?.active !== 'team.browser' && activeTab?.active !== 'team.terminal' && (
+          {!['team.browser', 'team.desktop', 'team.terminal'].includes(activeTab?.active ?? '') && (
             <Profiler id="toolbar" onRender={(id, _p, ms) => reportShellRender(id, ms)}>
               <Toolbar
                 segments={toolbarSegments}

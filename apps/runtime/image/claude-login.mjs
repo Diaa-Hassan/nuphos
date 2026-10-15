@@ -2,7 +2,7 @@
 // NDJSON protocol, never pod logs. stdin carries the `code#state` the user pastes back
 // (`_openab/runtime/login/input`). The credential stays in this container's
 // `~/.claude/.credentials.json`, where the agent reads it; no frame carries it.
-import { spawn } from 'node:child_process'
+import { execFile, spawn } from 'node:child_process'
 import { stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -44,14 +44,25 @@ export async function runClaudeLogin({
   executable = process.env.CLAUDE_CODE_EXECUTABLE || 'claude',
   args = [],
   home = CLAUDE_HOME,
+  configDir,
+  secureStorageDir,
   input = process.stdin,
   emit = (frame) => process.stdout.write(`${JSON.stringify(frame)}\n`),
   signal,
 } = {}) {
+  const env = {
+    HOME: home,
+    PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+    TERM: 'dumb',
+    ...(configDir ? { CLAUDE_CONFIG_DIR: configDir } : {}),
+    ...(secureStorageDir !== undefined
+      ? { CLAUDE_SECURESTORAGE_CONFIG_DIR: secureStorageDir }
+      : {}),
+  }
   const child = spawn(executable, [...args, 'auth', 'login', '--claudeai'], {
     // Not the gateway's environment: no transport keys, and no CLAUDE_CODE_OAUTH_TOKEN,
     // which would shadow the login this writes.
-    env: { HOME: home, PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin', TERM: 'dumb' },
+    env,
     stdio: ['pipe', 'pipe', 'ignore'],
     detached: process.platform !== 'win32',
   })
@@ -104,9 +115,31 @@ export async function runClaudeLogin({
 
     if (failure) throw failure
     if (code !== 0) throw new LoginError('failed')
-    const credential = await stat(join(home, '.claude', '.credentials.json')).catch(() => null)
+    const credential = await stat(
+      join(configDir ?? join(home, '.claude'), '.credentials.json'),
+    ).catch(() => null)
 
-    if (!credential?.isFile() || credential.size === 0) throw new LoginError('failed')
+    if (!credential?.isFile() || credential.size === 0) {
+      // macOS stores Claude logins in the Keychain selected by this instance's config directory.
+      const loggedIn =
+        configDir &&
+        process.platform === 'darwin' &&
+        (await new Promise((resolve) => {
+          execFile(
+            executable,
+            [...args, 'auth', 'status', '--json'],
+            { env, timeout: 15_000, maxBuffer: 16_384 },
+            (error, stdout) => {
+              try {
+                resolve(!error && JSON.parse(stdout).loggedIn === true)
+              } catch {
+                resolve(false)
+              }
+            },
+          )
+        }))
+      if (!loggedIn) throw new LoginError('failed')
+    }
     emit({ type: 'authenticated' })
   } finally {
     lines.removeAllListeners('close')
@@ -120,7 +153,11 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   for (const event of ['SIGTERM', 'SIGINT']) process.once(event, () => controller.abort())
   process.stdout.on('error', () => controller.abort())
   try {
-    await runClaudeLogin({ signal: controller.signal })
+    await runClaudeLogin({
+      signal: controller.signal,
+      configDir: process.env.CLAUDE_CONFIG_DIR,
+      secureStorageDir: process.env.CLAUDE_SECURESTORAGE_CONFIG_DIR,
+    })
   } catch (error) {
     // Provider output can contain sensitive values; report only a fixed reason.
     const reason = error instanceof LoginError ? error.reason : 'failed'

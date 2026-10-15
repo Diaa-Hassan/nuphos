@@ -133,3 +133,41 @@ test('a CLI that exits cleanly without storing a credential is not a sign-in', a
     await rm(home, { recursive: true, force: true })
   }
 })
+
+test('host login writes only its selected instance config directory', async () => {
+  const { home, script } = await fixture()
+  const configDir = join(home, 'instance-claude')
+  const input = new PassThrough()
+  const frames = []
+  try {
+    await writeFile(
+      script,
+      FAKE_CLI.replaceAll(
+        "process.env.HOME + '/.claude'",
+        'process.env.CLAUDE_CONFIG_DIR',
+      ).replaceAll(
+        "process.env.HOME + '/.claude/.credentials.json'",
+        "process.env.CLAUDE_CONFIG_DIR + '/.credentials.json'",
+      ),
+    )
+    await runClaudeLogin({
+      executable: process.execPath,
+      args: [script],
+      home,
+      configDir,
+      secureStorageDir: configDir,
+      input,
+      emit: (frame) => {
+        frames.push(frame)
+        if (frame.type === 'authorize') input.write('good-code#state\n')
+      },
+    })
+    assert.equal(frames.at(-1).type, 'authenticated')
+    const credential = JSON.parse(await readFile(join(configDir, '.credentials.json'), 'utf8'))
+    assert.ok(credential.env.includes('CLAUDE_CONFIG_DIR'))
+    assert.ok(credential.env.includes('CLAUDE_SECURESTORAGE_CONFIG_DIR'))
+    await assert.rejects(readFile(join(home, '.claude', '.credentials.json')), { code: 'ENOENT' })
+  } finally {
+    await rm(home, { recursive: true, force: true })
+  }
+})

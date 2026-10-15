@@ -35,9 +35,9 @@ export function agentName(agent: NamedAgent, owner: ThisComputer): string {
   const tier = agentTier(agent, owner)
 
   if (tier === 'cloud') return agent.label
-  if (tier === 'local') return 'Local'
+  if (tier === 'local') return agent.label
 
-  return agent.local?.deviceLabel ?? agent.label.replace(PROVIDER_SUFFIX, '')
+  return agent.label
 }
 
 const TIER_TITLE: Record<AgentTier, string> = {
@@ -53,11 +53,10 @@ export function groupAgentsByTier<T extends NamedAgent>(
   agents: readonly T[],
   owner: ThisComputer,
 ): AgentTierGroup<T>[] {
-  return (['local', 'remote', 'cloud'] as const).flatMap((tier) => {
-    const members = agents.filter((agent) => agentTier(agent, owner) === tier)
+  // Every machine is a Box now: one list, no This Computer / Remote / Cloud split.
+  void owner
 
-    return members.length ? [{ tier, title: TIER_TITLE[tier], agents: members }] : []
-  })
+  return agents.length ? [{ tier: 'local' as const, title: '', agents: [...agents] }] : []
 }
 
 type SelectableAgent = NamedAgent & { status: 'active' | 'disabled' }
@@ -66,13 +65,24 @@ function usable(agent: SelectableAgent): boolean {
   return agent.status === 'active' && agent.local?.signedIn !== false
 }
 
-/** With no saved choice, a new conversation starts on this computer when it can. */
-export function defaultAgent<T extends SelectableAgent>(
+/** A new conversation starts on the usable agent with the most quota left; unknown counts as full. */
+export function defaultAgent<T extends SelectableAgent & { id: string }>(
   agents: readonly T[],
   owner: ThisComputer,
+  usedPercent: (agent: T) => number | undefined = () => undefined,
 ): T | undefined {
-  return (
-    agents.find((agent) => agentTier(agent, owner) === 'local' && usable(agent)) ??
-    agents.find((agent) => agentTier(agent, owner) === 'cloud' && usable(agent))
-  )
+  void owner
+  let best: T | undefined
+  let bestUsed = Infinity
+
+  for (const agent of agents) {
+    if (!usable(agent)) continue
+    const used = usedPercent(agent) ?? 0
+    if (used < bestUsed) {
+      best = agent
+      bestUsed = used
+    }
+  }
+
+  return best
 }

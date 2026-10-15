@@ -78,6 +78,12 @@ const CASES: { name: string; nav: NavigationSnapshot }[] = [
     name: 'runtime terminal',
     nav: emptyNavigation({ kind: 'team', teamId: T }, 'team.terminal', { filter: 'runtime' }),
   },
+  {
+    name: 'desktop',
+    nav: emptyNavigation({ kind: 'team', teamId: T }, 'team.desktop', {
+      browserUrl: 'https://box.example/vnc?token=a&resize=scale',
+    }),
+  },
   { name: 'browser', nav: emptyNavigation({ kind: 'team', teamId: T }, 'team.browser') },
   { name: 'monitoring', nav: emptyNavigation({ kind: 'team', teamId: T }, 'team.monitoring') },
   { name: 'schedule', nav: emptyNavigation({ kind: 'team', teamId: T }, 'team.schedule') },

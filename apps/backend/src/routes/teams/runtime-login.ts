@@ -26,7 +26,7 @@ export function registerRuntimeLoginRoutes(teamScoped: Hono<{ Variables: TeamAut
   })
   teamScoped.get(path, requireTeamRole('ADMINISTRATOR'), async (c) => {
     c.header('Cache-Control', 'no-store')
-    await requireLoginInstance(c.get('teamId'), c.req.param('runtimeId'))
+    await requireLoginInstance(c.get('teamId'), c.req.param('runtimeId'), c.get('userId'))
 
     return c.json(
       publicLogin(

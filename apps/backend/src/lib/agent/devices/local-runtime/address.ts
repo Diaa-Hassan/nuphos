@@ -3,26 +3,39 @@ import type { LocalAgentProvider, TunnelPurpose } from './protocol'
 export type LocalRuntimeRef = { userId: string; deviceId: string }
 
 /** One agent on one computer: each provider the computer runs is its own agent. */
-export type LocalAgentRef = LocalRuntimeRef & { provider: LocalAgentProvider }
+export type LocalAgentRef = LocalRuntimeRef & { provider: LocalAgentProvider; instanceId?: string }
 
 const RUNTIME_ID_PREFIX = 'local_'
 const CODEX_SUFFIX = 'codex'
+const INSTANCE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu
 const URL_SCHEME = 'nuphos-device:'
 const SEGMENT = /^[A-Za-z0-9-]{1,128}$/u
 
 /** A local agent's id in a team's runtime list: owner, device and provider, never a team. */
-export function localRuntimeId({ userId, deviceId, provider }: LocalAgentRef): string {
+export function localRuntimeId({ userId, deviceId, provider, instanceId }: LocalAgentRef): string {
   const id = `${RUNTIME_ID_PREFIX}${userId}_${deviceId}`
+
+  if (instanceId) {
+    if (!INSTANCE_ID.test(instanceId)) throw new Error('Invalid agent instance id')
+
+    return `${id}_${provider}_${instanceId}`
+  }
 
   return provider === 'codex' ? `${id}_${CODEX_SUFFIX}` : id
 }
 
 export function parseLocalRuntimeId(runtimeId: string): LocalAgentRef | undefined {
   if (!runtimeId.startsWith(RUNTIME_ID_PREFIX)) return undefined
-  const [userId, deviceId, suffix, ...rest] = runtimeId.slice(RUNTIME_ID_PREFIX.length).split('_')
+  const [userId, deviceId, suffix, instanceId, ...rest] = runtimeId.slice(RUNTIME_ID_PREFIX.length).split('_')
 
   if (rest.length || !userId || !deviceId || !SEGMENT.test(userId) || !SEGMENT.test(deviceId))
     return undefined
+  if (instanceId !== undefined) {
+    if (!INSTANCE_ID.test(instanceId) || (suffix !== 'claude-code' && suffix !== 'codex'))
+      return undefined
+
+    return { userId, deviceId, provider: suffix, instanceId }
+  }
   if (suffix !== undefined && suffix !== CODEX_SUFFIX) return undefined
 
   return { userId, deviceId, provider: suffix === CODEX_SUFFIX ? 'codex' : 'claude-code' }
@@ -40,6 +53,7 @@ export function localRuntimeUrl(ref: LocalAgentRef, teamId: string): string {
   const query = new URLSearchParams({ team: teamId })
 
   if (ref.provider === 'codex') query.set('provider', 'codex')
+  if (ref.instanceId) query.set('instance', ref.instanceId)
 
   return `${URL_SCHEME}//runtime/${encodeURIComponent(ref.userId)}/${encodeURIComponent(ref.deviceId)}?${query.toString()}`
 }
@@ -59,12 +73,19 @@ export function parseLocalRuntimeUrl(
       .filter(Boolean)
       .map((part) => decodeURIComponent(part))
     const teamId = parsed.searchParams.get('team')
-    const provider = parsed.searchParams.get('provider') === 'codex' ? 'codex' : 'claude-code'
+    const rawProvider = parsed.searchParams.get('provider')
+
+    if (rawProvider !== null && rawProvider !== 'codex' && rawProvider !== 'claude-code')
+      return undefined
+    const provider = rawProvider === 'codex' ? 'codex' : 'claude-code'
+    const instanceId = parsed.searchParams.get('instance')
+
+    if (instanceId !== null && !INSTANCE_ID.test(instanceId)) return undefined
 
     if (rest.length || !userId || !deviceId || !teamId) return undefined
     if (!SEGMENT.test(userId) || !SEGMENT.test(deviceId) || !SEGMENT.test(teamId)) return undefined
 
-    return { userId, deviceId, teamId, provider }
+    return { userId, deviceId, teamId, provider, ...(instanceId ? { instanceId } : {}) }
   } catch {
     return undefined
   }

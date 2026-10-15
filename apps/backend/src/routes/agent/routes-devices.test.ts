@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 import { Hono } from 'hono'
 
 import { errorHandler } from '@/lib/errors'
-import { createAgentDeviceRoutes } from '@/routes/agent/routes-devices'
+import {
+  createAgentDeviceRoutes,
+  type AgentDeviceRouteDependencies,
+} from '@/routes/agent/routes-devices'
 
 import type { DeviceExecAuditEntry } from '@/lib/agent/devices/audit'
 import type { AgentDeviceRegistration, AgentDevice } from '@/lib/agent/devices/store'
@@ -20,7 +23,12 @@ function key(userId: string, deviceId: string): string {
   return `${userId}:${deviceId}`
 }
 
-function buildApp() {
+type BoxDeps = NonNullable<AgentDeviceRouteDependencies['box']>
+
+function buildApp(
+  box: BoxDeps | null = null,
+  backendUrl: string | undefined = 'https://api.example.test',
+) {
   const app = new Hono<{ Variables: AuthVariables }>()
 
   app.use('*', async (c, next) => {
@@ -40,6 +48,11 @@ function buildApp() {
         }
       },
       getAgentDevice: async (userId, deviceId) => devices[key(userId, deviceId)] ?? null,
+      listDevices: async (userId) => Object.values(devices).filter((d) => d.userId === userId),
+      isOnline: async () => false,
+      deleteDevice: async (userId, deviceId) => delete devices[key(userId, deviceId)],
+      box,
+      backendUrl: () => backendUrl,
       listDeviceExecAudit: async (ownerUserId, deviceId, options) => {
         auditQueries.push({ ownerUserId, deviceId, ...options })
         const entries = auditEntries.filter(
@@ -233,5 +246,117 @@ describe('agent device routes', () => {
     expect(response.status).toBe(404)
     expect(disconnected).toEqual([])
     expect(credentials.has(key('user-2', 'd1'))).toBe(true)
+  })
+
+  function boxDevice(userId: string, deviceId: string, state: 'creating' | 'running' | 'paused') {
+    return {
+      userId,
+      deviceId,
+      label: 'Box',
+      platform: 'linux',
+      allowLocalExec: true,
+      box: {
+        provider: 'instabox' as const,
+        sandboxId: `m_${deviceId}`,
+        state,
+        updatedAt: new Date(),
+      },
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    }
+  }
+
+  function fakeBox(calls: string[]): BoxDeps {
+    return {
+      create: async (userId, teamId, label) => {
+        calls.push(`create ${teamId} ${label}`)
+        devices[key(userId, 'b1')] = { ...boxDevice(userId, 'b1', 'creating'), label }
+
+        return devices[key(userId, 'b1')]!
+      },
+      pause: async (userId, deviceId) => {
+        calls.push(`pause ${deviceId}`)
+
+        return boxDevice(userId, deviceId, 'paused')
+      },
+      resume: async (userId, deviceId, backendUrl) => {
+        calls.push(`resume ${deviceId} ${backendUrl}`)
+
+        return boxDevice(userId, deviceId, 'running')
+      },
+      destroy: async (_userId, deviceId) => {
+        calls.push(`destroy ${deviceId}`)
+      },
+    }
+  }
+
+  test('GET /devices lists the caller devices with their Box state and never the credential', async () => {
+    devices[key('user-1', 'b1')] = {
+      ...boxDevice('user-1', 'b1', 'paused'),
+      credentialHash: 'secret-hash',
+    }
+    devices[key('user-2', 'b2')] = boxDevice('user-2', 'b2', 'running')
+    const response = await buildApp().request('/agent/devices')
+    const body = (await response.json()) as { devices: Record<string, unknown>[] }
+
+    expect(response.status).toBe(200)
+    expect(body.devices).toHaveLength(1)
+    expect(body.devices[0]).toMatchObject({
+      deviceId: 'b1',
+      online: false,
+      box: { state: 'paused' },
+    })
+    expect(JSON.stringify(body)).not.toContain('secret-hash')
+  })
+
+  test('POST /devices/boxes is 503 without a Box provider', async () => {
+    const response = await buildApp().request('/agent/devices/boxes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: '{}',
+    })
+
+    expect(response.status).toBe(503)
+  })
+
+  test('POST /devices/boxes needs a team the caller belongs to', async () => {
+    const calls: string[] = []
+    const response = await buildApp(fakeBox(calls)).request('/agent/devices/boxes', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ label: 'Build box' }),
+    })
+
+    expect(response.status).toBe(400)
+    expect(calls).toEqual([])
+  })
+
+  test('Box pause, resume and delete go through the provider for the caller device', async () => {
+    const calls: string[] = []
+    const app = buildApp(fakeBox(calls))
+
+    devices[key('user-1', 'b1')] = boxDevice('user-1', 'b1', 'running')
+    credentials.add(key('user-1', 'b1'))
+    const paused = await app.request('/agent/devices/b1/box/pause', { method: 'POST' })
+
+    expect(paused.status).toBe(200)
+    expect(await paused.json()).toMatchObject({ deviceId: 'b1', box: { state: 'paused' } })
+    const resumed = await app.request('/agent/devices/b1/box/resume', { method: 'POST' })
+
+    expect(await resumed.json()).toMatchObject({ box: { state: 'running' } })
+    const removed = await app.request('/agent/devices/b1/box', { method: 'DELETE' })
+
+    expect(removed.status).toBe(200)
+    expect(calls).toEqual(['pause b1', 'resume b1 https://api.example.test', 'destroy b1'])
+    expect(disconnected).toEqual([key('user-1', 'b1')])
+    expect(devices[key('user-1', 'b1')]).toBeUndefined()
+  })
+
+  test('Box resume is 503 when the deployment has no public URL for the machine to dial', async () => {
+    const response = await buildApp(fakeBox([]), '').request('/agent/devices/b1/box/resume', {
+      method: 'POST',
+    })
+
+    expect(response.status).toBe(503)
   })
 })

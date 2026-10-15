@@ -53,6 +53,7 @@ function isLinearIssueDetail(active: string, linearNav: LinearNavState | null): 
 const UNFILTERABLE_PAGE_KEYS = new Set([
   'team.new-tab',
   'team.browser',
+  'team.desktop',
   'team.terminal',
   'team.files',
   'team.agent',

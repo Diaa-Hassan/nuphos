@@ -134,8 +134,45 @@ export function openabConfigToml(launch: LocalRuntimeLaunch): string {
 }
 
 /** openab listens on loopback only; the backend reaches it through the desktop's tunnel. */
+/**
+ * `OPENAB_RUNTIME_LOGIN_COMMAND` is whitespace-split argv, so a CLI path with a
+ * space cannot be expressed; such a computer keeps signing in from its own UI.
+ */
+export function agentLoginEnv(launch: AgentCliLaunch): Record<string, string> {
+  if (/\s/u.test(launch.cliPath)) return {}
+
+  // Next to a headless host (a Box) ship the cloud runtime's login wrappers: they turn the
+  // CLI's sign-in into the NDJSON steps openab relays to the Sign in dialog.
+  const wrapper = path.join(path.dirname(process.argv[1] ?? ''), `${launch.provider === 'codex' ? 'codex' : 'claude'}-login.mjs`)
+  const cliEnv = agentCliEnv(launch)
+  if (existsSync(wrapper) && !/\s/u.test(process.execPath + wrapper))
+    return {
+      ...cliEnv,
+      ...(launch.provider === 'codex' && cliEnv.CODEX_HOME ? { NUPHOS_CODEX_AUTH_DIRECTORY: cliEnv.CODEX_HOME } : {}),
+      CLAUDE_CODE_EXECUTABLE: launch.cliPath,
+      CODEX_EXECUTABLE: launch.cliPath,
+      OPENAB_RUNTIME_LOGIN_COMMAND: [process.execPath, wrapper, ...(launch.provider === 'codex' ? ['--install'] : [])].join(' '),
+    }
+
+  return {
+    ...cliEnv,
+    OPENAB_RUNTIME_LOGIN_COMMAND: [launch.cliPath, ...agentSignInArgs(launch.provider)].join(' '),
+  }
+}
+
+/** The agent's own sign-in command: Claude's browser flow, Codex's device flow. */
+export function agentSignInArgs(provider: LocalAgentProvider): string[] {
+  return provider === 'codex'
+    ? ['-c', 'cli_auth_credentials_store="file"', 'login', '--device-auth']
+    : ['auth', 'login', '--claudeai']
+}
+
 export function openabEnv(launch: LocalRuntimeLaunch): Record<string, string> {
   return {
+    // The agent's own sign-in, run by openab on request from Nuphos (the same dialog
+    // as a cloud agent) into the runtime's own login: openab's child inherits this env.
+    // openab's own HOME below wins over the agent's.
+    ...agentLoginEnv(launch),
     PATH: launch.env.PATH ?? process.env.PATH ?? '',
     ...(launch.env.USER ? { USER: launch.env.USER } : {}),
     ...(launch.env.SystemRoot ? { SystemRoot: launch.env.SystemRoot } : {}),

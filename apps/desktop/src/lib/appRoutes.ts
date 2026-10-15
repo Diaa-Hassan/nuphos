@@ -135,8 +135,9 @@ export function navigationFromAppPath(path: string): NavigationSnapshot | null {
       return emptyNavigation(teamScope, 'team.files', { filter: query.get('path') || undefined })
     case 'terminal':
       return emptyNavigation(teamScope, 'team.terminal', rest[1] ? { filter: rest[1] } : {})
+    case 'desktop':
     case 'browser':
-      return emptyNavigation(teamScope, 'team.browser', {
+      return emptyNavigation(teamScope, `team.${rest[0]}`, {
         browserUrl: query.get('url') || undefined,
       })
     case 'monitoring':

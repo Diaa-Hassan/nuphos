@@ -36,6 +36,14 @@ export type DeviceExecAuditPage = {
 /** This computer's own agent CLI; team runtimes can run more (`AgentProvider`). */
 export type LocalAgentProvider = 'claude-code' | 'codex'
 
+/** One more agent of a provider on a device. `runtimeId` is the catalog's RuntimeInstance.id. */
+export type DeviceAgentInstance = {
+  instanceId: string
+  provider: LocalAgentProvider
+  label: string
+  runtimeId: string
+}
+
 export type AgentCliStatus =
   | { installed: false }
   | {
@@ -109,14 +117,32 @@ export type BoxStatus = {
   provider: 'instabox'
   sandboxId: string
   state: BoxState
+  /** The host has joined at least once; until then the Box is still starting. */
+  joined?: boolean
   updatedAt?: string
 }
 
 /** One of the signed-in user's devices; `box` is set when Nuphos hosts it. */
+export type DeviceMetrics = {
+  sampledAt: string
+  cpuPercent: number
+  memory: { used: number; total: number }
+  disk: { used: number; total: number }
+}
+
+export type DeviceMetricsStatus = 'offline' | 'unsupported' | 'waiting' | 'stale' | 'live'
+
+export type AgentDeviceListOptions = { metrics?: boolean }
+
 export type AgentDevice = {
+  metricsStatus?: DeviceMetricsStatus
+  metricsReceivedAt?: string | null
+  metrics?: DeviceMetrics | null
   deviceId: string
   label: string
   platform: string
+  model?: string
+  createdAt?: string
   allowLocalExec?: boolean
   online?: boolean
   box?: BoxStatus

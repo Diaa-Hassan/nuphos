@@ -24,6 +24,7 @@ export type DeviceStreamTarget = {
   teamId: string
   purpose: TunnelPurpose
   provider?: LocalAgentProvider
+  instanceId?: string
 }
 
 const CONNECTING = 0
@@ -102,7 +103,7 @@ export class DeviceRuntimeSocket {
   }
 
   async connect(): Promise<void> {
-    const { userId, deviceId, teamId, purpose, provider } = this.target
+    const { userId, deviceId, teamId, purpose, provider, instanceId } = this.target
 
     try {
       const presence = await this.deps.presence.get(userId, deviceId)
@@ -111,7 +112,11 @@ export class DeviceRuntimeSocket {
         !presence ||
         (purpose === 'exec' && presence.status?.localExec !== true) ||
         (purpose === 'terminal' && presence.status?.localTerminal !== true) ||
-        (purpose === 'cua' && presence.status?.localCua !== true)
+        (purpose === 'cua' && presence.status?.localCua !== true) ||
+        (purpose === 'instances' && presence.status?.agentInstances !== true) ||
+        (instanceId !== undefined && !presence.status?.instances?.some(
+          (instance) => instance.instanceId === instanceId && instance.provider === provider,
+        ))
       ) {
         throw new Error(OFFLINE_REASON)
       }
@@ -131,6 +136,7 @@ export class DeviceRuntimeSocket {
           teamId,
           purpose,
           provider,
+          ...(instanceId ? { instanceId } : {}),
         } satisfies HolderMessage),
       )
       if (this.readyState === CLOSED) return

@@ -18,6 +18,8 @@ export type LocalRuntimeSummary = {
   ownerUserId: string
   deviceId: string
   deviceLabel: string
+  /** Set for an extra agent beyond the device's default one of its provider. */
+  instanceId?: string
   /** The owner's own `claude` sign-in; null when their computer cannot tell. */
   signedIn: boolean | null
   /** Provider usage that computer reported; the backend normalizes it. */

@@ -3,7 +3,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto'
 import { db } from '@/lib/db'
 import { getNuphosUserForCredential } from '@/lib/identity'
 
-import { insertJoinedAgentDevice } from './store'
+import { claimBoxAgentDevice, insertJoinedAgentDevice } from './store'
 
 import type { AgentDeviceRegistration } from './store'
 import type { Collection } from 'mongodb'
@@ -24,6 +24,7 @@ type DeviceJoinToken = {
   createdAt: Date
   expiresAt: Date
   usedAt?: Date
+  /** Set at issue for a Box, whose device row already exists; otherwise set when used. */
   deviceId?: string
 }
 
@@ -45,7 +46,7 @@ const secret = (prefix: string) => `${prefix}${randomBytes(32).toString('base64u
 
 export async function issueDeviceJoinToken(
   userId: string,
-  options: { label?: string; expiresInSec?: number },
+  options: { label?: string; expiresInSec?: number; deviceId?: string },
 ): Promise<{ token: string; expiresAt: Date }> {
   const token = secret(DEVICE_JOIN_TOKEN_PREFIX)
   const now = new Date()
@@ -57,6 +58,7 @@ export async function issueDeviceJoinToken(
     _id: hashDeviceSecret(token),
     userId,
     ...(options.label ? { label: options.label } : {}),
+    ...(options.deviceId ? { deviceId: options.deviceId } : {}),
     createdAt: now,
     expiresAt,
   })
@@ -75,16 +77,26 @@ export async function redeemDeviceJoinToken(
 ): Promise<{ userId: string; deviceId: string; credential: string } | null> {
   if (!token.startsWith(DEVICE_JOIN_TOKEN_PREFIX)) return null
   const now = new Date()
-  const deviceId = randomUUID()
   const used = await joinTokens().findOneAndUpdate(
     { _id: hashDeviceSecret(token), usedAt: { $exists: false }, expiresAt: { $gt: now } },
-    { $set: { usedAt: now, deviceId } },
+    { $set: { usedAt: now } },
   )
 
   // A token issued before "sign out everywhere" died with the sessions.
   if (!used || !(await getNuphosUserForCredential(used.userId, used.createdAt))) return null
   const credential = secret(DEVICE_CREDENTIAL_PREFIX)
+  const credentialHash = hashDeviceSecret(credential)
 
+  if (used.deviceId) {
+    // A Box: the token was made for this row and the row has no credential yet.
+    if (!(await claimBoxAgentDevice(used.userId, used.deviceId, device.platform, credentialHash)))
+      return null
+
+    return { userId: used.userId, deviceId: used.deviceId, credential }
+  }
+  const deviceId = randomUUID()
+
+  await joinTokens().updateOne({ _id: used._id }, { $set: { deviceId } })
   await insertJoinedAgentDevice(
     used.userId,
     {
@@ -93,7 +105,7 @@ export async function redeemDeviceJoinToken(
       platform: device.platform,
       allowLocalExec: true,
     },
-    hashDeviceSecret(credential),
+    credentialHash,
   )
 
   return { userId: used.userId, deviceId, credential }
