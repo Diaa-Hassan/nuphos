@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -89,6 +90,9 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -105,6 +109,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import ai.nuphos.android.data.AttachmentTransfers
 import ai.nuphos.android.data.AttachmentRetention
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
@@ -124,6 +129,7 @@ fun ChatComposer(
     onSend: (ComposerSubmission) -> Boolean,
     canSubmit: Boolean = true,
     draft: ai.nuphos.android.session.ComposerDrafts.Lease? = null,
+    mentions: SessionMentionSource? = null,
     draftingEnabled: Boolean = true,
     rejectedSubmission: ComposerSubmission? = null,
     onRejectedRestored: () -> Unit = {},
@@ -142,11 +148,41 @@ fun ChatComposer(
     val scope = rememberCoroutineScope()
     var picking by remember { mutableStateOf(false) }
     var pickerError by remember { mutableStateOf<String?>(null) }
+    var focused by remember { mutableStateOf(false) }
     var localText by remember(draft) { mutableStateOf("") }
     val text = draft?.text ?: localText
     fun updateText(value: String) {
         if (!draftingEnabled) return
         if (draft != null) draft.write(value) else localText = value
+    }
+    var field by remember(draft) { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
+    // External draft restoration must not reset the selection/composition on each keystroke.
+    val fieldValue = if (field.text == text) field else TextFieldValue(text, TextRange(text.length))
+    var dismissedMention by remember(draft, mentions?.teamId) { mutableStateOf<String?>(null) }
+    val mentionQuery = if (draftingEnabled && focused && mentions != null) SessionMention.query(fieldValue) else null
+    val activeMention = mentionQuery?.takeUnless { dismissedMention == text }
+    var mentionRows by remember(activeMention, draft, mentions) { mutableStateOf<List<ai.nuphos.android.model.AgentConversation>>(emptyList()) }
+    var mentionLoading by remember(activeMention, draft, mentions) { mutableStateOf(activeMention != null) }
+    var mentionFailed by remember(activeMention, draft, mentions) { mutableStateOf(false) }
+    LaunchedEffect(activeMention, mentions, draft) {
+        mentionRows = emptyList()
+        mentionFailed = false
+        mentionLoading = activeMention != null
+        val source = mentions
+        if (activeMention == null || source == null) return@LaunchedEffect
+        try {
+            kotlinx.coroutines.delay(150)
+            val found = source.search(activeMention)
+            currentCoroutineContext().ensureActive()
+            mentionRows = SessionMention.results(found, source)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            mentionFailed = true
+        } finally {
+            // A canceled older search must not clear a newer search's spinner.
+            if (currentCoroutineContext().isActive) mentionLoading = false
+        }
     }
     val attachments = remember { mutableStateListOf<ComposerAttachment>() }
     DisposableEffect(attachments) {
@@ -159,7 +195,6 @@ fun ChatComposer(
     var menu by remember { mutableStateOf(false) }
     var showIam by remember { mutableStateOf(false) }
     var showMode by remember { mutableStateOf(false) }
-    var focused by remember { mutableStateOf(false) }
     var collapsedByUser by remember { mutableStateOf(false) }
     var handleDrag by remember { mutableFloatStateOf(0f) }
     val context = LocalContext.current
@@ -223,6 +258,10 @@ fun ChatComposer(
         menu = false
     }
 
+    BackHandler(enabled = activeMention != null) {
+        dismissedMention = text
+    }
+
     val colors = MaterialTheme.colorScheme
     val fieldStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.onSurface)
 
@@ -241,6 +280,36 @@ fun ChatComposer(
             Modifier.fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
+            if (activeMention != null && mentions != null) {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("My chats", style = MaterialTheme.typography.labelMedium, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { dismissedMention = text }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Outlined.Close, contentDescription = "Dismiss chat mentions", modifier = Modifier.size(16.dp))
+                        }
+                    }
+                    when {
+                        mentionLoading -> Text("Searching chats…", style = MaterialTheme.typography.bodySmall)
+                        mentionFailed -> Text("Could not search chats. You can keep typing.", style = MaterialTheme.typography.bodySmall)
+                        mentionRows.isEmpty() -> Text("No matching chats", style = MaterialTheme.typography.bodySmall)
+                        else -> mentionRows.forEach { row ->
+                            Text(
+                                row.displayTitle,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.fillMaxWidth().clickable(role = Role.Button) {
+                                    // Recheck the current draft; never insert a result from a replaced query.
+                                    if (SessionMention.query(fieldValue) == activeMention && draftingEnabled) {
+                                        val inserted = SessionMention.insert(text, SessionMention.link(mentions.teamId, row.sessionId))
+                                        field = TextFieldValue(inserted, TextRange(inserted.length))
+                                        updateText(inserted)
+                                    }
+                                }.padding(vertical = 8.dp),
+                            )
+                        }
+                    }
+                }
+            }
             if (rejectedSubmission != null) Text("A rejected message is retained. Clear this draft to restore it.", modifier = Modifier.padding(horizontal = 12.dp))
             if (picking) Text("Reading files…", modifier = Modifier.padding(horizontal = 12.dp))
             pickerError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 12.dp)) }
@@ -307,8 +376,14 @@ fun ChatComposer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 BasicTextField(
-                    value = text,
-                    onValueChange = ::updateText,
+                    value = fieldValue,
+                    onValueChange = { value ->
+                        if (draftingEnabled) {
+                            field = value
+                            if (value.text != text) dismissedMention = null
+                            updateText(value.text)
+                        }
+                    },
                     enabled = draftingEnabled,
                     modifier = Modifier
                         .weight(1f)
