@@ -68,6 +68,10 @@ export function anchorDownloadGroups(
   return byMessage
 }
 
+// The one square every inline image and video preview gets, loading or loaded,
+// so media never resizes the transcript when it arrives. The preview opens full size.
+export const MEDIA_BOX = 'h-20 w-20'
+
 const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|bmp|svg)$/i
 const VIDEO_EXTENSIONS = /\.(mp4|mov|m4v|webm)$/i
 
