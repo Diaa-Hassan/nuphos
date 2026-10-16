@@ -32,8 +32,12 @@ export type RuntimeExecution = {
       output?: string
       status: 'running' | 'exited'
     }
+    /** A desktop this session holds on its Box: the X display, on which device. */
+    desktop?: { display: number; deviceId: string }
   }[]
   actions?: { send: boolean; cancel: boolean; steer: boolean; reply?: boolean }
+  /** Its Box runs a desktop pool: the owner can open this session's desktop by hand. */
+  canOpenDesktop?: boolean
   epoch?: string
   revision?: number
   observedAt?: number

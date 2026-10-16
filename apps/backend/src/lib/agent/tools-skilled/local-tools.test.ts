@@ -308,3 +308,14 @@ describe('shared dock terminal authorization', () => {
     )
   })
 })
+
+test('shared Box audit preserves the actor separately from its transport owner', async () => {
+  const tool = createLocalExecTool(
+    [{ deviceId: 'd1', label: 'Shared', ownerUserId: 'host-owner' }],
+    turn,
+  ) as ExecTool
+
+  await tool.execute({ label: 'run', command: 'echo hi' }, {})
+  expect(audits[0]).toMatchObject({ ownerUserId: 'host-owner', actorUserId: 'u1' })
+  expect(dispatchCalls[0]?.userId).toBe('u1')
+})
