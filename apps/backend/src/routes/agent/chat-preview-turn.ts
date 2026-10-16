@@ -63,7 +63,7 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
   const answers: string[] = []
   const toolLog = createPreviewToolLog()
   const state = createPreviewRunState({ run, userId, sessionId })
-  const desktops = desktopTracker({ sessionId, runtimeId: args.endpoint.runtimeId })
+  const desktops = await desktopTracker({ sessionId, runtimeId: args.endpoint.runtimeId })
   const diagnostic = createTurnDiagnostics(
     {
       streamId: run.streamId,

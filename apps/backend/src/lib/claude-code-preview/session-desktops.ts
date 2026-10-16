@@ -117,17 +117,18 @@ export async function withSessionDesktops<T extends SessionExecutionState>(
 }
 
 /**
- * For a running turn, whose snapshots arrive synchronously: the last known
- * desktops, refreshed in the background on each use. The first frame after a
- * desktop appears may miss it; the next one carries it.
+ * For a running turn, whose snapshots arrive synchronously: the desktops the
+ * session holds when the turn starts, refreshed in the background on each use.
+ * Its first frame already carries them: a frame without the desktop reads to the
+ * client as the desktop's teardown, closing its tab and reopening it a frame later.
  */
-export function desktopTracker(conversation: DesktopOwner) {
-  let known = NONE
+export async function desktopTracker(conversation: DesktopOwner, deviceLabel = storedLabel) {
+  let known = await sessionDesktops(conversation, deviceLabel).catch(() => NONE)
   let refreshing: Promise<void> | undefined
 
   return {
     with<T extends SessionExecutionState>(snapshot: T): T {
-      refreshing ??= sessionDesktops(conversation)
+      refreshing ??= sessionDesktops(conversation, deviceLabel)
         .then((desktops) => {
           known = desktops
         })
