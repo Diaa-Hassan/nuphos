@@ -243,6 +243,20 @@ fun AgentPage(
                     }
                 }
             },
+            devices = draftTeam?.let { team ->
+                remember(store, team, store.workspaceRevision) {
+                    ai.nuphos.android.ui.chat.DeviceMentionSource(team,
+                        load = { store.mentionableComputers(team) },
+                        pick = { device ->
+                            if (store.selectedTeam?.id != team || !draftAuth.aiAllowed) false
+                            else ai.nuphos.android.ui.chat.DeviceMention.select(store.credentialSelection, device)?.let {
+                                store.updateCredentialSelection(it)
+                                true
+                            } ?: false
+                        },
+                    )
+                }
+            },
             draft = draft,
             draftingEnabled = draft != null && draftAuth.aiAllowed && store.selectedTeam != null,
             isStreaming = false,
