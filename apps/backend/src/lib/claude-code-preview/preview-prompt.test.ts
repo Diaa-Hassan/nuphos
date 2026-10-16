@@ -175,8 +175,13 @@ test('a computer’s own agent is told it runs there, not in the team sandbox', 
   expect(box).toContain('running as Codex on Box 1, the computer this conversation runs on')
   expect(box).toContain('the `computer-use` desktop tool are there')
   expect(box).toContain("local_exec is for the user's other devices, only when they ask for one")
+  expect(box).toContain('For anything visual (a browser, a GUI app), use the `computer-use` tool')
+  expect(box).toContain('Do not start X or a browser on DISPLAY=:1')
   expect(box).not.toContain('inside the team sandbox')
-  expect(await on('mac')).not.toContain('computer-use')
+  const mac = await on('mac')
+
+  expect(mac).not.toContain('computer-use')
+  expect(mac).not.toContain('MACHINE.md')
   // A runtime that is not a computer's, or one gone from the registry, keeps the sandbox line.
   expect(await on('gone')).toContain('inside the team sandbox')
 })

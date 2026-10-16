@@ -75,7 +75,12 @@ async function runtimeWhere(runtimeId: string | null | undefined): Promise<strin
 
   if (!device) return 'inside the team sandbox'
 
-  return `on ${safePromptField(device.label)}, the computer this conversation runs on: your shell, files${device.box ? ' and the `computer-use` desktop tool' : ''} are there, and local_exec is for the user's other devices, only when they ask for one`
+  const here = `on ${safePromptField(device.label)}, the computer this conversation runs on: your shell, files${device.box ? ' and the `computer-use` desktop tool' : ''} are there, and local_exec is for the user's other devices, only when they ask for one`
+
+  // instabox's MACHINE.md points at its own display :1 and a dashboard Nuphos users never see.
+  return device.box
+    ? `${here}. For anything visual (a browser, a GUI app), use the \`computer-use\` tool: its first call starts this conversation's own desktop, which the user watches in Nuphos. Do not start X or a browser on DISPLAY=:1 from the shell, and ignore MACHINE.md's notes about that display and an instabox dashboard or Computer tab`
+    : here
 }
 
 const PLAN_RUNTIME_NOTE =
