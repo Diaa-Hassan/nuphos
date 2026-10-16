@@ -11,7 +11,10 @@ nonisolated final class PreviewTransport: URLProtocol, @unchecked Sendable {
         let file = env["NUPHOS_PREVIEW_RESPONSES"] ?? UserDefaults.standard.string(forKey: "previewResponses") ?? ""
         let responses = (try? Data(contentsOf: URL(fileURLWithPath: file))).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] } ?? [:]
         let key = "\(request.httpMethod ?? "GET") \(url.path)"
-        let entry = responses[key] as? [String: Any]
+        // `GET /path?name=value` answers requests carrying that parameter, before `GET /path`.
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let entry = (items.lazy.compactMap { responses["\(key)?\($0.name)=\($0.value ?? "")"] }.first
+            ?? responses[key]) as? [String: Any]
         let status = entry?["status"] as? Int ?? 404
         let body = entry?["body"] ?? ["error": ["message": "No preview response for \(key)"]]
         let data = (try? JSONSerialization.data(withJSONObject: body, options: [.fragmentsAllowed])) ?? Data()

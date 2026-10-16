@@ -17,6 +17,7 @@ useDb({
   db: () => ({
     collection: () => ({
       updateOne: () => Promise.resolve({ upsertedCount: 0 }),
+      aggregate: () => ({ toArray: () => Promise.resolve([]) }),
       find: () => ({
         toArray: () =>
           Promise.resolve([
