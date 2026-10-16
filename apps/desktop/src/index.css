@@ -1982,7 +1982,9 @@
 .t-tab[data-active='true'] {
   min-width: 128px;
 }
-.t-tab:not([data-active]) + .t-tab:not([data-active])::before {
+.t-tab:not([data-active]) + .t-tab:not([data-active])::before,
+/* A collapsing copy sits between two tabs: keep the divider they will share. */
+.t-tab:not([data-active]) + .t-tab-closing + .t-tab:not([data-active])::before {
   content: '';
   position: absolute;
   z-index: 1;
@@ -2016,6 +2018,29 @@
   transition:
     opacity var(--tabs-dur) var(--tabs-ease),
     transform 140ms cubic-bezier(0.34, 1.4, 0.64, 1);
+}
+/* A just-closed tab, kept only while it collapses so its neighbours slide over. */
+.t-tab-closing {
+  display: flex;
+  flex: none;
+  overflow: hidden;
+  animation: t-tab-close var(--tabs-dur) var(--tabs-ease) forwards;
+}
+.t-tab-closing > .t-tab {
+  flex: 0 0 var(--tab-closing-w);
+  min-width: 0;
+}
+@keyframes t-tab-close {
+  from {
+    width: var(--tab-closing-w);
+    opacity: 1;
+  }
+  to {
+    width: 0;
+    opacity: 0;
+    /* Absorb the strip's gap too, so nothing snaps when the copy unmounts. */
+    margin-right: -0.125rem;
+  }
 }
 /* Hover-revealed trailing controls inside a tab (favorite star, close). */
 .t-workspace-tab-action {
