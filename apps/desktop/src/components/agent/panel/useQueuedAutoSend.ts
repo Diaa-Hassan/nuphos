@@ -21,6 +21,12 @@ type Acc = Pick<PanelCtx, 'setTabs' | 'tabs' | 'tabsRef' | 'teamId' | 'uploading
     filePaths: string[],
     turnKind?: QueuedMessage['turnKind'],
   ) => Promise<void>
+  sendSteering: (
+    tabId: string,
+    text: string,
+    filePaths: string[],
+    queuedId: string,
+  ) => Promise<void>
 }
 
 async function probeRuntime(sessionId: string, teamId: string | undefined) {
@@ -48,9 +54,10 @@ function dequeue(tabId: string, queuedId: string) {
   return (tabs: Tab[]) => tabs.map((t) => (t.id === tabId ? withoutQueued(t, queuedId) : t))
 }
 
-/** Send each tab's waiting message the moment its agent reports `send` is allowed. */
+/** Send each tab's waiting message the moment its agent allows `send`, or `steer` into a running turn. */
 export function useQueuedAutoSend({
   dispatchTurn,
+  sendSteering,
   setTabs,
   tabs,
   tabsRef,
@@ -75,6 +82,10 @@ export function useQueuedAutoSend({
         if (stopped) return
         setTabs(dequeue(tabId, item.id))
         await dispatchTurn(tabId, item.text, item.filePaths, item.turnKind)
+      },
+      steer: async (tabId: string, item: QueuedMessage) => {
+        if (stopped) return
+        await sendSteering(tabId, item.text, item.filePaths, item.id)
       },
       onNeverSendable: (tabId: string, snapshot: RuntimeExecution) => {
         setTabs(withoutAutoSend(tabId))
@@ -102,5 +113,5 @@ export function useQueuedAutoSend({
       stopped = true
       window.clearTimeout(timer)
     }
-  }, [waitingTabs, dispatchTurn, setTabs, tabsRef, teamId, uploadingTabsRef])
+  }, [waitingTabs, dispatchTurn, sendSteering, setTabs, tabsRef, teamId, uploadingTabsRef])
 }

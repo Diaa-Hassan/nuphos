@@ -96,8 +96,9 @@ export function stopAutoSend(tab: Tab): Tab {
 }
 
 /**
- * Probe fresh runtime status for one waiting tab and dispatch its first
- * auto-send message once `send` is allowed.
+ * Probe fresh runtime status for one waiting tab and send its first auto-send
+ * message the way a message typed now would go: as the next turn once `send`
+ * is allowed, or into the running turn while `steer` is.
  */
 export async function pumpAutoSend(
   tab: Tab,
@@ -105,12 +106,13 @@ export async function pumpAutoSend(
     probe: (sessionId: string) => Promise<RuntimeExecution>
     onRuntimeState: (tabId: string, snapshot: RuntimeExecution) => void
     dispatch: (tabId: string, item: QueuedMessage) => Promise<void> | void
+    steer: (tabId: string, item: QueuedMessage) => Promise<void> | void
     onNeverSendable: (tabId: string, snapshot: RuntimeExecution) => void
   },
 ): Promise<'sent' | 'waiting' | 'idle' | 'unsendable'> {
   const item = nextAutoSend(tab)
 
-  if (!item || tab.streaming) return item ? 'waiting' : 'idle'
+  if (!item) return 'idle'
   // An unsaved fork has no server session to probe (a failed import leaves it
   // that way), so its queued message sends as the fork's first turn.
   if (sendsAsNewSession(tab)) {
@@ -118,6 +120,8 @@ export async function pumpAutoSend(
 
     return 'sent'
   }
+  // A fork still importing has no server session to probe yet.
+  if (tab.unsaved) return 'waiting'
   const snapshot = await deps.probe(tab.sessionId)
 
   deps.onRuntimeState(tab.id, snapshot)
@@ -126,8 +130,15 @@ export async function pumpAutoSend(
 
     return 'unsendable'
   }
-  if (!runtimeAllows(snapshot, 'send')) return 'waiting'
-  await deps.dispatch(tab.id, item)
+  // A turn this tab just started may not show as running yet.
+  if (runtimeAllows(snapshot, 'send') && !tab.streaming) {
+    await deps.dispatch(tab.id, item)
+
+    return 'sent'
+  }
+  // A plan approval must start its own turn; anything else joins the one running.
+  if (item.turnKind || !runtimeAllows(snapshot, 'steer')) return 'waiting'
+  await deps.steer(tab.id, item)
 
   return 'sent'
 }

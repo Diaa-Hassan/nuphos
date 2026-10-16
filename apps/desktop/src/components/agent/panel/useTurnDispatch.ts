@@ -290,5 +290,5 @@ export function useTurnDispatch(acc: Acc) {
     [sendSteering, tabsRef, setTabs],
   )
 
-  return { startChatWith, dispatchTurn, sendInActive, steerQueued }
+  return { startChatWith, dispatchTurn, sendInActive, sendSteering, steerQueued }
 }

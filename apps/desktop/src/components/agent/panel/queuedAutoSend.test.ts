@@ -29,11 +29,11 @@ const tab = (overrides: Partial<Tab> = {}): Tab =>
     ...overrides,
   }) as Tab
 
-const status = (send: boolean): RuntimeExecution => ({
+const status = (send: boolean, steer = false): RuntimeExecution => ({
   schemaVersion: 2,
-  state: 'idle',
+  state: steer ? 'active' : 'idle',
   label: send ? 'Ready' : 'Reading session settings',
-  actions: { send, cancel: false, steer: false },
+  actions: { send, cancel: steer, steer },
   observedAt: performance.now(),
 })
 
@@ -116,6 +116,7 @@ test('a queued message is sent only once a fresh status allows send', async () =
     dispatch: (_tabId: string, item: QueuedMessage) => {
       dispatched.push(item)
     },
+    steer: () => assert.fail('a plan approval starts its own turn'),
     onNeverSendable: () => assert.fail('the runtime can still accept later'),
   }
 
@@ -128,7 +129,7 @@ test('a queued message is sent only once a fresh status allows send', async () =
   assert.equal(seen.length, 3)
 })
 
-test('a streaming tab or a tab with only plain drafts is not probed', async () => {
+test('a tab with only plain drafts is not probed', async () => {
   let probed = 0
   const deps = {
     probe: () => {
@@ -138,15 +139,71 @@ test('a streaming tab or a tab with only plain drafts is not probed', async () =
     },
     onRuntimeState: () => {},
     dispatch: () => {},
+    steer: () => {},
     onNeverSendable: () => {},
   }
   const drafts = tab({ queued: [{ id: 'd', text: 'draft', filePaths: [] }] })
-  const streaming = queueAutoSend(tab({ streaming: true }), { id: 'q', text: 'x', filePaths: [] })
 
   assert.equal(nextAutoSend(drafts), undefined)
   assert.equal(await pumpAutoSend(drafts, deps), 'idle')
-  assert.equal(await pumpAutoSend(streaming, deps), 'waiting')
   assert.equal(probed, 0)
+})
+
+// An agent.thread turn took the runtime just before the user's send. The refused
+// message must join that turn, as a message typed now would, not sit outside
+// the transcript until the runtime takes a new turn.
+test('a message refused because another turn took the runtime steers into that turn', async () => {
+  rememberDispatchedDraft('stream-2', { id: 'msg-2', text: 'and the arrow keys', filePaths: [] })
+  const parked = parkRefusedTurn(
+    tab({ streaming: true, streamId: 'stream-2' }),
+    dispatchedDraft('stream-2'),
+  )
+  // The tab attaches to the other turn's stream while it runs.
+  const attached = { ...parked, streaming: true, streamId: 'thread-stream' }
+  const sent: string[] = []
+  const deps = {
+    probe: () => Promise.resolve(status(false, true)),
+    onRuntimeState: () => {},
+    dispatch: () => assert.fail('the runtime is busy with another turn'),
+    steer: (_tabId: string, item: QueuedMessage) => {
+      sent.push(item.id)
+    },
+    onNeverSendable: () => assert.fail('the runtime can still accept later'),
+  }
+
+  assert.equal(await pumpAutoSend(attached, deps), 'sent')
+  assert.deepEqual(sent, ['msg-2'])
+})
+
+test('a plan approval waits for its own turn instead of steering', async () => {
+  const waiting = queueAutoSend(tab({ streaming: true }), {
+    id: 'q',
+    text: 'Approved plan #1',
+    filePaths: [],
+    turnKind: 'plan-approval',
+  })
+  const deps = {
+    probe: () => Promise.resolve(status(false, true)),
+    onRuntimeState: () => {},
+    dispatch: () => assert.fail('a turn is running'),
+    steer: () => assert.fail('a plan approval starts its own turn'),
+    onNeverSendable: () => assert.fail('the runtime can still accept later'),
+  }
+
+  assert.equal(await pumpAutoSend(waiting, deps), 'waiting')
+})
+
+test('a turn this tab just started is not followed by another before it shows as running', async () => {
+  const waiting = queueAutoSend(tab({ streaming: true }), { id: 'q', text: 'x', filePaths: [] })
+  const deps = {
+    probe: () => Promise.resolve(status(true)),
+    onRuntimeState: () => {},
+    dispatch: () => assert.fail('the tab is still starting its own turn'),
+    steer: () => assert.fail('nothing to steer into yet'),
+    onNeverSendable: () => {},
+  }
+
+  assert.equal(await pumpAutoSend(waiting, deps), 'waiting')
 })
 
 test('a message queued on a fork whose import failed sends without probing', async () => {
@@ -159,6 +216,7 @@ test('a message queued on a fork whose import failed sends without probing', asy
     dispatch: (_tabId: string, item: QueuedMessage) => {
       dispatched.push(item)
     },
+    steer: () => assert.fail('nothing to probe'),
     onNeverSendable: () => assert.fail('nothing to probe'),
   }
 
@@ -174,6 +232,7 @@ test('a queued message stops waiting once a probe shows the agent can never acce
     probe: () => Promise.resolve(outdated),
     onRuntimeState: () => {},
     dispatch: () => assert.fail('must not dispatch'),
+    steer: () => assert.fail('must not steer'),
     onNeverSendable: (tabId) => {
       unsendable.push(tabId)
     },
