@@ -515,7 +515,7 @@ final class AgentStore {
         ), generation == loadGeneration, !Task.isCancelled else { return }
         await loadShared(team: team, generation: generation)
         conversations = conversations.refreshed(firstPage: page.rows)
-        if loadedPageCursors.isEmpty, !isLoadingMore, conversations.count <= Self.pageSize {
+        if loadedPageCursors.isEmpty, !isLoadingMore, conversations.count <= page.rows.count {
             nextCursor = page.nextCursor
             hasMore = page.hasMore
         }

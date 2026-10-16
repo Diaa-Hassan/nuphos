@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, test } from 'bun:test'
 
 import { useDb } from '@/lib/test/doubles/db'
 
+import { readableByFilter } from './db/access'
 import { getConversations } from './db'
 
 import type * as dbActual from '@/lib/db'
@@ -79,8 +80,24 @@ describe('getConversations withParents', () => {
     expect(query).not.toHaveProperty('userId')
     expect(query).not.toHaveProperty('participantIds')
     expect(query).not.toHaveProperty('lastActiveAt')
+    expect(query?.$and).toContainEqual(readableByFilter(VIEWER))
     expect(query?.$and).toContainEqual({ $or: [{ userId: VIEWER }, { participantIds: VIEWER }] })
   })
+
+  // The lookup must never return a parent the viewer could not list: the
+  // readability clause stays in every scope, including team scope, which
+  // keeps the listing's `$and` as it is.
+  for (const scope of ['mine', 'team'] as const) {
+    test(`keeps the readability filter in ${scope} scope`, async () => {
+      page = [{ sessionId: 'thread', parentSessionId: 'parent' }]
+      await getConversations(VIEWER, { teamId: TEAM, scope, withParents: true })
+      const [query] = parentQueries
+
+      expect(query?.teamId).toBe(TEAM)
+      expect(query?.$and).toContainEqual(readableByFilter(VIEWER))
+      if (scope === 'team') expect(query?.$and).toEqual([readableByFilter(VIEWER)])
+    })
+  }
 
   test('a parent the listing excludes is not returned, so the thread stays top-level', async () => {
     page = [{ sessionId: 'thread', parentSessionId: 'archived-parent' }]
