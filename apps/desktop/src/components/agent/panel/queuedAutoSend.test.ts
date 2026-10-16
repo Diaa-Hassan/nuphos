@@ -175,6 +175,29 @@ test('a message refused because another turn took the runtime steers into that t
   assert.deepEqual(sent, ['msg-2'])
 })
 
+test('a message whose steer failed waits for the next turn instead of steering again', async () => {
+  // useSteering's catch hands a failed steer back with markAutoSend.
+  const failed = markAutoSend(
+    tab({ queued: [{ id: 'q', text: 'x', filePaths: [], steering: true }] }),
+    'q',
+  )
+  const probes = [status(false, true), status(true)]
+  const sent: string[] = []
+  const deps = {
+    probe: () => Promise.resolve(probes.shift() ?? status(false)),
+    onRuntimeState: () => {},
+    dispatch: (_tabId: string, item: QueuedMessage) => {
+      sent.push(item.id)
+    },
+    steer: () => assert.fail('a failed steer must not be retried'),
+    onNeverSendable: () => assert.fail('the runtime can still accept later'),
+  }
+
+  assert.equal(await pumpAutoSend(failed, deps), 'waiting')
+  assert.equal(await pumpAutoSend(failed, deps), 'sent')
+  assert.deepEqual(sent, ['q'])
+})
+
 test('a plan approval waits for its own turn instead of steering', async () => {
   const waiting = queueAutoSend(tab({ streaming: true }), {
     id: 'q',
@@ -183,7 +206,7 @@ test('a plan approval waits for its own turn instead of steering', async () => {
     turnKind: 'plan-approval',
   })
   const deps = {
-    probe: () => Promise.resolve(status(false, true)),
+    probe: () => assert.fail('it can only be sent once this turn ends'),
     onRuntimeState: () => {},
     dispatch: () => assert.fail('a turn is running'),
     steer: () => assert.fail('a plan approval starts its own turn'),

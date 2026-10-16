@@ -113,6 +113,10 @@ export async function pumpAutoSend(
   const item = nextAutoSend(tab)
 
   if (!item) return 'idle'
+  // A plan approval needs its own turn, and a failed steer (`markAutoSend`
+  // leaves `steering: false`) waits for the next one: neither steers.
+  const steerable = !item.turnKind && item.steering === undefined
+
   // An unsaved fork has no server session to probe (a failed import leaves it
   // that way), so its queued message sends as the fork's first turn.
   if (sendsAsNewSession(tab)) {
@@ -120,8 +124,9 @@ export async function pumpAutoSend(
 
     return 'sent'
   }
-  // A fork still importing has no server session to probe yet.
-  if (tab.unsaved) return 'waiting'
+  // A fork still importing has no server session to probe yet, and a message
+  // that can only be sent waits out a streaming tab without probing.
+  if (tab.unsaved || (tab.streaming && !steerable)) return 'waiting'
   const snapshot = await deps.probe(tab.sessionId)
 
   deps.onRuntimeState(tab.id, snapshot)
@@ -136,8 +141,7 @@ export async function pumpAutoSend(
 
     return 'sent'
   }
-  // A plan approval must start its own turn; anything else joins the one running.
-  if (item.turnKind || !runtimeAllows(snapshot, 'steer')) return 'waiting'
+  if (!steerable || !runtimeAllows(snapshot, 'steer')) return 'waiting'
   await deps.steer(tab.id, item)
 
   return 'sent'
