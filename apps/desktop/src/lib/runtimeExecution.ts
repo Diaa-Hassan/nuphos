@@ -41,37 +41,40 @@ export type RuntimeExecution = {
 
 /** A transport, a buffered frame, and a tool card cannot authorize execution. */
 export function runtimeIsExecuting(snapshot: RuntimeExecution | undefined): boolean {
-  return (
-    snapshot?.state === 'active' &&
-    typeof snapshot.observedAt === 'number' &&
-    performance.now() - snapshot.observedAt >= 0 &&
-    performance.now() - snapshot.observedAt < 12_000
-  )
+  return snapshot?.state === 'active' && runtimeSnapshotFresh(snapshot)
 }
 
-/** A user-visible turn, including a queued or running automatic continuation. */
+/**
+ * A user-visible turn, including a queued or running automatic continuation.
+ * Sidebar rows show the last known state; how old it is says nothing about the session.
+ */
 export function runtimeTurnActive(snapshot: RuntimeExecution | undefined): boolean {
-  return runtimeIsExecuting(snapshot) && snapshot?.phase !== 'resume_disconnected'
+  return snapshot?.state === 'active' && snapshot.phase !== 'resume_disconnected'
 }
 
 /** The turn ended while runtime-owned background tools or tasks keep running. */
 export function runtimeBackgroundRunning(snapshot: RuntimeExecution | undefined): boolean {
   return (
     !runtimeTurnActive(snapshot) &&
-    runtimeSnapshotFresh(snapshot) &&
     snapshot?.schemaVersion === 2 &&
     snapshot.phase === 'background_tools'
   )
 }
 
-export type ChatRowIndicator = 'turn' | 'background' | 'unread' | 'none'
+export type ChatRowIndicator = 'turn' | 'error' | 'background' | 'unread' | 'none'
 
-/** A running turn outranks background work, which outranks an unread reply. */
+/** A running turn outranks a stopped runtime, then background work, then an unread reply. */
 export function chatRowIndicator(
   snapshot: RuntimeExecution | undefined,
   unread: boolean,
 ): ChatRowIndicator {
   if (runtimeTurnActive(snapshot)) return 'turn'
+  if (
+    snapshot &&
+    (!['idle', 'dormant'].includes(snapshot.state) ||
+      ['failed', 'resume_failed', 'stopped'].includes(snapshot.phase ?? ''))
+  )
+    return 'error'
   if (runtimeBackgroundRunning(snapshot)) return 'background'
 
   return unread ? 'unread' : 'none'
@@ -143,7 +146,14 @@ export function runtimeAllows(
 }
 
 export function runtimeStatusLabel(snapshot: RuntimeExecution | undefined): string {
-  if (!snapshot || !runtimeSnapshotFresh(snapshot) || snapshot.state === 'disconnected')
+  return runtimeSnapshotFresh(snapshot)
+    ? runtimeStateLabel(snapshot)
+    : 'Connection lost — agent status unavailable'
+}
+
+/** The last known state's own label, for sidebar rows that do not care how old it is. */
+export function runtimeStateLabel(snapshot: RuntimeExecution | undefined): string {
+  if (!snapshot || snapshot.state === 'disconnected')
     return 'Connection lost — agent status unavailable'
   if (snapshot.schemaVersion !== 2) return 'Agent status unavailable — agent update required'
 
