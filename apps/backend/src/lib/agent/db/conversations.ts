@@ -8,6 +8,7 @@ import { fallbackTitle } from '../title-fallback'
 import { initialGeneralAccess, readableConversationScope } from './access'
 import { recordAgentEvent } from './events'
 import { agentConversations, agentMessages, withTeamScope } from './shared'
+import { touchThreadAncestors } from './thread-activity'
 
 import type { ConversationTriggerRun } from '../conversation-trigger-run'
 import type {
@@ -100,6 +101,8 @@ export async function upsertConversationShell(data: {
     },
     { upsert: true },
   )
+
+  await touchThreadAncestors(data.sessionId, now)
 
   return { isNew: result.upsertedCount > 0 }
 }

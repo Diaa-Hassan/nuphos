@@ -62,6 +62,9 @@ struct AgentConversation: Codable, Identifiable, Equatable, Hashable, Sendable {
     /// The conversation that opened this one as a thread; the Agent page
     /// nests it there. Cleared when the owner unlinks it.
     var parentSessionId: String?
+    /// Threads directly under this row, sent with the one-level thread list
+    /// (`topLevel` / `parentSessionId`); nil on the flat list.
+    let threadCount: Int?
 
     var id: String { sessionId }
 
@@ -102,6 +105,7 @@ struct AgentConversation: Codable, Identifiable, Equatable, Hashable, Sendable {
         activitySeq = try? c.decodeIfPresent(Int.self, forKey: .activitySeq)
         readSeq = try? c.decodeIfPresent(Int.self, forKey: .readSeq)
         parentSessionId = try c.decodeIfPresent(String.self, forKey: .parentSessionId)
+        threadCount = try? c.decodeIfPresent(Int.self, forKey: .threadCount)
     }
 
     init(
@@ -111,7 +115,8 @@ struct AgentConversation: Codable, Identifiable, Equatable, Hashable, Sendable {
         tokenUsage: TokenUsage? = nil, activitySource: ActivitySource? = nil,
         agentRuntime: String? = nil, runtimeId: String? = nil, runtimeLabel: String? = nil,
         activeRun: ActiveRun? = nil, runtimeState: JSONValue? = nil,
-        activitySeq: Int? = nil, readSeq: Int? = nil, parentSessionId: String? = nil
+        activitySeq: Int? = nil, readSeq: Int? = nil, parentSessionId: String? = nil,
+        threadCount: Int? = nil
     ) {
         self.sessionId = sessionId
         self.teamId = teamId
@@ -135,6 +140,7 @@ struct AgentConversation: Codable, Identifiable, Equatable, Hashable, Sendable {
         self.activitySeq = activitySeq
         self.readSeq = readSeq
         self.parentSessionId = parentSessionId
+        self.threadCount = threadCount
     }
 }
 
@@ -171,17 +177,11 @@ extension Array where Element == AgentConversation {
 
 struct AgentConversationsPage: Codable, Sendable {
     let conversations: [AgentConversation]
-    /// The page's threads' parents that another page lists, so a thread nests
-    /// under its parent before that page loads. Absent from older backends.
-    var parents: [AgentConversation]? = nil
     let nextCursor: String?
     let hasMore: Bool
-
-    /// What the list shows from this page: its rows, then their parents.
-    var rows: [AgentConversation] {
-        let ids = Set(conversations.map(\.sessionId))
-        return conversations + (parents ?? []).filter { !ids.contains($0.sessionId) }
-    }
+    /// The backend answered with one level of the thread tree. Older ones
+    /// ignore the request and send the flat list.
+    var threads: Bool? = nil
 }
 
 /// `GET /agent/conversations/:id?tail=` — the transcript tail plus what a

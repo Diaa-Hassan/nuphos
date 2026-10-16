@@ -51,13 +51,17 @@ export async function getConversations(
      */
     triggerIds?: string[]
     parentSessionId?: string // Only threads nested under this conversation: its sub-agents.
-    /** Also return the rows' parents that another page would list. */
-    withParents?: boolean
+    /**
+     * The sidebar's thread tree, one level per request: with `parentSessionId`
+     * the threads under it, otherwise only rows that are not nested under a
+     * listed conversation. A search lists every match, nested or not. Rows
+     * carry `threadCount`, so a client can offer to expand them.
+     */
+    threads?: boolean
+    sessionIds?: string[] // Exactly these rows, e.g. pinned chats.
   },
 ): Promise<{
-  conversations: AgentConversation[]
-  /** Only with `withParents`; see listedParents. */
-  parents: AgentConversation[]
+  conversations: (AgentConversation & { threadCount?: number })[]
   nextCursor: string | null
   hasMore: boolean
 }> {
@@ -72,11 +76,19 @@ export async function getConversations(
   //              together never repeat a conversation.
   const scope: ConversationsScope = options.scope ?? 'mine'
   const sortField = CONVERSATION_SORT_FIELDS[options.sort ?? 'activity']
-  const query: Record<string, unknown> = {
+  const base: Record<string, unknown> = {
     teamId: options.teamId,
     // Kept apart from the search $or below, which would otherwise replace it.
     $and: [readableByFilter(viewerUserId)],
+    'metadata.trigger.id': options.triggerIds ? { $in: options.triggerIds } : { $exists: false },
   }
+
+  if (options.archived === 'only' || options.sort === 'archived') {
+    base.archivedAt = { $exists: true }
+  } else if (options.archived === 'exclude') {
+    base.archivedAt = { $exists: false }
+  }
+  const query: Record<string, unknown> = { ...base }
 
   if (scope === 'mine') query.userId = viewerUserId
   if (scope === 'shared') {
@@ -87,15 +99,24 @@ export async function getConversations(
   // Narrowing team scope to one member reads the same as 'mine' with someone
   // else's id, limited like every scope to what the viewer may read.
   if (scope === 'team' && options.ownerId) query.userId = options.ownerId
-  if (options.parentSessionId) query.parentSessionId = options.parentSessionId
-  query['metadata.trigger.id'] = options.triggerIds
-    ? { $in: options.triggerIds }
-    : { $exists: false }
-  if (options.archived === 'only' || options.sort === 'archived') {
-    query.archivedAt = { $exists: true }
-  } else if (options.archived === 'exclude') {
-    query.archivedAt = { $exists: false }
-  }
+  // What a thread may nest under: anything the same listing shows, which for
+  // the personal lists is the viewer's own chats and the ones shared with them.
+  const listed =
+    scope === 'team'
+      ? { ...base, ...(options.ownerId ? { userId: options.ownerId } : {}) }
+      : {
+          ...base,
+          $and: [
+            ...(base.$and as unknown[]),
+            { $or: [{ userId: viewerUserId }, { participantIds: viewerUserId }] },
+          ],
+        }
+  const parentSessionId = options.parentSessionId
+  // A parent's threads are the listed ones under it, whoever owns them.
+  const filter = options.threads && parentSessionId ? { ...listed } : query
+
+  if (parentSessionId) filter.parentSessionId = parentSessionId
+  if (options.sessionIds) filter.sessionId = { $in: options.sessionIds }
   const search = options.search?.trim()
 
   if (search) {
@@ -104,22 +125,23 @@ export async function getConversations(
     // keeps the scan bounded to the viewer's own documents.
     const pattern = new RegExp(escapeRegExp(search), 'i')
 
-    query.$or = [{ title: pattern }, { firstMessage: pattern }]
+    filter.$or = [{ title: pattern }, { firstMessage: pattern }]
   }
-  const filters = { ...query }
-
   if (options.cursor) {
-    query[sortField] = {
-      ...(query[sortField] as Record<string, unknown> | undefined),
+    filter[sortField] = {
+      ...(filter[sortField] as Record<string, unknown> | undefined),
       $lt: new Date(options.cursor),
     }
   }
-
-  const conversations = await agentConversations()
-    .find(query)
-    .sort({ [sortField]: -1 })
-    .limit(limit + 1)
-    .toArray()
+  const sort = { [sortField]: -1 as const }
+  const conversations =
+    options.threads && !parentSessionId && !search
+      ? await topLevelRows(filter, listed, sort, limit + 1)
+      : await agentConversations()
+          .find(filter)
+          .sort(sort)
+          .limit(limit + 1)
+          .toArray()
 
   const hasMore = conversations.length > limit
 
@@ -127,54 +149,60 @@ export async function getConversations(
 
   const last = conversations[conversations.length - 1]
   const nextCursor = hasMore ? (last?.[sortField]?.toISOString() ?? null) : null
-  const parents = options.withParents
-    ? await listedParents(viewerUserId, scope, filters, conversations)
-    : []
 
-  return { conversations, parents, nextCursor, hasMore }
+  return {
+    conversations: options.threads ? await withThreadCounts(conversations, listed) : conversations,
+    nextCursor,
+    hasMore,
+  }
 }
 
 /**
- * The rows' parents, and theirs, that the same listing shows on any page, so
- * a client that pages can nest each thread under its parent right away. A parent
- * the listing would not show (archived, filtered out by the search) is not
- * returned, and the thread stays top-level, as in the desktop sidebar, which
- * nests over every page. Shared chats count beside the viewer's own: a shared
- * thread nests under the viewer's chat that opened it.
+ * Rows not nested under a listed conversation — the desktop sidebar's rule. A
+ * thread whose parent the listing leaves out (archived, a trigger run, not
+ * shared with the viewer) stays top-level instead of disappearing.
  */
-async function listedParents(
-  viewerUserId: string,
-  scope: ConversationsScope,
-  filters: Record<string, unknown>,
-  rows: AgentConversation[],
+async function topLevelRows(
+  filter: Record<string, unknown>,
+  listed: Record<string, unknown>,
+  sort: Record<string, -1>,
+  limit: number,
 ): Promise<AgentConversation[]> {
-  const query = { ...filters }
+  return await agentConversations()
+    .aggregate<AgentConversation>([
+      { $match: filter },
+      { $sort: sort },
+      {
+        $lookup: {
+          from: agentConversations().collectionName,
+          localField: 'parentSessionId',
+          foreignField: 'sessionId',
+          pipeline: [{ $match: listed }, { $project: { _id: 1 } }],
+          as: 'listedParent',
+        },
+      },
+      { $match: { listedParent: { $size: 0 } } },
+      { $limit: limit },
+      { $project: { listedParent: 0 } },
+    ])
+    .toArray()
+}
 
-  if (scope !== 'team') {
-    delete query.userId
-    delete query.participantIds
-    query.$and = [
-      ...(filters.$and as unknown[]),
-      { $or: [{ userId: viewerUserId }, { participantIds: viewerUserId }] },
-    ]
-  }
-  const seen = new Set(rows.map((row) => row.sessionId))
-  const parents: AgentConversation[] = []
-  let level = rows
+/** How many listed threads sit directly under each row. */
+async function withThreadCounts(
+  rows: AgentConversation[],
+  listed: Record<string, unknown>,
+): Promise<(AgentConversation & { threadCount: number })[]> {
+  const counts =
+    rows.length === 0
+      ? []
+      : await agentConversations()
+          .aggregate<{ _id: string; count: number }>([
+            { $match: { ...listed, parentSessionId: { $in: rows.map((row) => row.sessionId) } } },
+            { $group: { _id: '$parentSessionId', count: { $sum: 1 } } },
+          ])
+          .toArray()
+  const byParent = new Map(counts.map((row) => [row._id, row.count]))
 
-  // Bounded like any thread chain a client would draw.
-  for (let depth = 0; depth < 10; depth++) {
-    const ids = [...new Set(level.flatMap((row) => row.parentSessionId ?? []))].filter(
-      (id) => !seen.has(id),
-    )
-
-    if (ids.length === 0) break
-    for (const id of ids) seen.add(id)
-    level = await agentConversations()
-      .find({ ...query, sessionId: { $in: ids } })
-      .toArray()
-    parents.push(...level)
-  }
-
-  return parents
+  return rows.map((row) => ({ ...row, threadCount: byParent.get(row.sessionId) ?? 0 }))
 }

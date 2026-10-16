@@ -67,7 +67,10 @@ enum NuphosAPI {
         scope: ConversationScope = .mine,
         search: String? = nil,
         archived: ConversationArchiveFilter? = .exclude,
-        sort: ConversationSort = .activity
+        sort: ConversationSort = .activity,
+        topLevel: Bool = false,
+        parentSessionId: String? = nil,
+        sessionIds: [String] = []
     ) async throws -> AgentConversationsPage {
         var query = [
             URLQueryItem(name: "teamId", value: teamId),
@@ -78,9 +81,12 @@ enum NuphosAPI {
         if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
         if let search, !search.isEmpty { query.append(URLQueryItem(name: "search", value: search)) }
         if let archived { query.append(URLQueryItem(name: "archived", value: archived.rawValue)) }
+        if topLevel { query.append(URLQueryItem(name: "topLevel", value: "1")) }
+        if let parentSessionId { query.append(URLQueryItem(name: "parentSessionId", value: parentSessionId)) }
+        query += sessionIds.map { URLQueryItem(name: "sessionId", value: $0) }
         let observedAt = ProcessInfo.processInfo.systemUptime
         let page: AgentConversationsPage = try await get("agent/conversations", query: query, token: token, timeout: 20)
-        for row in page.rows {
+        for row in page.conversations {
             RuntimeObservations.shared.receive(row.runtimeState, team: row.teamId ?? teamId, session: row.sessionId, observedAt: observedAt)
             ConversationUnread.shared.receive(team: row.teamId ?? teamId, session: row.sessionId, activity: row.activitySeq, read: row.readSeq, displayed: false)
         }

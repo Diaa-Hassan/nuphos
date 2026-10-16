@@ -29,6 +29,10 @@ class FakeConversations {
   async findOne(filter: Record<string, unknown>) {
     return this.docs.find((d) => this.matches(d, filter)) ?? null
   }
+  // A top-level conversation has no ancestors to touch.
+  aggregate() {
+    return { toArray: async () => [] }
+  }
   async updateOne(
     filter: Record<string, unknown>,
     update: { $setOnInsert?: Record<string, unknown>; $set?: Record<string, unknown> },

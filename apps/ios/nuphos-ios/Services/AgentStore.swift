@@ -30,8 +30,8 @@ final class AgentStore {
     var showArchived = false {
         didSet { if showArchived != oldValue { Task { await reload() } } }
     }
-    /// The desktop sidebar lists by creation date.
-    var sort: NuphosAPI.ConversationSort = .created {
+    /// Recent activity first, like the desktop sidebar.
+    var sort: NuphosAPI.ConversationSort = .activity {
         didSet { if sort != oldValue { Task { await reload() } } }
     }
 
@@ -45,13 +45,26 @@ final class AgentStore {
     /// Sessions the viewer joined but does not own — the desktop's Shared
     /// group. Only the personal list adds them; team scope already has them.
     private(set) var sharedConversations: [AgentConversation] = []
+    /// Pinned chats the list does not reach on its own: old ones, and threads.
+    private var pinnedRows: [AgentConversation] = []
+
+    // MARK: - Thread tree
+
+    /// The plain list asks for one level of the thread tree; search and the
+    /// archive list every match, nested under whichever parent is loaded.
+    private var wantsTree: Bool { search.isEmpty && !showArchived }
+    /// The backend answered with one level (an older one sends the flat list).
+    private(set) var listsTree = false
+    /// Threads loaded for expanded rows, by parent.
+    private var threads: [String: [AgentConversation]] = [:]
+    private var refreshThreadIndex = 0
 
     /// What the Agent page lists: pinned chats first, then the viewer's own
     /// chats and the ones shared with them, newest first.
     var listedConversations: [AgentConversation] {
         var seen = Set<String>()
         let date: (AgentConversation) -> Date = sort == .created ? { $0.createdAt } : { $0.lastActiveAt }
-        let rows = (conversations + (scope == .mine ? sharedConversations : []))
+        let rows = (conversations + (scope == .mine ? sharedConversations : []) + pinnedRows)
             .filter { seen.insert($0.sessionId).inserted }
             .sorted { date($0) > date($1) }
         let rank = Dictionary(pinnedOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
@@ -77,6 +90,7 @@ final class AgentStore {
             if pinned { entries.append(.chat(sessionId: sessionId, label: title)) }
             do {
                 favorites = try await AgentChatAPI.putSidebarFavorites(token: token, teamId: team.id, entries: entries, expectedRevision: current.revision)
+                await loadPinned(generation: loadGeneration) // A pinned thread joins the pins.
                 return
             } catch AgentChatAPI.Conflict.favoritesChanged {
                 favorites = try? await NuphosAPI.sidebarFavorites(token: token, teamId: team.id)
@@ -104,41 +118,122 @@ final class AgentStore {
     func removeFromList(_ sessionId: String) {
         conversations.removeAll { $0.sessionId == sessionId }
         sharedConversations.removeAll { $0.sessionId == sessionId }
+        pinnedRows.removeAll { $0.sessionId == sessionId }
+        threads = threads.mapValues { $0.filter { $0.sessionId != sessionId } }
         if phase == .loaded { loadGeneration += 1 } else { Task { await reload() } }
     }
 
     // MARK: - Threads
 
     private static let foldedThreadsKey = "nuphos.agent.foldedThreads"
-    /// Thread parents folded on the Agent page, per team.
-    private var foldedThreads: [String: Set<String>] =
-        (UserDefaults.standard.dictionary(forKey: AgentStore.foldedThreadsKey) as? [String: [String]] ?? [:])
-            .mapValues(Set.init)
+    private static let expandedThreadsKey = "nuphos.agent.expandedThreads"
+    /// Thread parents folded on the flat list (search, archive), per team.
+    private var foldedThreads: [String: Set<String>] = AgentStore.teamSets(AgentStore.foldedThreadsKey)
+    /// Rows expanded on the thread tree, per team; collapsed is the default,
+    /// so threads load only when asked for.
+    private var expandedThreads: [String: Set<String>] = AgentStore.teamSets(AgentStore.expandedThreadsKey)
+
+    private static func teamSets(_ key: String) -> [String: Set<String>] {
+        (UserDefaults.standard.dictionary(forKey: key) as? [String: [String]] ?? [:]).mapValues(Set.init)
+    }
 
     /// The Agent page's rows: agent-opened threads under the conversation
     /// that opened them. A pinned thread stays with the pins.
     var nestedConversations: [NestedConversation] {
-        ConversationNesting.nest(
-            listedConversations, folded: foldedThreads[selectedTeam?.id ?? ""] ?? [], pinned: pinnedSessionIds
+        let team = selectedTeam?.id ?? ""
+        guard listsTree else {
+            return ConversationNesting.nest(listedConversations, folded: foldedThreads[team] ?? [], pinned: pinnedSessionIds)
+        }
+        return ConversationNesting.tree(
+            listedConversations, threads: threads, expanded: expandedThreads[team] ?? [], pinned: pinnedSessionIds
         )
     }
 
-    func isFolded(_ sessionId: String) -> Bool { foldedThreads[selectedTeam?.id ?? ""]?.contains(sessionId) == true }
+    func isFolded(_ sessionId: String) -> Bool {
+        let team = selectedTeam?.id ?? ""
+        return listsTree
+            ? expandedThreads[team]?.contains(sessionId) != true
+            : foldedThreads[team]?.contains(sessionId) == true
+    }
 
     func toggleFolded(_ sessionId: String) {
         guard let team = selectedTeam?.id else { return }
+        if listsTree {
+            var expanded = expandedThreads[team] ?? []
+            if expanded.remove(sessionId) == nil {
+                expanded.insert(sessionId)
+                let generation = loadGeneration
+                Task { await loadThreads(sessionId, generation: generation) }
+            }
+            expandedThreads[team] = expanded
+            UserDefaults.standard.set(expandedThreads.mapValues(Array.init), forKey: Self.expandedThreadsKey)
+            return
+        }
         var folded = foldedThreads[team] ?? []
         if folded.remove(sessionId) == nil { folded.insert(sessionId) }
         foldedThreads[team] = folded
         UserDefaults.standard.set(foldedThreads.mapValues(Array.init), forKey: Self.foldedThreadsKey)
     }
 
+    /// Every thread under `parent`, page by page.
+    private func loadThreads(_ parent: String, generation: Int) async {
+        var rows: [AgentConversation] = []
+        var cursor: String?
+        for _ in 0..<10 {
+            guard let page = try? await page(cursor: cursor, limit: 100, parent: parent),
+                  generation == loadGeneration else { return }
+            rows += page.conversations
+            cursor = page.nextCursor
+            if !page.hasMore || cursor == nil { break }
+        }
+        threads[parent] = rows
+    }
+
+    /// The expanded rows that are listed, then the expanded ones among their threads.
+    private func loadExpandedThreads(generation: Int) async {
+        let expanded = expandedThreads[selectedTeam?.id ?? ""] ?? []
+        var pending = expanded.intersection(listedConversations.map(\.sessionId))
+        var done = Set<String>()
+        while let parent = pending.popFirst() {
+            done.insert(parent)
+            await loadThreads(parent, generation: generation)
+            pending.formUnion(expanded.intersection((threads[parent] ?? []).map(\.sessionId)).subtracting(done))
+        }
+    }
+
+    /// Pinned chats stay on top however old, or nested, they are.
+    private func loadPinned(generation: Int) async {
+        let listed = Set((conversations + sharedConversations).map(\.sessionId))
+        let missing = pinnedOrder.filter { !listed.contains($0) }
+        guard wantsTree, !missing.isEmpty else { pinnedRows = []; return }
+        guard let page = try? await page(limit: 100, scope: .team, sessionIds: Array(missing.prefix(100))),
+              generation == loadGeneration else { return }
+        pinnedRows = page.conversations
+    }
+
+    /// One page under the list's current filters.
+    private func page(
+        cursor: String? = nil, limit: Int = AgentStore.pageSize, scope: NuphosAPI.ConversationScope? = nil,
+        parent: String? = nil, sessionIds: [String] = []
+    ) async throws -> AgentConversationsPage {
+        try await NuphosAPI.conversations(
+            token: token, teamId: selectedTeam?.id ?? "", cursor: cursor, limit: limit, scope: scope ?? self.scope,
+            search: search, archived: showArchived ? .only : .exclude, sort: sort,
+            topLevel: wantsTree && parent == nil && sessionIds.isEmpty, parentSessionId: parent, sessionIds: sessionIds
+        )
+    }
+
     func unlinkParent(_ conversation: AgentConversation) async {
         guard conversation.ownsChat, let teamId = conversation.teamId ?? selectedTeam?.id else { return }
         do {
             try await AgentChatAPI.unlinkParent(token: token, teamId: teamId, sessionId: conversation.sessionId)
+            threads = threads.mapValues { $0.filter { $0.sessionId != conversation.sessionId } }
             if let index = conversations.firstIndex(where: { $0.sessionId == conversation.sessionId }) {
                 conversations[index].parentSessionId = nil
+            } else if listsTree {
+                var row = conversation
+                row.parentSessionId = nil
+                conversations.append(row) // Now top-level.
             }
         } catch {
             phase = .failed(error.localizedDescription)
@@ -252,6 +347,8 @@ final class AgentStore {
         credentialCatalog = nil
         favorites = nil
         sharedConversations = []
+        pinnedRows = []
+        threads = [:]
         runtimes = []
         runtimesLoaded = false
         quotas = [:]
@@ -390,21 +487,17 @@ final class AgentStore {
         async let sharedLoad: () = loadShared(team: team, generation: generation)
 
         do {
-            let page = try await NuphosAPI.conversations(
-                token: token, teamId: team.id, limit: Self.pageSize, scope: scope, search: search,
-                archived: showArchived ? .only : .exclude, sort: sort
-            )
+            let page = try await page()
             _ = await (favoritesLoad, runtimesLoad, sharedLoad)
             guard generation == loadGeneration else { return }
-            conversations = page.rows
+            conversations = page.conversations
+            listsTree = page.threads == true
+            threads = [:]
             nextCursor = page.nextCursor
             hasMore = page.hasMore
             phase = .loaded
-            // A pinned chat stays on top however old it is, so page until each one is listed.
-            for _ in 0..<10 where hasMore && search.isEmpty && !showArchived
-                && !Set(pinnedOrder).isSubset(of: (conversations + sharedConversations).map(\.sessionId)) {
-                await loadMore()
-            }
+            await loadPinned(generation: generation)
+            if listsTree { await loadExpandedThreads(generation: generation) }
         } catch {
             guard generation == loadGeneration else { return }
             phase = .failed(error.localizedDescription)
@@ -414,30 +507,24 @@ final class AgentStore {
     /// One page of shared sessions, under the same filters as the list.
     private func loadShared(team: Team, generation: Int) async {
         guard scope == .mine else { sharedConversations = []; return }
-        guard let page = try? await NuphosAPI.conversations(
-            token: token, teamId: team.id, limit: 100, scope: .shared, search: search,
-            archived: showArchived ? .only : .exclude, sort: sort
-        ), generation == loadGeneration else { return }
-        sharedConversations = page.rows
+        guard let page = try? await page(limit: 100, scope: .shared), generation == loadGeneration else { return }
+        sharedConversations = page.conversations
     }
 
     /// Next page, appended. Rows can repeat across pages because the cursor
     /// is a timestamp, so dedupe by session id.
     func loadMore() async {
-        guard hasMore, !isLoadingMore, let team = selectedTeam, let cursor = nextCursor else { return }
+        guard hasMore, !isLoadingMore, selectedTeam != nil, let cursor = nextCursor else { return }
         isLoadingMore = true
         defer { isLoadingMore = false }
         let generation = loadGeneration
 
         do {
-            let page = try await NuphosAPI.conversations(
-                token: token, teamId: team.id, cursor: cursor, limit: Self.pageSize, scope: scope, search: search,
-                archived: showArchived ? .only : .exclude, sort: sort
-            )
+            let page = try await page(cursor: cursor)
             guard generation == loadGeneration else { return }
             if !loadedPageCursors.contains(cursor) { loadedPageCursors.append(cursor) }
             let seen = Set(conversations.map(\.sessionId))
-            conversations.append(contentsOf: page.rows.filter { !seen.contains($0.sessionId) })
+            conversations.append(contentsOf: page.conversations.filter { !seen.contains($0.sessionId) })
             nextCursor = page.nextCursor
             hasMore = page.hasMore
         } catch {
@@ -509,24 +596,24 @@ final class AgentStore {
     private func refreshFirstPage() async {
         guard let team = selectedTeam else { return }
         let generation = loadGeneration
-        guard let page = try? await NuphosAPI.conversations(
-            token: token, teamId: team.id, limit: Self.pageSize, scope: scope, search: search,
-            archived: showArchived ? .only : .exclude, sort: sort
-        ), generation == loadGeneration, !Task.isCancelled else { return }
+        guard let page = try? await page(), generation == loadGeneration, !Task.isCancelled else { return }
         await loadShared(team: team, generation: generation)
-        conversations = conversations.refreshed(firstPage: page.rows)
-        if loadedPageCursors.isEmpty, !isLoadingMore, conversations.count <= page.rows.count {
+        conversations = conversations.refreshed(firstPage: page.conversations)
+        if loadedPageCursors.isEmpty, !isLoadingMore, conversations.count <= Self.pageSize {
             nextCursor = page.nextCursor
             hasMore = page.hasMore
+        }
+        // One expanded row's threads per tick, in turn.
+        let parents = threads.keys.sorted()
+        if !parents.isEmpty {
+            await loadThreads(parents[refreshThreadIndex % parents.count], generation: generation)
+            refreshThreadIndex += 1
         }
         guard !loadedPageCursors.isEmpty else { return }
         let cursor = loadedPageCursors[refreshPageIndex % loadedPageCursors.count]
         refreshPageIndex = (refreshPageIndex + 1) % loadedPageCursors.count
-        guard let background = try? await NuphosAPI.conversations(
-            token: token, teamId: team.id, cursor: cursor, limit: Self.pageSize, scope: scope, search: search,
-            archived: showArchived ? .only : .exclude, sort: sort
-        ), generation == loadGeneration, !Task.isCancelled else { return }
-        let fresh = Dictionary(background.rows.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
+        guard let background = try? await page(cursor: cursor), generation == loadGeneration, !Task.isCancelled else { return }
+        let fresh = Dictionary(background.conversations.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         conversations = conversations.map { fresh[$0.sessionId] ?? $0 }
     }
 

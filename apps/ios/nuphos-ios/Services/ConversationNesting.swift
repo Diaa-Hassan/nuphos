@@ -39,11 +39,29 @@ enum ConversationNesting {
             let kids = children[row.sessionId] ?? []
             let all = below(row.sessionId)
             let isFolded = !kids.isEmpty && folded.contains(row.sessionId)
-            nested.append(.init(conversation: row, trail: trail, threads: all.count, hidden: isFolded ? all : []))
+            nested.append(.init(conversation: row, trail: trail, threads: row.threadCount ?? all.count, hidden: isFolded ? all : []))
             if isFolded { return }
             for (index, kid) in kids.enumerated() { visit(kid, trail + [index < kids.count - 1]) }
         }
         for row in rows where parent(row) == nil { visit(row, []) }
         return nested
+    }
+
+    /// The one-level thread list: top-level rows, and under each expanded row
+    /// the threads loaded for it. A collapsed row keeps its server
+    /// `threadCount`, so it can offer to expand without loading them.
+    static func tree(
+        _ top: [AgentConversation], threads: [String: [AgentConversation]],
+        expanded: Set<String>, pinned: Set<String> = []
+    ) -> [NestedConversation] {
+        var seen = Set<String>()
+        var rows: [AgentConversation] = []
+        func add(_ row: AgentConversation) {
+            guard seen.insert(row.sessionId).inserted else { return }
+            rows.append(row)
+            if expanded.contains(row.sessionId) { (threads[row.sessionId] ?? []).forEach(add) }
+        }
+        top.forEach(add)
+        return nest(rows, folded: Set(rows.map(\.sessionId)).subtracting(expanded), pinned: pinned)
     }
 }

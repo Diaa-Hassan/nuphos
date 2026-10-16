@@ -32,3 +32,13 @@ export function parseSortParam(
 
   return sort
 }
+
+/** `sessionId` repeated: exactly those rows (pinned chats), at most a page. */
+export function parseSessionIdsParam(raw: string[] | undefined): string[] | undefined {
+  const ids = raw?.map((id) => id.trim()).filter(Boolean)
+
+  if (!ids?.length) return undefined
+  if (ids.length > 100) throw new AppError(400, 'invalid_request', 'at most 100 sessionId values')
+
+  return ids
+}

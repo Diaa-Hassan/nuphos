@@ -189,7 +189,7 @@ private struct FilterMenu: View {
                 Label("Archived", systemImage: "archivebox")
             }
         } label: {
-            Label("Filter chats", systemImage: store.scope == .mine && !store.showArchived && store.sort == .created
+            Label("Filter chats", systemImage: store.scope == .mine && !store.showArchived && store.sort == .activity
                   ? "line.3.horizontal.decrease"
                   : "line.3.horizontal.decrease.circle.fill")
         }

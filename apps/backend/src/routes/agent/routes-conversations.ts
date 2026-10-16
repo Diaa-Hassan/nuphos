@@ -5,7 +5,11 @@ import {
   buildSlackThreadLink,
   serializeConversationForViewer,
 } from './conversation-view'
-import { parseArchivedParam, parseSortParam } from './conversations-list-params'
+import {
+  parseArchivedParam,
+  parseSessionIdsParam,
+  parseSortParam,
+} from './conversations-list-params'
 import { serializeConversationList } from './conversations-list-view'
 import { parseTriggerIdsParam } from './conversations-trigger-param'
 import {
@@ -98,6 +102,12 @@ agent.get('/conversations', async (c) => {
     }
     limit = Math.max(1, Math.min(100, Math.trunc(parsed)))
   }
+  // The sidebar's thread tree, one level per request: `topLevel=1` for the
+  // rows nested under nothing listed, `parentSessionId` for one row's threads.
+  // Opt-in, so clients that nest over every page keep the flat list.
+  const parentSessionId = c.req.query('parentSessionId')?.trim() || undefined
+  const threads = c.req.query('topLevel') === '1' || Boolean(parentSessionId)
+  const sessionIds = parseSessionIdsParam(c.req.queries('sessionId'))
   const result = await getConversations(userId, {
     limit,
     cursor,
@@ -108,23 +118,22 @@ agent.get('/conversations', async (c) => {
     archived,
     sort,
     ...(triggerIds ? { triggerIds } : {}),
-    withParents: true,
+    ...(threads ? { threads, parentSessionId } : {}),
+    ...(sessionIds ? { sessionIds } : {}),
   })
-  const rows = await serializeConversationList(
-    [...result.conversations, ...result.parents] as unknown as (Record<string, unknown> & {
-      userId: string
-      sessionId: string
-    })[],
-    c.get('user'),
-    teamId,
-  )
 
-  // `parents`: the page's threads' parents that sit on another page, so a
-  // client that pages can nest them now. Clients that load every page ignore it.
   return c.json({
     ...result,
-    conversations: rows.slice(0, result.conversations.length),
-    parents: rows.slice(result.conversations.length),
+    // Tells a tree client this backend answered with one level, not the flat list.
+    ...(threads ? { threads: true } : {}),
+    conversations: await serializeConversationList(
+      result.conversations as unknown as (Record<string, unknown> & {
+        userId: string
+        sessionId: string
+      })[],
+      c.get('user'),
+      teamId,
+    ),
   })
 })
 

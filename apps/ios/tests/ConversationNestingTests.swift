@@ -6,7 +6,7 @@ enum ConversationNestingTests {
         foldingHidesTheSubtree()
         anUnlistedOrPinnedParentLeavesTheRowTopLevel()
         aRefreshKeepsLaterRowsInPlace()
-        aThreadNestsUnderAParentFromALaterPage()
+        aCollapsedRowShowsItsCountAndExpandingShowsItsThreads()
         print("Conversation nesting passed")
     }
 
@@ -58,19 +58,23 @@ enum ConversationNestingTests {
         precondition(archived.refreshed(firstPage: [row("recent"), row("new")]).map(\.sessionId) == ["recent", "new", "older"])
     }
 
-    /// Page one holds the thread; its parent is older and on a later page.
-    /// The page carries that parent, so the thread nests at once. A parent the
-    /// listing hides (archived, or a search miss) is not sent, and the thread
-    /// stays listed on its own.
-    private static func aThreadNestsUnderAParentFromALaterPage() {
-        let first = AgentConversationsPage(
-            conversations: [row("thread", parent: "parent"), row("newest")],
-            parents: [row("parent"), row("newest")], nextCursor: "c", hasMore: true
+    /// The thread tree lists top-level rows; an expanded row shows the threads
+    /// loaded for it, a collapsed one only its server count.
+    private static func aCollapsedRowShowsItsCountAndExpandingShowsItsThreads() {
+        let parent = AgentConversation(
+            sessionId: "parent", title: "parent", messageCount: 1, createdAt: .now, lastActiveAt: .now, threadCount: 2
         )
-        precondition(first.rows.map(\.sessionId) == ["thread", "newest", "parent"])
-        let nested = ConversationNesting.nest(first.rows)
-        precondition(nested.map(\.id) == ["newest", "parent", "thread"] && nested.map(\.depth) == [0, 0, 1])
-        let hidden = AgentConversationsPage(conversations: [row("thread", parent: "archived")], nextCursor: nil, hasMore: false)
-        precondition(ConversationNesting.nest(hidden.rows).map(\.depth) == [0])
+        let top = [parent, row("other")]
+        let threads = ["parent": [row("child-a", parent: "parent"), row("child-b", parent: "parent")]]
+        let collapsed = ConversationNesting.tree(top, threads: threads, expanded: [])
+        precondition(collapsed.map(\.id) == ["parent", "other"] && collapsed[0].threads == 2 && collapsed[0].hasChildren)
+        let expanded = ConversationNesting.tree(top, threads: threads, expanded: ["parent"])
+        precondition(expanded.map(\.id) == ["parent", "child-a", "child-b", "other"])
+        precondition(expanded.map(\.depth) == [0, 1, 1, 0])
+        // A pinned thread stays with the pins, and is not listed twice.
+        let pinned = ConversationNesting.tree(
+            [row("child-a", parent: "parent")] + top, threads: threads, expanded: ["parent"], pinned: ["child-a"]
+        )
+        precondition(pinned.map(\.id) == ["child-a", "parent", "child-b", "other"])
     }
 }
