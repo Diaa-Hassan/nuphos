@@ -47,6 +47,7 @@ class VoiceInputFixtureDeviceTest {
     private val transport = Transport()
     private var takeFile: File? = null
     private var sends = 0
+    private val dark get() = InstrumentationRegistry.getArguments().getString("fixtureDark") == "true"
     private fun render() {
         compose.setContent {
             val context = LocalContext.current
@@ -59,7 +60,7 @@ class VoiceInputFixtureDeviceTest {
                 }
             }, microphonePermissionGranted = { true }) }
             val store = remember { AgentStore("synthetic-no-credentials", context) }
-            NuphosTheme { CompositionLocalProvider(LocalAgentStore provides store, LocalVoiceServices provides services) {
+            NuphosTheme(darkTheme = dark) { CompositionLocalProvider(LocalAgentStore provides store, LocalVoiceServices provides services) {
                 Column {
                     Text("FIXTURE · synthetic audio / synthetic OpenAI · no upload")
                     ChatComposer(isStreaming = false, onSend = { sends++; true })
@@ -81,7 +82,7 @@ class VoiceInputFixtureDeviceTest {
         compose.onNodeWithText("Transcribing…").assertIsDisplayed()
         compose.onNodeWithContentDescription("Finish voice input").assertIsNotEnabled()
         capture("02-transcribing-fixture")
-        compose.runOnIdle { transport.reply.complete(Transcript("語音輸入測試", "chinese")) }
+        compose.runOnIdle { transport.reply.complete(Transcript("语音输入测试", "chinese")) }
         compose.waitUntil(5_000) { compose.onAllNodesWithContentDescription("Ask Nuphos anything").fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithContentDescription("Ask Nuphos anything").assertTextContains("Existing draft 語音輸入測試")
         assertEquals(1, transport.uploads); assertEquals(0, sends); assertFalse(takeFile!!.exists())
@@ -121,8 +122,12 @@ class VoiceInputFixtureDeviceTest {
     }
     @Test fun accountCanRemoveKeyAndEditOrResetPrompt() {
         val services = VoiceServices(settings, transport, { error("No recording from Account") })
-        compose.setContent { NuphosTheme { Column { VoiceSettingsSection(services) } } }
+        compose.setContent { NuphosTheme(darkTheme = dark) { Column {
+            Text("FIXTURE · synthetic settings / no real key")
+            VoiceSettingsSection(services)
+        } } }
         compose.onNodeWithText("OpenAI API key saved on this device").assertIsDisplayed()
+        capture("05-account-settings-fixture")
         compose.onNodeWithText("Remove OpenAI API key").performClick()
         assertNull(settings.value)
         compose.onNodeWithText("Transcription prompt").performTextReplacement("Fixture vocabulary")
@@ -135,7 +140,7 @@ class VoiceInputFixtureDeviceTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "whisper-1235").apply { mkdirs() }
         val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: error("Screenshot unavailable")
-        File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(dir, "${if (dark) "dark" else "light"}-$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
     }
 }
