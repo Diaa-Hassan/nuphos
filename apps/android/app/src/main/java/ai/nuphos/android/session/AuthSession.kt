@@ -381,6 +381,8 @@ class AuthSession(
     }
 
     private fun clearToken() {
+        // Remove BYOK credentials without needing to decrypt a broken keystore.
+        app.deleteSharedPreferences("nuphos.voice")
         composerDrafts.clear()
         tokenStore.clear()
         token = null
