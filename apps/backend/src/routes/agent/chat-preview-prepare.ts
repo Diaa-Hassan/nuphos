@@ -16,6 +16,7 @@ import {
 } from '@/lib/agent/message-metadata'
 import { renderInjectedUserMessages } from '@/lib/agent/pending-messages'
 import { takeTurnQueue } from '@/lib/agent/pending-queue'
+import { markCarried } from '@/lib/agent/retract-marks'
 import { previewHistoryPreamble } from '@/lib/claude-code-preview/preview-history-preamble'
 import { buildPreviewSystemPrompt } from '@/lib/claude-code-preview/preview-prompt'
 import { recallForPreviewTurn } from '@/lib/claude-code-preview/preview-recall'
@@ -206,7 +207,7 @@ export async function preparePreviewTurn(
       return undefined
     }),
     previewCompactionSummary(sessionId, userId),
-    takeTurnQueue(userId, sessionId, actorUserId, args.channelTurn),
+    takeTurnQueue(userId, sessionId, actorUserId, args.channelTurn).then(markCarried(requestId)),
   ])
   // A channel that syncs its thread into the transcript may already hold a queued message.
   const carried = drained.filter((entry) => !args.messages.some((m) => m.id === entry.id))

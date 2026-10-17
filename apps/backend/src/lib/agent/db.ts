@@ -25,6 +25,7 @@ export {
 export {
   clearConversationPreviewLocalTools,
   clearConversationPreviewTurn,
+  consumeConversationRetracted,
   consumeConversationWorkLost,
   getConversationPreviewAttachment,
   markConversationWorkLost,
@@ -62,6 +63,7 @@ export {
   appendConversationMessages,
 } from './db/transcript-autonomous'
 export { getConversationTranscriptForAgent, liveTurnTranscriptLine } from './db/transcript-read'
+export { retractTrailingUserMessage } from './db/transcript-retract'
 export {
   getConversationMessagesHead,
   getConversations,
