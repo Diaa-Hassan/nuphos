@@ -104,8 +104,9 @@ describe('session desktops', () => {
     // A frame without the desktop would read to the client as its teardown: the
     // Desktop tab closed and, a frame later, opened again even after the user closed it.
     const tracker = await desktopTracker({ sessionId: 's1', runtimeId }, label)
+    const frame: SessionExecutionState = { state: 'active' }
 
-    expect(tracker.with({ state: 'active' }).tools?.map((tool) => tool.id)).toEqual(['desktop:2'])
+    expect(tracker.with(frame).tools?.map((tool) => tool.id)).toEqual(['desktop:2'])
   })
 
   test('a conversation off any local runtime has none', async () => {
