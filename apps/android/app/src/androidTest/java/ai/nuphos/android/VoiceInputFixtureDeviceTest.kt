@@ -1,7 +1,12 @@
 package ai.nuphos.android
 
 import android.graphics.Bitmap
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.Surface
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.platform.LocalContext
@@ -51,6 +56,7 @@ class VoiceInputFixtureDeviceTest {
     private fun render() {
         compose.setContent {
             val context = LocalContext.current
+            FixtureAutofillIsolation()
             val services = remember { VoiceServices(settings, transport, {
                 object : VoiceTake {
                     override fun start() { takeFile = File.createTempFile("voice-fixture", ".m4a", context.cacheDir).apply { writeText("synthetic audio") } }
@@ -61,9 +67,12 @@ class VoiceInputFixtureDeviceTest {
             }, microphonePermissionGranted = { true }) }
             val store = remember { AgentStore("synthetic-no-credentials", context) }
             NuphosTheme(darkTheme = dark) { CompositionLocalProvider(LocalAgentStore provides store, LocalVoiceServices provides services) {
-                Column {
-                    Text("FIXTURE · synthetic audio / synthetic OpenAI · no upload")
-                    ChatComposer(isStreaming = false, onSend = { sends++; true })
+                Surface(Modifier.fillMaxSize()) {
+                    Column(Modifier.systemBarsPadding().padding(12.dp)) {
+                        Text("FIXTURE · synthetic audio / synthetic OpenAI · no upload", style = MaterialTheme.typography.labelSmall)
+                        Spacer(Modifier.weight(1f))
+                        ChatComposer(isStreaming = false, onSend = { sends++; true })
+                    }
                 }
             } }
         }
@@ -116,16 +125,24 @@ class VoiceInputFixtureDeviceTest {
         compose.onNodeWithText("sk-…").performTextInput("synthetic-fixture-key")
         compose.onNodeWithText("Save").performClick()
         compose.onNodeWithContentDescription("Finish voice input").assertIsDisplayed()
+        // The key dialog and IME are separate Android windows; let them close before tapping behind them.
+        Thread.sleep(500)
+        compose.waitForIdle()
         assertEquals(1, transport.verifies)
         compose.onNodeWithContentDescription("Cancel voice input").performClick()
-        assertFalse(takeFile!!.exists())
+        compose.runOnIdle { assertFalse(takeFile!!.exists()) }
     }
     @Test fun accountCanRemoveKeyAndEditOrResetPrompt() {
         val services = VoiceServices(settings, transport, { error("No recording from Account") })
-        compose.setContent { NuphosTheme(darkTheme = dark) { Column {
-            Text("FIXTURE · synthetic settings / no real key")
-            VoiceSettingsSection(services)
-        } } }
+        compose.setContent {
+            FixtureAutofillIsolation()
+            NuphosTheme(darkTheme = dark) { Surface(Modifier.fillMaxSize()) {
+                Column(Modifier.systemBarsPadding().padding(12.dp)) {
+                    Text("FIXTURE · synthetic settings / no real key", style = MaterialTheme.typography.labelSmall)
+                    VoiceSettingsSection(services)
+                }
+            } }
+        }
         compose.onNodeWithText("OpenAI API key saved on this device").assertIsDisplayed()
         capture("05-account-settings-fixture")
         compose.onNodeWithText("Remove OpenAI API key").performClick()
@@ -138,9 +155,27 @@ class VoiceInputFixtureDeviceTest {
     private fun capture(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()
+        // Compose idle does not include the platform IME/window transition.
+        Thread.sleep(500)
+        instrumentation.waitForIdleSync()
         val dir = File(instrumentation.targetContext.getExternalFilesDir(null), "whisper-1235").apply { mkdirs() }
         val bitmap = instrumentation.uiAutomation.takeScreenshot() ?: error("Screenshot unavailable")
         File(dir, "${if (dark) "dark" else "light"}-$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
         bitmap.recycle()
+    }
+}
+
+/** Disable autofill only on the isolated fixture window, never in device settings. */
+@Composable
+private fun FixtureAutofillIsolation() {
+    val view = LocalView.current
+    val context = LocalContext.current
+    DisposableEffect(view) {
+        val root = view.rootView
+        val previous = root.importantForAutofill
+        val manager = context.getSystemService(android.view.autofill.AutofillManager::class.java)
+        manager?.cancel()
+        root.importantForAutofill = android.view.View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
+        onDispose { manager?.cancel(); root.importantForAutofill = previous }
     }
 }
