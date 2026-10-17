@@ -70,7 +70,12 @@ class AuthSession(
 
     private fun beginIdentity(preserveDrafts: Boolean = false): Long {
         if (state !is State.Restoring) onIdentityReset()
-        if (!preserveDrafts) composerDrafts.clear()
+        if (!preserveDrafts) {
+            composerDrafts.clear()
+            // Starting another identity must not inherit the prior account's billable key,
+            // including after restoration failed because of a transient network error.
+            app.deleteSharedPreferences("nuphos.voice")
+        }
         composerDrafts.onIdentity(null)
         runtimeSelections.clear()
         workspaceWriteReview = WorkspaceWriteReview()

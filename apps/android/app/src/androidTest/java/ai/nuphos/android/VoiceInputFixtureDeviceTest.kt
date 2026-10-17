@@ -108,6 +108,28 @@ class VoiceInputFixtureDeviceTest {
         compose.onNodeWithText("Cancel").performClick()
         assertNull(takeFile); assertEquals(0, transport.uploads); assertEquals(0, transport.verifies)
     }
+    @Test fun verifiedSyntheticKeyStartsOneTakeAndAccountControlsPersistPrompt() {
+        settings.value = null
+        render()
+        compose.onNodeWithContentDescription("Voice input").performClick()
+        compose.onNodeWithText("sk-…").performTextInput("synthetic-fixture-key")
+        compose.onNodeWithText("Save").performClick()
+        compose.onNodeWithContentDescription("Finish voice input").assertIsDisplayed()
+        assertEquals(1, transport.verifies)
+        compose.onNodeWithContentDescription("Cancel voice input").performClick()
+        assertFalse(takeFile!!.exists())
+    }
+    @Test fun accountCanRemoveKeyAndEditOrResetPrompt() {
+        val services = VoiceServices(settings, transport, { error("No recording from Account") })
+        compose.setContent { NuphosTheme { Column { VoiceSettingsSection(services) } } }
+        compose.onNodeWithText("OpenAI API key saved on this device").assertIsDisplayed()
+        compose.onNodeWithText("Remove OpenAI API key").performClick()
+        assertNull(settings.value)
+        compose.onNodeWithText("Transcription prompt").performTextReplacement("Fixture vocabulary")
+        compose.runOnIdle { assertEquals("Fixture vocabulary", settings.prompt) }
+        compose.onNodeWithText("Reset prompt").performClick()
+        compose.runOnIdle { assertEquals(DEFAULT_WHISPER_PROMPT, settings.prompt) }
+    }
     private fun capture(name: String) {
         compose.waitForIdle()
         val instrumentation = InstrumentationRegistry.getInstrumentation()

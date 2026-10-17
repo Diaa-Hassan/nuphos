@@ -66,5 +66,5 @@ class OpenAIWhisperTransport(private val calls: Call.Factory = OkHttpClient.Buil
             }
         })
     }
-    companion object { const val MAX_AUDIO_BYTES = 24L * 1024 * 1024 }
+    companion object { const val MAX_AUDIO_BYTES = 24_000_000L }
 }

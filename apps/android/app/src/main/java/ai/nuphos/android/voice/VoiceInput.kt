@@ -36,12 +36,12 @@ class VoiceInput(private val services: VoiceServices, private val scope: Corouti
             seconds = 0
             levels = emptyList()
             job = scope.launch {
-                var ticks = 0
+                val startedAt = System.nanoTime()
                 try {
                     while (true) {
                         levels = (levels + recording.level()).takeLast(100)
                         delay(60)
-                        seconds = (++ticks * 60) / 1000
+                        seconds = ((System.nanoTime() - startedAt) / 1_000_000_000).toInt()
                     }
                 } catch (e: CancellationException) { throw e }
                 catch (_: Exception) { cancel(); error = "Recording interrupted or limit reached. Please try a shorter message." }

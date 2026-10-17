@@ -28,9 +28,10 @@ class DeviceVoiceSettings(context: Context) : VoiceSettings {
     override fun key(): String? = prefs.getString("openai-key", null)
     override fun saveKey(value: String) { check(prefs.edit().putString("openai-key", value).commit()) { "Could not securely save the API key." } }
     override fun removeKey() { check(prefs.edit().remove("openai-key").commit()) { "Could not remove the API key." } }
+    private val promptPrefs by lazy { app.getSharedPreferences("nuphos.voice-prompt", Context.MODE_PRIVATE) }
     override var prompt: String
-        get() = prefs.getString("prompt", DEFAULT_WHISPER_PROMPT) ?: DEFAULT_WHISPER_PROMPT
-        set(value) { check(prefs.edit().putString("prompt", value).commit()) { "Could not save the prompt." } }
+        get() = promptPrefs.getString("prompt", DEFAULT_WHISPER_PROMPT) ?: DEFAULT_WHISPER_PROMPT
+        set(value) { check(promptPrefs.edit().putString("prompt", value).commit()) { "Could not save the prompt." } }
 }
 
 interface VoiceTake {

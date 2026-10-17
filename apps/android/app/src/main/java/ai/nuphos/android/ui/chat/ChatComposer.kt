@@ -265,6 +265,12 @@ fun ChatComposer(
             else voice.cancel()
         } catch (_: Exception) { voice.cancel(); voice.error = "Could not access secure voice settings or microphone permission." }
     }
+    val voiceView = androidx.compose.ui.platform.LocalView.current
+    DisposableEffect(voice.phase == VoiceInput.Phase.Recording, voiceView) {
+        val previous = voiceView.keepScreenOn
+        if (voice.phase == VoiceInput.Phase.Recording) voiceView.keepScreenOn = true
+        onDispose { voiceView.keepScreenOn = previous }
+    }
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(voice, lifecycle) {
         val observer = LifecycleEventObserver { _, event ->
