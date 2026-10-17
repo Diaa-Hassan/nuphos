@@ -657,11 +657,28 @@ pub(crate) fn baseline_command(
     // SAFETY: setpgid is async-signal-safe (POSIX.1-2008) and called
     // before exec. Return value checked — failure means the child won't
     // have its own process group, so kill(-pgid) would be unsafe.
+    //
+    // Its own group also means it no longer dies with openab's, so on Linux the
+    // kernel SIGKILLs it when openab dies, even by SIGKILL or the OOM killer.
+    // The signal is tied to the spawning thread; agents are spawned from tokio
+    // workers, which live as long as openab. prctl and getppid are
+    // async-signal-safe; the getppid check covers openab dying before prctl.
+    #[cfg(target_os = "linux")]
+    let parent = std::process::id() as libc::pid_t;
     #[cfg(unix)]
     unsafe {
-        cmd.pre_exec(|| {
+        cmd.pre_exec(move || {
             if libc::setpgid(0, 0) != 0 {
                 return Err(std::io::Error::last_os_error());
+            }
+            #[cfg(target_os = "linux")]
+            {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                if libc::getppid() != parent {
+                    return Err(std::io::Error::from_raw_os_error(libc::ESRCH));
+                }
             }
             Ok(())
         });
@@ -1543,6 +1560,72 @@ mod tests {
 
         assert!(!result.contains_key("OAB_TEST_NONEXISTENT_VAR_12345"));
         assert!(inherited.is_empty());
+    }
+
+    /// Stands in for openab in `agents_die_with_openab`: spawns an agent from a
+    /// tokio worker, as openab does, writes its pid and waits to be killed.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn agents_die_with_openab_child() {
+        let Some(pid_file) = std::env::var_os("OPENAB_PDEATHSIG_TEST_PID_FILE") else {
+            return;
+        };
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let agent = rt.block_on(async {
+            tokio::spawn(async {
+                super::baseline_command("sleep", &["600".into()], "/")
+                    .stdin(std::process::Stdio::null())
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .spawn()
+                    .unwrap()
+            })
+            .await
+            .unwrap()
+        });
+        std::fs::write(&pid_file, agent.id().unwrap().to_string()).unwrap();
+        std::thread::sleep(std::time::Duration::from_secs(600));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn agents_die_with_openab() {
+        let dir = tempfile::tempdir().unwrap();
+        let pid_file = dir.path().join("agent.pid");
+        let mut openab = std::process::Command::new(std::env::current_exe().unwrap())
+            .args([
+                "--exact",
+                "acp::connection::tests::agents_die_with_openab_child",
+            ])
+            .env("OPENAB_PDEATHSIG_TEST_PID_FILE", &pid_file)
+            .stdout(std::process::Stdio::null())
+            .spawn()
+            .unwrap();
+        let wait = |done: &dyn Fn() -> bool| {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+            while !done() && std::time::Instant::now() < deadline {
+                std::thread::sleep(std::time::Duration::from_millis(50));
+            }
+            done()
+        };
+        assert!(
+            wait(&|| std::fs::read_to_string(&pid_file).is_ok_and(|s| !s.is_empty())),
+            "openab never spawned the agent"
+        );
+        let pid = std::fs::read_to_string(&pid_file).unwrap();
+        let alive = || {
+            std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                // Killed but not yet reaped by whoever inherited it counts as dead.
+                .is_ok_and(|s| !s.rsplit_once(')').unwrap().1.trim_start().starts_with('Z'))
+        };
+        assert!(alive());
+        openab.kill().unwrap(); // SIGKILL: openab gets no chance to clean up.
+        openab.wait().unwrap();
+        let died = wait(&|| !alive());
+        if !died {
+            unsafe { libc::kill(pid.parse().unwrap(), libc::SIGKILL) };
+        }
+        assert!(died, "agent {pid} outlived openab");
     }
 }
 
