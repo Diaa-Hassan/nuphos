@@ -146,7 +146,7 @@ export async function runClaudeCodePreviewPrompt(args: {
   if (!observed.actions?.send)
     throw refusal(observed.label ?? 'The agent cannot accept a message yet')
 
-  const principalChanged = previewSessionPrincipalChanged(session, args.userId)
+  const principalChanged = previewSessionPrincipalChanged(session, args.userId, args.runtime)
 
   const nextContext = {
     mcpServers: args.mcpServers ?? session.mcpServers,

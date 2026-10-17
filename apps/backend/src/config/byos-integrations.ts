@@ -12,6 +12,12 @@ export function byosIntegrationsConfig() {
       privateKeyBase64: optional('GITHUB_APP_PRIVATE_KEY_BASE64'),
       setupRedirect: optional('GITHUB_APP_SETUP_REDIRECT'),
       webhookSecret: optional('GITHUB_APP_WEBHOOK_SECRET'),
+      // The App's OAuth client, used only for Personal Credentials (a member's
+      // user-to-server token). Its callback URL is derived from setupRedirect.
+      clientId: optional('GITHUB_APP_CLIENT_ID'),
+      clientSecret: optional('GITHUB_APP_CLIENT_SECRET'),
+      encryptionKey: optional('GITHUB_TOKEN_ENCRYPTION_KEY'),
+      encryptionKeyId: 'default',
     },
     gitlab: {
       // OAuth app defaults used when binding gitlab.com. Self-hosted bindings

@@ -13,7 +13,7 @@ import { withRedis } from '@/lib/redis'
 import { sessionsByConversation } from './agent-chat-registry'
 import { openConversationSession } from './open-conversation-session'
 import { resolveConversationChatRuntime } from './conversation-chat-route'
-import { previewSessionAccess } from './credentials-mcp'
+import { isHumanTurnRuntime, previewSessionAccess } from './credentials-mcp'
 import { parseSessionExecutionState } from './runtime-execution-snapshot'
 import { RUNTIME_HANDOFFS_KEY as HANDOFFS_KEY } from './runtime-handoff-store'
 
@@ -77,6 +77,7 @@ async function queueRuntimeOwnedWork(): Promise<void> {
           ownerUserId: session.conversationOwnerUserId ?? session.userId,
           actorUserId: session.userId,
           locale: session.locale,
+          humanTurn: isHumanTurnRuntime(session.runtime),
         })
       }),
   )
@@ -184,7 +185,7 @@ export async function adoptRuntimeHandoff(handoff: RuntimeHandoff): Promise<void
     handoff.teamId,
     handoff.actorUserId,
     handoff.ownerUserId,
-    { external: endpoint.external, backendUrl: endpoint.backendUrl },
+    { external: endpoint.external, backendUrl: endpoint.backendUrl, humanTurn: handoff.humanTurn },
   )
   const abandonedStreamId = handoff.abandonedStreamId
 

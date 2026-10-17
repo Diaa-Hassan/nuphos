@@ -1,6 +1,11 @@
 import { describe, expect, test } from 'bun:test'
 
-import { mintPreviewMcpToken, scopedPathAllowed, verifyPreviewMcpToken } from './mcp-token'
+import {
+  mintPreviewMcpToken,
+  personalCredentialSender,
+  scopedPathAllowed,
+  verifyPreviewMcpToken,
+} from './mcp-token'
 
 describe('preview MCP token', () => {
   test('round-trips its (user, session, team) scope', () => {
@@ -95,5 +100,25 @@ describe('scopedPathAllowed', () => {
     expect(scopedPathAllowed('/agent-sessions/conv-1/teams/other/mcp', claims)).toBe(false)
     expect(scopedPathAllowed('/agent-sessions/conv-1/kubeconfig', claims)).toBe(false)
     expect(scopedPathAllowed('/teams/team-1/claude-code-runtimes', claims)).toBe(false)
+  })
+})
+
+describe('personalCredentialSender', () => {
+  const mint = (humanTurn?: boolean) =>
+    mintPreviewMcpToken({ userId: 'actor-2', sessionId: 'conv-1', teamId: 'team-1', humanTurn })
+
+  test('names the actor only for a human-message turn', () => {
+    expect(personalCredentialSender(`Bearer ${mint(true)}`)).toBe('actor-2')
+    expect(personalCredentialSender(`Bearer ${mint(false)}`)).toBeNull()
+    expect(personalCredentialSender(`Bearer ${mint()}`)).toBeNull()
+  })
+
+  test('ignores missing, non-bearer and forged tokens', () => {
+    const [head = '', , signature = ''] = mint().split('.')
+    const forged = Buffer.from(JSON.stringify({ sub: 'x', hum: true })).toString('base64url')
+
+    expect(personalCredentialSender(undefined)).toBeNull()
+    expect(personalCredentialSender(mint(true))).toBeNull()
+    expect(personalCredentialSender(`Bearer ${head}.${forged}.${signature}`)).toBeNull()
   })
 })

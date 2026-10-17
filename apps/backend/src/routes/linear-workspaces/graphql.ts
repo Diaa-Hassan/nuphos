@@ -5,8 +5,10 @@ import {
   linearGraphql,
   withLinearAccessToken,
 } from '@/lib/byos/linear'
+import { personalCredentialSender } from '@/lib/claude-code-preview/mcp-token'
 import { AppError } from '@/lib/errors'
 import { parseObjectId } from '@/lib/objectid'
+import { personalLinearToken } from '@/lib/personal-credentials'
 
 import type { LinearWorkspaceVariables } from '@/middleware/auth'
 import type { LinearWorkspaceBinding } from '@/models'
@@ -24,7 +26,13 @@ export function linearReconnectError(): AppError {
 export async function handOutLinearToken(
   teamId: ObjectId,
   binding: LinearWorkspaceBinding,
-): Promise<{ token: string; expiresAt: Date | null }> {
+  authorization?: string,
+): Promise<{ token: string; expiresAt: Date | null; personalLogin?: string }> {
+  // The turn's sender acts as themselves when they connected this workspace.
+  const sender = personalCredentialSender(authorization)
+  const personal = sender ? await personalLinearToken(sender, binding.workspaceId) : null
+
+  if (personal) return { ...personal, personalLogin: personal.login }
   try {
     return await getAccessTokenWithExpiry(teamId, binding)
   } catch (error) {

@@ -29,6 +29,7 @@ import {
   slackPendingOAuth,
   connectorOAuthReady,
 } from '@/models/oauth'
+import { personalCredentialPendingOAuth, personalCredentials } from '@/models/personal-credentials'
 import { teamByosBindings } from '@/models/team'
 
 export async function setupCoreIndexes(): Promise<void> {
@@ -72,6 +73,14 @@ export async function setupCoreIndexes(): Promise<void> {
   await slackPendingOAuth().createIndex(
     { expiresAt: 1 },
     { expireAfterSeconds: 0, name: 'slack_oauth_pending_ttl' },
+  )
+  await personalCredentialPendingOAuth().createIndex(
+    { expiresAt: 1 },
+    { expireAfterSeconds: 0, name: 'personal_credential_oauth_pending_ttl' },
+  )
+  await personalCredentials().createIndex(
+    { userId: 1, provider: 1 },
+    { unique: true, name: 'personal_credentials_user_provider_unique' },
   )
   // A Lark custom app (by app_id) can only be connected to one Nuphos team.
   await teamByosBindings().createIndex(

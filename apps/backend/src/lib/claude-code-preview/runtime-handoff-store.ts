@@ -9,6 +9,8 @@ export type RuntimeHandoff = {
   locale: string
   at: number
   attempts?: number
+  /** The running turn was a member's own message; absent means automated (team credentials). */
+  humanTurn?: boolean
   /** Crash recovery must never start a fresh session or replace a newer turn. */
   abandonedStreamId?: string
 }

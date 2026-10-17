@@ -2,28 +2,6 @@
 import { randomUUID } from 'node:crypto'
 
 import './chat-preview-autonomous-runs'
-import {
-  finishPreviewTurn,
-  persistHandedOffPreviewTurn,
-  persistInterruptedPreviewTurn,
-} from './chat-preview-finish'
-import {
-  CONNECTION_LOST_TOOL_ERROR,
-  HANDED_OFF,
-  HANDED_OFF_TOOL_ERROR,
-  handOffPreviewTurn,
-  handedOff,
-  lostToReattach,
-} from './chat-preview-handoff'
-import { carriedUserMessages, preparePreviewTurn } from './chat-preview-prepare'
-import { createPreviewRunState, createPreviewToolLog } from './chat-preview-run'
-import { handlePreviewToolUpdate } from './chat-preview-tool-update'
-import { appendAgentRunError, appendAgentRunPhase } from './run-frames'
-
-import type { PreviewChatTurnArgs, TurnEnd } from './chat-preview-run'
-import type { PreviewDecision } from '@/lib/claude-code-preview/decision-waiter'
-import type { OpenAbPermissionHandler } from '@/lib/claude-code-preview/openab-acp-session'
-import type { UIMessage } from 'ai'
 
 import { config } from '@/config'
 import { recordLocalRuntimeTurn } from '@/lib/agent/devices/local-runtime/activity'
@@ -49,6 +27,27 @@ import {
 import { createTurnDiagnostics } from '@/lib/claude-code-preview/turn-diagnostics'
 import { desktopTracker } from '@/lib/claude-code-preview/session-desktops'
 import { RunHandoff } from '@/lib/lifecycle'
+import {
+  finishPreviewTurn,
+  persistHandedOffPreviewTurn,
+  persistInterruptedPreviewTurn,
+} from './chat-preview-finish'
+import {
+  CONNECTION_LOST_TOOL_ERROR,
+  HANDED_OFF,
+  HANDED_OFF_TOOL_ERROR,
+  handOffPreviewTurn,
+  handedOff,
+  lostToReattach,
+} from './chat-preview-handoff'
+import { carriedUserMessages, preparePreviewTurn } from './chat-preview-prepare'
+import { createPreviewRunState, createPreviewToolLog } from './chat-preview-run'
+import { handlePreviewToolUpdate } from './chat-preview-tool-update'
+import { appendAgentRunError, appendAgentRunPhase } from './run-frames'
+import type { PreviewChatTurnArgs, TurnEnd } from './chat-preview-run'
+import type { PreviewDecision } from '@/lib/claude-code-preview/decision-waiter'
+import type { OpenAbPermissionHandler } from '@/lib/claude-code-preview/openab-acp-session'
+import type { UIMessage } from 'ai'
 
 export type { PreviewChatTurnArgs } from './chat-preview-run'
 
@@ -89,8 +88,8 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
     consumePreviewMemoryActivity(prepared.memory?.turnMemory.accumulator ?? null, frame),
   )
   const access = previewSessionAccess(sessionId, teamId, actorUserId, userId, {
-    external: args.endpoint.external,
-    backendUrl: args.endpoint.backendUrl,
+    ...args.endpoint,
+    humanTurn: args.humanTurn,
   })
 
   if (args.endpoint.local)

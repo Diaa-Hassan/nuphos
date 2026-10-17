@@ -3,8 +3,10 @@ import { describe, expect, test } from 'bun:test'
 import { useCredentialListing } from '@/lib/test/doubles/claude-code-credential-listing'
 
 import {
+  AUTOMATED_SESSION_ACTOR,
   CREDENTIALS_MCP_SURFACE,
   credentialsMcpTools,
+  isHumanTurnRuntime,
   previewSessionAccess,
   previewSessionEnv,
 } from './credentials-mcp'
@@ -59,13 +61,29 @@ describe('credentialsMcpTools', () => {
   test('names the actor only when a teammate acts in someone else’s conversation', () => {
     const own = previewSessionAccess('conv-1', 'team-1', 'owner', 'owner', {
       backendUrl: 'https://backend.example',
+      humanTurn: true,
     })
     const guest = previewSessionAccess('conv-1', 'team-1', 'guest', 'owner', {
       backendUrl: 'https://backend.example',
+      humanTurn: true,
     })
 
     expect(own.runtimeEnv).not.toHaveProperty('NUPHOS_SESSION_ACTOR')
     expect(guest.runtimeEnv).toMatchObject({ NUPHOS_SESSION_ACTOR: 'guest' })
+  })
+
+  test('automated turns run in their own HOME, whoever the actor is', () => {
+    for (const actor of ['owner', 'guest']) {
+      const automated = previewSessionAccess('conv-1', 'team-1', actor, 'owner', {
+        backendUrl: 'https://backend.example',
+      })
+
+      expect(automated.runtimeEnv).toMatchObject({
+        NUPHOS_SESSION_ACTOR: AUTOMATED_SESSION_ACTOR,
+      })
+      expect(isHumanTurnRuntime({ env: automated.runtimeEnv })).toBe(false)
+    }
+    expect(isHumanTurnRuntime()).toBe(false)
   })
 
   test('surface advertises exactly the two credential tools', () => {

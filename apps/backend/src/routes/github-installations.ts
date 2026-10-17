@@ -14,9 +14,11 @@ import {
   isGithubAppConfigured,
   listInstallationRepositories,
 } from '@/lib/byos/github'
+import { personalCredentialSender } from '@/lib/claude-code-preview/mcp-token'
 import { AppError } from '@/lib/errors'
 import { getNuphosUserById } from '@/lib/identity'
 import { parseObjectId } from '@/lib/objectid'
+import { personalGithubToken } from '@/lib/personal-credentials'
 import { zv } from '@/lib/validate'
 import { requireTeamRole, requireGithubInstallation } from '@/middleware/auth'
 import { teamByosBindings } from '@/models'
@@ -217,22 +219,27 @@ installationScoped.get('/token', requireTeamRole('ADMINISTRATOR', 'EDITOR'), asy
   const installationId = c.get('githubInstallationId')
 
   try {
-    const { token, expiresAt } = await getInstallationToken(
-      installationId,
-      c.get('githubRepositoryId'),
-    )
+    // The turn's sender acts as themselves when they connected a Personal
+    // Credential. A repository-scoped conversation keeps its narrower App token.
+    const repositoryId = c.get('githubRepositoryId')
+    const sender = personalCredentialSender(c.req.header('Authorization'))
+    const personal =
+      sender && !repositoryId ? await personalGithubToken(sender, installationId) : null
+    const { token, expiresAt } =
+      personal ?? (await getInstallationToken(installationId, repositoryId))
 
     // Conversation auth sets userId to the current actor, not the runtime owner.
     const actor = await getNuphosUserById(c.get('userId'))
 
-    c.header('X-Credentials-Expires-At', expiresAt.toISOString())
+    if (expiresAt) c.header('X-Credentials-Expires-At', expiresAt.toISOString())
 
     return c.json({
       token,
-      expiresAt: expiresAt.toISOString(),
+      expiresAt: expiresAt?.toISOString() ?? null,
       commitCoAuthor: actor ? { name: actor.name, email: actor.email } : null,
       installationId,
       accountLogin: c.get('githubAccountLogin'),
+      actor: personal ? { kind: 'personal', login: personal.login } : { kind: 'team' },
     })
   } catch (e) {
     handleGithubError(e, 'Failed to mint installation token')
