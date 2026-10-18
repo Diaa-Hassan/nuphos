@@ -394,12 +394,37 @@ struct ChatComposerBar<Controls: View>: View {
         }
     }
 
-    /// Two buttons, not a menu: opening a menu takes focus from the input,
+    /// Buttons, not a menu: opening a menu takes focus from the input,
     /// which folds an empty composer and takes the menu away with it.
     private var attachButtons: some View {
         HStack(spacing: 0) {
             attachButton("photo", label: "Photos") { showPhotos = true }
             attachButton("paperclip", label: "Files") { showFiles = true }
+            // Not the system PasteButton: it always draws a filled block,
+            // whatever style it is given, and hides when tinted to match.
+            #if canImport(UIKit)
+            attachButton("doc.on.clipboard", label: "Paste") { paste(UIPasteboard.general.itemProviders) }
+            #endif
+        }
+    }
+
+    /// Copied files and images become attachments; copied text, which has
+    /// no name, goes into the draft as if it were pasted there.
+    private func paste(_ providers: [NSItemProvider]) {
+        Task {
+            for provider in providers {
+                if provider.suggestedName == nil,
+                   provider.registeredContentTypes.allSatisfy({ $0.conforms(to: .text) }),
+                   let string = await withCheckedContinuation({ continuation in
+                       _ = provider.loadTransferable(type: String.self) { continuation.resume(returning: try? $0.get()) }
+                   }) {
+                    text += string
+                } else if let attachment = await ComposerAttachment.load(pasted: provider) {
+                    attachments.append(attachment)
+                } else {
+                    attachmentError = "Couldn’t paste this item. Try choosing it from Files."
+                }
+            }
         }
     }
 
