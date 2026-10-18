@@ -4,9 +4,10 @@ import android.app.Activity
 import android.app.Instrumentation
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.ContentValues
 import android.graphics.Bitmap
 import android.graphics.Color
-import android.net.Uri
+import android.provider.MediaStore
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.rememberScrollState
@@ -28,8 +29,9 @@ import org.junit.Test
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.UUID
 
-/** Synthetic responses and app-private documents only. Run in a separate fixture package. */
+/** Synthetic responses and a temporary, owned scoped-storage document. Run in a separate fixture package. */
 class SentAttachmentsFixtureDeviceTest {
     @get:Rule val compose = createComposeRule()
     private val id = "0123456789abcdef01234567"
@@ -61,9 +63,13 @@ class SentAttachmentsFixtureDeviceTest {
 
     @Test fun imageCardsOpenPagerAndDocumentsSaveThroughSystemContract() {
         val instrumentation = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation()
-        val output = File.createTempFile("synthetic-saved-", ".txt", instrumentation.targetContext.cacheDir)
+        val resolver = instrumentation.targetContext.contentResolver
+        val output = requireNotNull(resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, "nuphos-fixture-${UUID.randomUUID()}.txt")
+            put(MediaStore.Downloads.MIME_TYPE, "text/plain")
+        }))
         val monitor = instrumentation.addMonitor(IntentFilter(Intent.ACTION_CREATE_DOCUMENT),
-            Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(Uri.fromFile(output))), true)
+            Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(output)), true)
         try {
             val repo = repository()
             compose.setContent { NuphosTheme { Surface(Modifier.fillMaxSize()) {
@@ -79,10 +85,15 @@ class SentAttachmentsFixtureDeviceTest {
             compose.onNodeWithText("2 / 2").assertIsDisplayed()
             compose.onNodeWithText("Close").performClick()
             compose.onNodeWithText("Save report.txt").performScrollTo().performClick()
-            compose.waitUntil(10000) { output.readText() == "synthetic document" }
+            try {
+                compose.waitUntil(10000) { resolver.openInputStream(output)?.bufferedReader()?.use { it.readText() } == "synthetic document" }
+            } catch (error: Exception) {
+                screenshot("sent-attachment-save-diagnostic")
+                throw AssertionError("Document callback failed; monitor hits=${monitor.hits}", error)
+            }
             assertEquals(1, monitor.hits)
             screenshot("sent-attachment-document-saved")
-        } finally { instrumentation.removeMonitor(monitor); output.delete() }
+        } finally { instrumentation.removeMonitor(monitor); resolver.delete(output, null, null) }
     }
 
     @Test fun unavailableAndStorageFailureShowNamesAndAllowRetryWithoutInternalInstructions() {

@@ -439,7 +439,7 @@ private fun ChatRowView(
             MessageImages(row.images, row.messageId)
             row.uploads.forEach { attachment ->
                 key(attachment.groupId, session) {
-                    TransferCard(attachment, { session.transferGroup(attachment.groupId) }, session.hasAiAccess, { session.hasAiAccess })
+                    TransferCard(attachment, { session.transferGroup(attachment.groupId) }, session.canReadAttachments, { session.canReadAttachments })
                 }
             }
             if (row.text.isNotEmpty()) {

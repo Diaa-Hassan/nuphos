@@ -100,7 +100,7 @@ with size limits, and stop when access is revoked. Temporary previews are remove
 when the card leaves the conversation.
 
 `SentAttachmentsTest` covers transcript projection and wire preservation;
-`TransferDownloadsTest` covers authenticated metadata boundaries and storage failures.
+`TransferDownloadsTest` covers metadata identity/expiry checks and storage failures.
 `SentAttachmentsFixtureDeviceTest` uses synthetic storage and an intercepted document
 picker result, without touching a real account. Run it in a separate fixture package.
 
