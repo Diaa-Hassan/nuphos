@@ -5,7 +5,6 @@ import { regionLabel } from '@/lib/agent/model-provider'
 import { startTraceSpan } from '@/lib/agent/tracing'
 import { resolveConversationChatRuntime } from '@/lib/claude-code-preview/agent-chat-runtime'
 import { conversationExecutionState } from '@/lib/claude-code-preview/session-execution-state'
-import { AppError } from '@/lib/errors'
 import { logEvent } from '@/lib/observability'
 
 import { shouldInitializePermissionMode } from './chat-permission-mode'
@@ -49,9 +48,6 @@ agent.post('/chat', async (c) => {
   const { id } = body
   const teamId = await resolveVerifiedTeamId(c, readTeamIdCandidate(c, body.teamId))
 
-  if (!id || !Array.isArray(body.messages)) {
-    throw new AppError(400, 'invalid_request', 'Body must include { id, messages }')
-  }
   validateChatBody(body)
   const localToolsEnabled = body.clientCapabilities?.localTools === true
   const conversationForResume = body.resume
