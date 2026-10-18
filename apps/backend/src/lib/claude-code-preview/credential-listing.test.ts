@@ -86,6 +86,7 @@ function oneOfEach(): AgentCredentialOptions {
         projects: [{ id: 1, name: 'Web' }],
       },
     ],
+    plaudAccounts: [{ bindingId: ID, label }],
     cloudflareAccounts: [{ accountId: ID, accountName: label }],
     devices: [{ deviceId: ID, label, platform: 'darwin', available: true }],
   }
@@ -103,6 +104,7 @@ const VENDED_CLOUDS = [
   'huaweiAccountIds',
   'cloudflareAccountIds',
   'posthogIntegrationIds',
+  'plaudAccountIds',
 ]
 
 // teamIdentity picks who GitHub/Linear act as; it is not a credential to list.
