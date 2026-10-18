@@ -45,11 +45,17 @@ class SentAttachmentsTest {
 
     @Test fun quotedMalformedCountsIdsAndOrdinaryFilenamesAreNotErased() {
         for (text in listOf("Example: " + instruction(), "\"" + instruction() + "\"", "```\n" + instruction() + "\n```",
-            instruction(count = 3), instruction().replace(id, "../../private"), "Please run transfer-pull.sh and explain attachments")) {
+            instruction(count = 21), instruction().replace(id, "../../private"), "Please run transfer-pull.sh and explain attachments")) {
             val result = TransferUpload.display(listOf(ChatPart.Text(text = text)))
             assertEquals(text, result.text)
             assertTrue(result.uploads.isEmpty())
         }
+    }
+
+    @Test fun legacyFilenamesContainingCommasStillResolveToAnAttachmentCard() {
+        val display = TransferUpload.display(listOf(ChatPart.Text(text = instruction("report, draft.txt", 1))))
+        assertEquals("", display.text)
+        assertEquals(listOf("report, draft.txt"), display.uploads.single().names)
     }
 
     @Test fun malformedMetadataDoesNotCreateFetchableGroups() {

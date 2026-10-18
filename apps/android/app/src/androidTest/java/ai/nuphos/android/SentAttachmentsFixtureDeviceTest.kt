@@ -68,7 +68,10 @@ class SentAttachmentsFixtureDeviceTest {
             put(MediaStore.Downloads.DISPLAY_NAME, "nuphos-fixture-${UUID.randomUUID()}.txt")
             put(MediaStore.Downloads.MIME_TYPE, "text/plain")
         }))
-        val monitor = instrumentation.addMonitor(IntentFilter(Intent.ACTION_CREATE_DOCUMENT),
+        val monitor = instrumentation.addMonitor(IntentFilter(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            addDataType("*/*")
+        },
             Instrumentation.ActivityResult(Activity.RESULT_OK, Intent().setData(output)), true)
         try {
             val repo = repository()
@@ -77,6 +80,15 @@ class SentAttachmentsFixtureDeviceTest {
             } } }
             loaded()
             screenshot("sent-attachment-card")
+            compose.onNodeWithText("Save report.txt").performScrollTo().performClick()
+            try {
+                compose.waitUntil(10000) { runCatching { resolver.openInputStream(output)?.bufferedReader()?.use { it.readText() } }.getOrNull() == "synthetic document" }
+            } catch (error: Throwable) {
+                screenshot("sent-attachment-save-diagnostic")
+                throw AssertionError("Document callback failed; monitor hits=${monitor.hits}", error)
+            }
+            assertEquals(1, monitor.hits)
+            screenshot("sent-attachment-document-saved")
             compose.onNodeWithContentDescription("Image 1 of 2").performClick()
             compose.waitUntil(10000) { compose.onAllNodesWithText("Loading image").fetchSemanticsNodes().isEmpty() }
             compose.onNodeWithText("1 / 2").assertIsDisplayed()
@@ -84,15 +96,7 @@ class SentAttachmentsFixtureDeviceTest {
             compose.onNodeWithText("Next image").performClick()
             compose.onNodeWithText("2 / 2").assertIsDisplayed()
             compose.onNodeWithText("Close").performClick()
-            compose.onNodeWithText("Save report.txt").performScrollTo().performClick()
-            try {
-                compose.waitUntil(10000) { resolver.openInputStream(output)?.bufferedReader()?.use { it.readText() } == "synthetic document" }
-            } catch (error: Exception) {
-                screenshot("sent-attachment-save-diagnostic")
-                throw AssertionError("Document callback failed; monitor hits=${monitor.hits}", error)
-            }
-            assertEquals(1, monitor.hits)
-            screenshot("sent-attachment-document-saved")
+            compose.onNodeWithText("2 / 2").assertDoesNotExist()
         } finally { instrumentation.removeMonitor(monitor); resolver.delete(output, null, null) }
     }
 

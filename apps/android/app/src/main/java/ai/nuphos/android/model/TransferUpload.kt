@@ -33,8 +33,12 @@ data class TransferUpload(val groupId: String, val names: List<String>) {
                     (match.range.first > 0 && part.text[match.range.first - 1] != '\n')) return@joinToString part.text
                 val count = match.groupValues[1].toIntOrNull() ?: return@joinToString part.text
                 val group = match.groupValues[2]
-                val names = uploads[group]?.names ?: match.groupValues[3].split(", ")
-                if (count != names.size || count !in 1..20 || names.any { it.isBlank() || it.length > 512 }) return@joinToString part.text
+                val names = uploads[group]?.names ?: match.groupValues[3].split(", ").let {
+                    // Legacy filenames were joined without escaping commas. The API
+                    // supplies authoritative names; keep the original label until it loads.
+                    if (it.size == count) it else listOf(match.groupValues[3])
+                }
+                if (count !in 1..20 || names.any { it.isBlank() || it.length > 10_240 }) return@joinToString part.text
                 uploads.putIfAbsent(group, TransferUpload(group, names))
                 part.text.substring(0, match.range.first).trimEnd()
             }.trim()
