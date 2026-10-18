@@ -1,0 +1,40 @@
+{
+  "permission-denied.json": {
+    "passed": true,
+    "newFiles": 0,
+    "realMicrophone": true,
+    "networkRequests": 0,
+    "audioExported": false
+  },
+  "controller-error.json": {
+    "passed": true,
+    "localStubCalls": 1,
+    "appended": false,
+    "audioDeleted": true,
+    "realMicrophone": true,
+    "networkRequests": 0,
+    "audioExported": false
+  },
+  "finish-aac.json": {
+    "passed": true,
+    "mime": "audio/mp4a-latm",
+    "sampleRate": 16000,
+    "channels": 1,
+    "durationUs": 1280000,
+    "bytesBeforeDeletion": 39201,
+    "peakLevel": 0.045655690133571625,
+    "audioDeleted": true,
+    "realMicrophone": true,
+    "networkRequests": 0,
+    "audioExported": false
+  },
+  "cancel-release.json": {
+    "passed": true,
+    "takes": 2,
+    "audioDeleted": true,
+    "nextRecorderStarted": true,
+    "realMicrophone": true,
+    "networkRequests": 0,
+    "audioExported": false
+  }
+}
