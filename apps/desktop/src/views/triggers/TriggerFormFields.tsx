@@ -1,7 +1,10 @@
 import clsx from 'clsx'
 import { AlertTriangle, Clock, Loader2, Webhook } from 'lucide-react'
 
+import { useEffect, useState } from 'react'
+
 import { api } from '../../api'
+import { AppSelect } from '../../components/ui/select'
 import { toast } from '../../components/ui/toast'
 
 import { CronBuilder } from './CronBuilder'
@@ -17,6 +20,8 @@ export function TriggerFormFields({
   setLoaded,
   form,
   setForm,
+  teamId,
+  currentUserId,
   canManage,
   canDelete,
   cronEnabled,
@@ -28,6 +33,8 @@ export function TriggerFormFields({
   setLoaded: (trigger: AgentTrigger) => void
   form: FormState
   setForm: React.Dispatch<React.SetStateAction<FormState>>
+  teamId?: string
+  currentUserId?: string
   canManage: boolean
   canDelete: boolean
   cronEnabled: boolean | null
@@ -93,7 +100,7 @@ export function TriggerFormFields({
           onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))}
           maxLength={100}
           placeholder="Daily standup summary"
-          className="w-full h-8 px-2.5 rounded-md bg-field border border-zGray-800 text-[13px] text-main focus:outline-none focus:border-zViolet-500"
+          className="w-full h-8 px-2.5 rounded-md bg-surface border border-zGray-800 text-[13px] text-main focus:outline-none focus:border-zViolet-500"
         />
       </Field>
 
@@ -147,6 +154,15 @@ export function TriggerFormFields({
         </>
       )}
 
+      {teamId && canBind(mode, loaded, currentUserId) && (
+        <DeliverToField
+          teamId={teamId}
+          value={form.targetSessionId}
+          disabled={!canManage}
+          onChange={(targetSessionId) => setForm((f) => ({ ...f, targetSessionId }))}
+        />
+      )}
+
       <Field
         label="Message template"
         htmlFor="trigger-message-template"
@@ -170,9 +186,81 @@ export function TriggerFormFields({
               ? 'A deploy just finished: {{payload.event}}. Investigate the latest commits.'
               : 'Summarise yesterday’s open PRs across our repos.'
           }
-          className="w-full min-h-[220px] resize-y px-2.5 py-2 rounded-md bg-field border border-zGray-800 text-[13px] leading-relaxed text-main focus:outline-none focus:border-zViolet-500"
+          className="w-full min-h-[220px] resize-y px-2.5 py-2 rounded-md bg-surface border border-zGray-800 text-[13px] leading-relaxed text-main focus:outline-none focus:border-zViolet-500"
         />
       </Field>
     </>
+  )
+}
+
+/**
+ * A bound fire runs with the session's own credentials, so only the trigger's
+ * principal may pick one, and never on a routed, grouped or incident trigger.
+ */
+function canBind(mode: 'create' | 'edit', loaded: AgentTrigger | null, viewerId?: string) {
+  if (mode === 'create') return true
+  if (!loaded || loaded.watchGroupId || loaded.incidentMode || loaded.sessionRouting) return false
+
+  return (loaded.executionPrincipalUserId ?? loaded.createdByUserId ?? loaded.userId) === viewerId
+}
+
+const NEW_CONVERSATION = { value: '', label: 'A new conversation each fire' }
+
+/** Where a fire lands: a fresh run, or one of the viewer's own sessions. */
+function DeliverToField({
+  teamId,
+  value,
+  disabled,
+  onChange,
+}: {
+  teamId: string
+  value: string
+  disabled: boolean
+  onChange: (sessionId: string) => void
+}) {
+  const [sessions, setSessions] = useState<{ value: string; label: string }[]>([])
+
+  useEffect(() => {
+    let cancelled = false
+
+    api
+      .agentListConversations(teamId, { scope: 'mine', limit: 50, archived: 'exclude' })
+      .then((page) => {
+        if (!cancelled)
+          setSessions(
+            page.conversations.map((c) => ({ value: c.sessionId, label: c.title || 'Untitled' })),
+          )
+      })
+      .catch((err: unknown) => toast.apiError('Could not load your sessions', err))
+
+    return () => {
+      cancelled = true
+    }
+  }, [teamId])
+
+  const options = [NEW_CONVERSATION, ...sessions]
+
+  // A bound session older than the first page still has to read as itself.
+  if (value && !sessions.some((s) => s.value === value))
+    options.push({ value, label: 'Current session (not in your recent 50)' })
+
+  return (
+    <Field
+      label="Deliver to"
+      htmlFor="trigger-deliver-to"
+      hint={
+        value
+          ? 'Each fire is posted into this session as an event. While it is busy, fires wait and run once after the current turn.'
+          : 'Each fire starts its own conversation, listed under this trigger.'
+      }
+    >
+      <AppSelect
+        id="trigger-deliver-to"
+        value={value}
+        options={options}
+        disabled={disabled}
+        onValueChange={onChange}
+      />
+    </Field>
   )
 }

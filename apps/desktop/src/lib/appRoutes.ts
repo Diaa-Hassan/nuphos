@@ -18,6 +18,7 @@ import {
 } from './app-routes/parseShared.ts'
 import { pageLocationForNavigation } from './app-routes/producer.ts'
 import { connectorsNavigation, infraNavigation } from './app-routes/providerParse.ts'
+import { parseDesktopFilter } from './desktopScreens.ts'
 
 import type { Scope } from '../types'
 import type { NavigationSnapshot } from './app-routes/types.ts'
@@ -56,15 +57,6 @@ export type {
   TriggerFormRef,
 } from './app-routes/types.ts'
 
-/**
- * Parse an in-app path (or full nuphos.ai URL) into a NavigationSnapshot.
- *
- * Covers every path `pageLocationForNavigation` can emit, plus legacy inbound
- * aliases (/settings, /settings/integrations/…, pre-rename provider segments).
- * Names the URL doesn't carry (diagram titles, Grafana instance names, GitHub
- * repo metadata, …) are stubbed and refined by the view after load — same
- * contract as navigationFromMentionTarget.
- */
 /**
  * Path segments that follow `/teams/<id>/agent/` and are *pages*, not agent
  * session ids. Anything not listed here is read as a session id — by this
@@ -135,8 +127,14 @@ export function navigationFromAppPath(path: string): NavigationSnapshot | null {
       return emptyNavigation(teamScope, 'team.files', { filter: query.get('path') || undefined })
     case 'terminal':
       return emptyNavigation(teamScope, 'team.terminal', rest[1] ? { filter: rest[1] } : {})
+    case 'desktop':
+      // Only a Box desktop has an address: a session's display opens as its conversation's
+      // own dock tab, never from a path. Anything else lands on the Boxes, on Agents.
+      return rest[1] && parseDesktopFilter(rest[1]).kind === 'box'
+        ? emptyNavigation(teamScope, 'team.desktop', { filter: rest[1] })
+        : emptyNavigation(teamScope, 'team.agents')
     case 'browser':
-      return emptyNavigation(teamScope, 'team.browser', {
+      return emptyNavigation(teamScope, `team.${rest[0]}`, {
         browserUrl: query.get('url') || undefined,
       })
     case 'monitoring':

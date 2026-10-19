@@ -1,6 +1,8 @@
 import { Loader2 } from 'lucide-react'
+import { useMemo } from 'react'
 
 import { api } from '../../../api'
+import { useCurrentUser } from '../../../hooks/useCurrentUser'
 import { track } from '../../../lib/analytics'
 import { runtimeIsExecuting, runtimeAllows } from '../../../lib/runtimeExecution'
 import { toast } from '../../ui/toast'
@@ -8,15 +10,19 @@ import { PermissionResumeContext } from '../permissionResumeContext'
 
 import { Composer } from './Composer'
 import { composerDraftKey } from './composerDrafts'
+import { sentHistory } from './composerRecall'
 import { ConnectCardContext } from './connectCardContext'
 import { Conversation } from './Conversation'
 import { ConversationReveal } from './ConversationReveal'
 import { useConversationRuntimeControl } from './conversationRuntimeControl'
 import { DelayedPanelReveal } from './homeAnimation'
+import { canEditMessage } from './messageEdit'
 import { AuthorizationActionContext } from './parts'
+import { waitingMessages } from './queuedAutoSend'
 import { QueuedStrip } from './QueuedStrip'
 
 import type { PanelViewCtx } from './ctx'
+import type { Message } from './model'
 
 // The home page lives next door; re-exported so call sites keep one import.
 export { PanelHomePage } from './panelHomeView'
@@ -29,6 +35,7 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
     bypassBySession,
     conversationDropRef,
     dockCurrentSession,
+    forkConversation,
     onDockToSidebar,
     handleMessageFeedback,
     handleRejectPlan,
@@ -40,6 +47,7 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
     onPromptConsumed,
     pendingPromptReady,
     removeQueued,
+    retractLatest,
     steerQueued,
     resumePermissionTurn,
     selectBypassMode,
@@ -52,6 +60,27 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
     visibleConversationCredentialSelector,
   } = c
   const { runtimeControl } = useConversationRuntimeControl(c)
+  // The fork needs the chat stored on the server; each message is then gated on its author.
+  const editableSessionId =
+    activeTab && !activeTab.readOnly && !activeTab.unsaved ? activeTab.sessionId : undefined
+  const foreignChat = Boolean(activeTab?.foreign)
+  const currentUserId = useCurrentUser()?.id
+  const activeMessages = activeTab?.messages
+  const history = useMemo(
+    () => sentHistory(activeMessages ?? [], currentUserId, foreignChat),
+    [activeMessages, currentUserId, foreignChat],
+  )
+  const editMessage = useMemo(
+    () =>
+      editableSessionId
+        ? {
+            allowed: (message: Message) => canEditMessage(message, currentUserId, foreignChat),
+            edit: (messageId: string, text: string) =>
+              void forkConversation(editableSessionId, { messageId, text }),
+          }
+        : undefined,
+    [currentUserId, editableSessionId, foreignChat, forkConversation],
+  )
   const modelSession =
     activeTab?.sessionId && !activeTab.foreign && teamId
       ? {
@@ -135,15 +164,16 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
                   activePlanCanAct={activePlanCanAct}
                   onOpenNuphosLink={onOpenNuphosLink}
                   onOpenAgentSettings={onOpenAgentSettings}
+                  onEditMessage={editMessage}
                 />
               </ConnectCardContext.Provider>
             </div>
             <div className="col-start-1 row-start-2 z-10">
-              {activeTab.queued && activeTab.queued.length > 0 && (
+              {waitingMessages(activeTab).length > 0 && (
                 <QueuedStrip
-                  items={activeTab.queued}
+                  items={waitingMessages(activeTab)}
                   canSteer={runtimeAllows(activeTab.runtimeState, 'steer')}
-                  onRemove={(queuedId) => removeQueued(activeTab.id, queuedId)}
+                  onRemove={(queuedId) => void removeQueued(activeTab.id, queuedId)}
                   onSteer={(queuedId) => void steerQueued(activeTab.id, queuedId)}
                   sidebar={isSidebarMode}
                 />
@@ -168,6 +198,7 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
                     sidebar={isSidebarMode}
                     dropRegisterRef={conversationDropRef}
                     draftKey={composerDraftKey(teamId, activeTab.sessionId)}
+                    recall={{ retract: retractLatest, history: [] }}
                     mentionScope={teamId ? { teamId, sessionId: inviteSessionId } : undefined}
                   />
                 </DelayedPanelReveal>
@@ -196,6 +227,7 @@ export function PanelConversationPage({ c }: { c: PanelViewCtx }) {
                   sidebar={isSidebarMode}
                   dropRegisterRef={conversationDropRef}
                   draftKey={composerDraftKey(teamId, activeTab.sessionId)}
+                  recall={{ retract: retractLatest, history }}
                   mentionScope={teamId ? { teamId, sessionId: inviteSessionId } : undefined}
                 />
               )}

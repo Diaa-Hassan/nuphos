@@ -48,7 +48,8 @@ android {
             buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
         }
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -93,6 +94,7 @@ dependencies {
     implementation(libs.androidx.browser)
     implementation(libs.androidx.security.crypto)
     implementation(libs.okhttp)
+    implementation(libs.coil.svg)
     implementation(libs.coil.compose)
     implementation(libs.coil.network.okhttp)
     implementation(libs.kotlinx.serialization.json)
@@ -115,4 +117,16 @@ dependencies {
 tasks.withType<Test>().configureEach {
     forkEvery = 1
     maxParallelForks = 1
+}
+
+// Debug builds may omit Firebase, but shipping variants must include the reviewed client config.
+val verifyReleaseFirebaseConfig by tasks.registering {
+    val config = layout.projectDirectory.file("google-services.json")
+    inputs.files(config)
+    doLast {
+        check(config.asFile.isFile) { "Release requires app/google-services.json" }
+    }
+}
+tasks.matching { it.name == "preReleaseBuild" }.configureEach {
+    dependsOn(verifyReleaseFirebaseConfig)
 }

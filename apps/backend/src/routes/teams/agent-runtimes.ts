@@ -1,6 +1,7 @@
 import { upgradeWebSocket } from 'hono/bun'
 import { z } from 'zod'
 
+import { boxUpdateStatus } from '@/lib/claude-code-preview/box-update'
 import { localRuntimeStatus } from '@/lib/claude-code-preview/local-runtime-catalog'
 import { isAllowedRemoteOpenAbUrl } from '@/lib/claude-code-preview/runtime-backend-url'
 import {
@@ -23,6 +24,11 @@ import {
 import { claudeCodePreviewRuntimeStatus } from '@/lib/claude-code-preview/runtime-status'
 import { offeredSessionConfig } from '@/lib/claude-code-preview/session-config'
 import { sessionConfigPickSchema } from '@/lib/claude-code-preview/session-config-options'
+import {
+  openRuntimeDesktop,
+  runtimeDesktopEvents,
+  runtimeDesktopTarget,
+} from '@/lib/claude-code-preview/runtime-desktop'
 import {
   runtimeTerminalTarget,
   runtimeTerminalEvents,
@@ -81,6 +87,24 @@ export function registerAgentRuntimeRoutes(teamScoped: Hono<{ Variables: TeamAut
       c as unknown as Context,
       runtimeTerminalEvents(target, { cols: c.req.query('cols'), rows: c.req.query('rows') }),
     )
+  })
+
+  teamScoped.post('/runtime-desktop/:sessionId', async (c) =>
+    c.json(await openRuntimeDesktop(c.get('teamId'), c.get('userId'), c.req.param('sessionId'))),
+  )
+
+  teamScoped.get('/runtime-desktop/:sessionId/:display', async (c) => {
+    const target = await runtimeDesktopTarget(
+      c.get('teamId'),
+      c.get('userId'),
+      c.req.param('sessionId'),
+      c.req.param('display'),
+    )
+
+    if (c.req.header('upgrade')?.toLowerCase() !== 'websocket')
+      throw new AppError(426, 'upgrade_required', 'Connect with a WebSocket')
+
+    return upgradeWebSocket(c as unknown as Context, runtimeDesktopEvents(target))
   })
 
   teamScoped.get('/agent-runtimes', async (c) => {
@@ -145,7 +169,14 @@ export function registerAgentRuntimeRoutes(teamScoped: Hono<{ Variables: TeamAut
       c.get('userId'),
     )
 
-    if (instance.kind === 'local') return c.json(await localRuntimeStatus(instance.id))
+    if (instance.kind === 'local') {
+      const runtimeUpdate = await boxUpdateStatus(instance.id)
+
+      return c.json({
+        ...(await localRuntimeStatus(instance.id)),
+        ...(runtimeUpdate ? { runtimeUpdate } : {}),
+      })
+    }
 
     const status = await claudeCodePreviewRuntimeStatus(
       c.get('teamId'),
@@ -163,9 +194,14 @@ export function registerAgentRuntimeRoutes(teamScoped: Hono<{ Variables: TeamAut
     '/agent-runtimes/:runtimeId/update',
     requireTeamRole('ADMINISTRATOR'),
     async (c) => {
-      const instance = await requireRuntimeInstance(c.get('teamId'), c.req.param('runtimeId'))
+      // With the actor, so a Box's agents (local runtimes) are found as well.
+      const instance = await requireRuntimeInstance(
+        c.get('teamId'),
+        c.req.param('runtimeId'),
+        c.get('userId'),
+      )
 
-      return c.json(await requestRuntimeUpdate(c.get('teamId'), instance), 202)
+      return c.json(await requestRuntimeUpdate(c.get('teamId'), instance, c.get('userId')), 202)
     },
   )
 

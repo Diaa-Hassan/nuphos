@@ -2,6 +2,8 @@ import { createHmac } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 
+import { envValue } from './agent-cli-apps.ts'
+
 import type { LocalAgentProvider } from './agent-cli.ts'
 
 export type LocalAgentAdapter = {
@@ -35,6 +37,8 @@ export type LocalRuntimeLaunch = {
   authKey: string
   /** The user's own login environment, filtered to what a coding agent needs. */
   env: NodeJS.ProcessEnv
+  /** A machine Nuphos made (a Box, a managed runtime's pod), never a person's computer. */
+  ownsMachine?: boolean
 }
 
 const AGENT_ENV_PASSTHROUGH = [
@@ -61,6 +65,10 @@ const AGENT_ENV_PASSTHROUGH = [
   'SystemRoot',
   'ComSpec',
   'PATHEXT',
+  // A Linux Box with a desktop pool: the adapter adds a per-session nuphos-desktop server.
+  'NUPHOS_DESKTOP_SESSION',
+  'NUPHOS_DESKTOP_POOL',
+  'NUPHOS_DESKTOP_POOL_SIZE',
 ]
 
 /** Must match `deriveRuntimeControlKey` in the backend and `nuphos-runtime-start`. */
@@ -96,7 +104,8 @@ function providerEnv(launch: AgentCliLaunch): Record<string, string> {
 export function agentCliEnv(launch: AgentCliLaunch): Record<string, string> {
   const passthrough = Object.fromEntries(
     AGENT_ENV_PASSTHROUGH.flatMap((key) => {
-      const value = launch.env[key]
+      // A copied Windows environment keeps its own casing, such as Path.
+      const value = envValue(launch.env, key)
 
       return value ? [[key, value]] : []
     }),
@@ -133,9 +142,54 @@ export function openabConfigToml(launch: LocalRuntimeLaunch): string {
   ].join('\n')
 }
 
+/**
+ * The agent's own sign-in, run by openab when Nuphos asks (the same dialog as a
+ * cloud agent). openab's child inherits openab's env, so this carries only the
+ * command and the provider's config-dir variables, so the login lands in the
+ * runtime's own login. `OPENAB_RUNTIME_LOGIN_COMMAND` is whitespace-split argv, so
+ * a CLI path with a space cannot be expressed; such a computer keeps signing in
+ * from its own UI.
+ */
+export function agentLoginEnv(launch: LocalRuntimeLaunch): Record<string, string> {
+  const wrapper = path.join(
+    launch.bundle.root,
+    `${launch.provider === 'codex' ? 'codex' : 'claude'}-login.mjs`,
+  )
+  const cliEnv = agentCliEnv(launch)
+
+  if (!existsSync(wrapper) || /\s/u.test(launch.nodeExecPath + wrapper)) return {}
+  // openab's own HOME is isolated; a macOS login still needs the user's Keychain.
+  const home = launch.env.HOME ?? ''
+
+  if (process.platform === 'darwin' && (!home || /\s/u.test(home))) return {}
+  const prefix =
+    process.platform === 'darwin' ? ['/usr/bin/env', `HOME=${home}`, `USERPROFILE=${home}`] : []
+
+  return {
+    ...cliEnv,
+    ...(launch.provider === 'codex'
+      ? { CODEX_EXECUTABLE: launch.cliPath, NUPHOS_CODEX_AUTH_DIRECTORY: launch.agentHome }
+      : {}),
+    OPENAB_RUNTIME_LOGIN_COMMAND: [
+      ...prefix,
+      launch.nodeExecPath,
+      wrapper,
+      ...(launch.provider === 'codex' ? ['--install'] : []),
+    ].join(' '),
+  }
+}
+
+/** The agent's own sign-in command: Claude's browser flow, Codex's device flow. */
+export function agentSignInArgs(provider: LocalAgentProvider): string[] {
+  return provider === 'codex'
+    ? ['-c', 'cli_auth_credentials_store="file"', 'login', '--device-auth']
+    : ['auth', 'login', '--claudeai']
+}
+
 /** openab listens on loopback only; the backend reaches it through the desktop's tunnel. */
 export function openabEnv(launch: LocalRuntimeLaunch): Record<string, string> {
   return {
+    ...agentLoginEnv(launch),
     PATH: launch.env.PATH ?? process.env.PATH ?? '',
     ...(launch.env.USER ? { USER: launch.env.USER } : {}),
     ...(launch.env.SystemRoot ? { SystemRoot: launch.env.SystemRoot } : {}),
@@ -161,19 +215,36 @@ export function openabEnv(launch: LocalRuntimeLaunch): Record<string, string> {
 }
 
 /**
- * The backend's fixed attachment program, bundled, as this runtime's only job: a turn's
- * files arrive as a list of signed URLs and no program text crosses the wire. openab
- * clears a job's environment and splits its command on whitespace, so Electron's
- * run-as-Node switch rides in through `env`. Where that cannot work the job is left
- * out, and the backend reports the runtime as unable to take attachments.
+ * The jobs this runtime offers. Everywhere: the backend's fixed attachment program, bundled,
+ * so a turn's files arrive as a list of signed URLs and no program text crosses the wire. On a
+ * machine Nuphos made, also `panel`, which runs the script the backend sends, as the runtime
+ * image does; never on a person's computer. openab clears a job's environment and splits its
+ * command on whitespace, so Electron's run-as-Node switch rides in through `env`. A job that
+ * cannot run that way is left out, and the backend reports the runtime as unable to do it.
  */
 function runtimeJobs(launch: LocalRuntimeLaunch): Record<string, string> {
-  const program = path.join(launch.bundle.root, 'attachment-job.mjs')
-  const argv = ['/usr/bin/env', 'ELECTRON_RUN_AS_NODE=1', launch.nodeExecPath, program]
+  const program = (file: string) => path.join(launch.bundle.root, file)
+  const job = (name: string, ...args: string[]) => ({
+    name,
+    argv: ['/usr/bin/env', 'ELECTRON_RUN_AS_NODE=1', launch.nodeExecPath, ...args],
+    program: args.at(-1) ?? '',
+  })
+  const jobs = [
+    job('attachments', program('attachment-job.mjs')),
+    ...(launch.ownsMachine
+      ? [job('panel', '--max-old-space-size=512', program('panel-job.mjs'))]
+      : []),
+  ].filter(({ argv, program }) => !argv.some((arg) => /\s/.test(arg)) && existsSync(program))
 
-  return process.platform === 'win32' || argv.some((arg) => /\s/.test(arg)) || !existsSync(program)
-    ? {}
-    : { OPENAB_RUNTIME_JOBS: `attachments=${argv.join(' ')}` }
+  if (process.platform === 'win32' || jobs.length === 0) return {}
+
+  return {
+    OPENAB_RUNTIME_JOBS: jobs.map(({ name, argv }) => `${name}=${argv.join(' ')}`).join(';'),
+    // The dashboard panel execution budget, as in the runtime image.
+    ...(jobs.some(({ name }) => name === 'panel')
+      ? { OPENAB_RUNTIME_JOB_MAX_TIMEOUT_MS: '300000' }
+      : {}),
+  }
 }
 
 type Manifest = {

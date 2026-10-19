@@ -1,10 +1,14 @@
 import { Hono } from 'hono'
 import { z } from 'zod'
 
+import { boxUsageView } from '@/lib/agent/devices/box-instabox-limit'
+import { listBoxUsageHistory } from '@/lib/agent/devices/box-usage-history'
 import { ACTIVITY_RANGES, getTeamActivity } from '@/lib/agent/team-activity'
 import { getTeamUsageSeries } from '@/lib/agent/usage-summary'
+import { QUOTA_HISTORY_RANGES } from '@/lib/claude-code-preview/runtime-quota-history'
 import { zv } from '@/lib/validate'
 import { requireTeamMember } from '@/middleware/auth'
+import { connectorOAuthRoutes } from '@/routes/connector-oauth'
 import { agentTriggersRoutes } from '@/routes/agent-triggers'
 import { aliyunAccountsRoutes } from '@/routes/aliyun-accounts'
 import { architectureDiagramsRoutes } from '@/routes/architecture-diagrams'
@@ -36,6 +40,7 @@ import { monitoringRoutes } from '@/routes/monitoring'
 import { notionIntegrationsRoutes } from '@/routes/notion-integrations'
 import { onpremClustersRoutes } from '@/routes/onprem-clusters'
 import { permissionGrantProposalsRoutes } from '@/routes/permission-grant-proposals'
+import { plaudAccountsRoutes } from '@/routes/plaud-accounts'
 import { posthogIntegrationsRoutes } from '@/routes/posthog-integrations'
 import { resendIntegrationsRoutes } from '@/routes/resend-integrations'
 import { secureframeIntegrationsRoutes } from '@/routes/secureframe-integrations'
@@ -100,6 +105,20 @@ teamScoped.get('/agent-activity', zv('query', activityQuerySchema), async (c) =>
 )
 // Read-only compatibility for saved dashboard scripts and older desktop clients.
 teamScoped.get('/billing/usage', async (c) => c.json(await getTeamUsageSeries(c.get('teamId'))))
+// The team's Box vCPU limit and use, for the Boxes section.
+teamScoped.get('/box-usage', async (c) => c.json(await boxUsageView(c.get('teamId'))))
+teamScoped.get(
+  '/box-usage/history',
+  zv(
+    'query',
+    z.object({
+      range: z
+        .enum(Object.keys(QUOTA_HISTORY_RANGES) as [keyof typeof QUOTA_HISTORY_RANGES])
+        .default('1d'),
+    }),
+  ),
+  async (c) => c.json(await listBoxUsageHistory(c.get('teamId'), c.req.valid('query').range)),
+)
 teamScoped.route('/favorites', sidebarFavoritesRoutes)
 teamScoped.route('/home-layout', homeLayoutRoutes)
 teamScoped.route('/instructions', instructionsRoutes)
@@ -145,7 +164,9 @@ teamScoped.route('/notion-integrations', notionIntegrationsRoutes)
 teamScoped.route('/upstash-accounts', upstashAccountsRoutes)
 teamScoped.route('/resend-integrations', resendIntegrationsRoutes)
 teamScoped.route('/posthog-integrations', posthogIntegrationsRoutes)
+teamScoped.route('/plaud-accounts', plaudAccountsRoutes)
 teamScoped.route('/connectors', teamConnectorsRoutes)
+teamScoped.route('/connector-oauth', connectorOAuthRoutes)
 teamScoped.route('/monitoring', monitoringRoutes)
 teamScoped.route('/file-transfers', fileTransfersRoutes)
 teamScoped.route('/skills', teamSkillsRoutes)

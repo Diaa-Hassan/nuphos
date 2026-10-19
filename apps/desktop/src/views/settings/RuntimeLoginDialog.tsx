@@ -1,9 +1,9 @@
 import { Modal } from '../../components/Modal'
+import { Button } from '../../components/ui/button'
 import { toast } from '../../components/ui/toast'
 import { AGENT_PROVIDER } from '../../types/runtime'
 
 import { RuntimeLoginBody } from './RuntimeLoginBody'
-import { loginButtonClasses as buttonClass } from './styles'
 import { useRuntimeLogin } from './useRuntimeLogin'
 
 import type { RuntimeInstance } from '../../types/runtime'
@@ -11,20 +11,29 @@ import type { RuntimeInstance } from '../../types/runtime'
 export function RuntimeLoginDialog({
   teamId,
   instance,
+  immediate,
   onClose,
 }: {
   teamId: string
   instance: RuntimeInstance
-  onClose: () => void
+  /** Start sign-in right away; the backend waits for an agent that is still starting. */
+  immediate?: boolean
+  /** `connected` is true when the sign-in succeeded. */
+  onClose: (connected: boolean) => void
 }) {
   const account = AGENT_PROVIDER[instance.provider].account
-  const state = useRuntimeLogin(teamId, instance, () => {
-    toast.success(`${account} connected`, `${instance.label} is now signed in.`)
-    onClose()
-  })
+  const state = useRuntimeLogin(
+    teamId,
+    instance,
+    () => {
+      toast.success(`${account} connected`, `${instance.label} is now signed in.`)
+      onClose(true)
+    },
+    immediate,
+  )
 
   async function close() {
-    if (await state.cancel()) onClose()
+    if (await state.cancel()) onClose(false)
   }
 
   return (
@@ -39,9 +48,9 @@ export function RuntimeLoginDialog({
         <RuntimeLoginBody instance={instance} state={state} />
         <div className="flex items-center gap-3">
           {state.failed && (
-            <button type="button" onClick={state.restart} className={buttonClass}>
+            <Button size="sm" type="button" onClick={state.restart}>
               Try again
-            </button>
+            </Button>
           )}
           <button
             type="button"

@@ -1,4 +1,4 @@
-import { useCallback } from 'react'
+import { useCallback, useEffect } from 'react'
 
 import { hydrateNavigationCredentialState } from '../../app/accountScopes'
 import { navigationFromMentionTarget } from '../../app/mentionNavigation'
@@ -70,7 +70,6 @@ export function useWorkspaceLinkOpeners(a: Args) {
     accounts,
     openInChat,
     openConversationInNewTab,
-    setFirstRunPanelOpen,
   } = a
   const openSessionBeside = useWorkspacePane()?.openSessionBeside
 
@@ -79,8 +78,7 @@ export function useWorkspaceLinkOpeners(a: Args) {
 
     if (!teamId) return
     workspaceActions.openTab(createWorkspaceTab(teamId), { openDock: true })
-    setFirstRunPanelOpen(false)
-  }, [setFirstRunPanelOpen, workspaceActions, workspaceStore])
+  }, [workspaceActions, workspaceStore])
 
   const openNuphosLinkInNewTab = useCallback(
     (href: string, beside = false): boolean => {
@@ -137,7 +135,6 @@ export function useWorkspaceLinkOpeners(a: Args) {
         (item) => pageLocationForTab(item).href === targetHref,
       )
 
-      setFirstRunPanelOpen(false)
       if (existing) {
         updateTab(existing.id, (tab) => retargetWorkspaceTabToNavigation(tab, hydratedNavigation))
         workspaceActions.activateTab(existing.id)
@@ -158,12 +155,23 @@ export function useWorkspaceLinkOpeners(a: Args) {
       accountsByTeam,
       openConversationInNewTab,
       openSessionBeside,
-      setFirstRunPanelOpen,
       updateTab,
       workspaceActions,
       workspaceStore,
     ],
-  )
+  ) // Views outside the workspace (Settings) ask for an in-app tab with this event.
+
+  useEffect(() => {
+    const open = (event: Event) => {
+      const href = (event as CustomEvent<string>).detail
+
+      if (typeof href === 'string') openNuphosLinkInNewTab(href)
+    }
+
+    window.addEventListener('nuphos:open-in-app', open)
+
+    return () => window.removeEventListener('nuphos:open-in-app', open)
+  }, [openNuphosLinkInNewTab])
 
   const openAppOpenDeepLink = useCallback(
     (payload: AppOpenDeepLinkPayload) => {

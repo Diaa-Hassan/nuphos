@@ -20,6 +20,7 @@ import { setupRuntimeImageAuditIndexes } from '@/lib/claude-code-preview/runtime
 import { setupRuntimeLoginIndexes } from '@/lib/claude-code-preview/runtime-login-store'
 import { setupRuntimeMetricIndexes } from '@/lib/claude-code-preview/runtime-metrics-store'
 import { setupRuntimeQuotaHistoryIndexes } from '@/lib/claude-code-preview/runtime-quota-history'
+import { setupBoxUsageHistoryIndexes } from '@/lib/agent/devices/box-usage-history'
 import { setupDiscordIndexes } from '@/lib/discord/store'
 import { setupDownloadLinkEmailIndexes } from '@/lib/download-link-email'
 import { setupEmailOtpIndexes } from '@/lib/email-otp'
@@ -29,6 +30,7 @@ import { setupLarkAgentIndexes } from '@/lib/lark/agent-bot'
 import { setupNativeAuthIndexes } from '@/lib/native-auth'
 import { logEvent } from '@/lib/observability'
 import { setupPushDeviceIndexes } from '@/lib/push/devices'
+import { setupLiveActivityIndexes } from '@/lib/push/live-activities'
 import { setupSlackAgentIndexes } from '@/lib/slack/agent-bot'
 import { setupSlackNotificationIncidentIndexes } from '@/lib/slack/incident-notifications'
 import { setupSlackIncidentOccurrenceIndexes } from '@/lib/slack/incident-occurrences'
@@ -69,6 +71,7 @@ export async function setupIndexes(): Promise<void> {
     ['runtime-login', setupRuntimeLoginIndexes],
     ['runtime-metrics', setupRuntimeMetricIndexes],
     ['runtime-quota-history', setupRuntimeQuotaHistoryIndexes],
+    ['box-usage-history', setupBoxUsageHistoryIndexes],
     ['runtime-image-audit', setupRuntimeImageAuditIndexes],
     ['invitations', setupInvitationIndexes],
     ['agent', setupAgentIndexes],
@@ -95,6 +98,7 @@ export async function setupIndexes(): Promise<void> {
     ['sidebar-favorites', setupSidebarFavoritesIndexes],
     ['home-layouts', setupHomeLayoutIndexes],
     ['push-devices', setupPushDeviceIndexes],
+    ['push-live-activities', setupLiveActivityIndexes],
     ['agent-devices', setupAgentDeviceIndexes],
     ['agent-device-join-tokens', setupDeviceJoinTokenIndexes],
     ['agent-device-exec-audit', setupDeviceExecAuditIndexes],

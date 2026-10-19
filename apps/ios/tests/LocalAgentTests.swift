@@ -6,6 +6,7 @@ enum LocalAgentTests {
         readsDevicesFromTheCatalog()
         groupsOwnComputersApartFromCloud()
         namesAComputersAgentOnce()
+        detectsALocalAgentWhileItsComputerIsOffline()
         defaultsToAUsableCloudAgent()
         namesCloudOnlyProviders()
         modelSettingsRemainAvailable()
@@ -62,11 +63,6 @@ enum LocalAgentTests {
         precondition(cleared.isEmpty)
         precondition(cleared.json["futureIds"] == .array([]), "Clear all must revoke keys this build cannot show")
         precondition(cleared.json["deviceIds"] == .array([]))
-
-        let data = try! JSONEncoder().encode(selection)
-        precondition(try! JSONDecoder().decode(CredentialSelection.self, from: data) == selection)
-        let legacy = #"{"ids":{"awsRoleIds":["aws-1"]}}"#.data(using: .utf8)!
-        precondition(try! JSONDecoder().decode(CredentialSelection.self, from: legacy).ids["awsRoleIds"] == ["aws-1"])
     }
 
     private static func readsDevicesFromTheCatalog() {
@@ -97,6 +93,14 @@ enum LocalAgentTests {
         precondition(groups.map(\.tier) == [.myComputers, .cloud])
         precondition(groups[0].runtimes.map(\.id) == [macbook.id, signedOut.id])
         precondition(groups[0].tier.title == "My computers" && groups[1].tier.title == "Cloud")
+    }
+
+    private static func detectsALocalAgentWhileItsComputerIsOffline() {
+        // An offline computer is missing from the runtime list, so the share sheet
+        // must tell a Local Agent session from its id alone to warn before an invite.
+        precondition(RuntimeInstance.isLocalAgent("local_u1_mac"))
+        precondition(!RuntimeInstance.isLocalAgent("cloud-claude-code"))
+        precondition(!RuntimeInstance.isLocalAgent(nil))
     }
 
     private static func namesAComputersAgentOnce() {

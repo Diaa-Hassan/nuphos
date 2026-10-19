@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs'
 import { config } from '@/config'
 import { app, websocket } from '@/index-app'
 import { conversationAutoArchive } from '@/lib/agent/conversation-auto-archive'
-import { startQueuedTurn } from '@/lib/agent/conversation-turn'
+import { startQueuedTurn } from '@/lib/agent/queued-turn'
 import { assertRegistryInvariants } from '@/lib/agent/memory-slots'
 import {
   initMemoryRetentionRollup,
@@ -129,6 +129,9 @@ startAgentRunStallSweeper()
 const stopRuntimeHandoffAdoption = startRuntimeHandoffAdoption()
 
 if (await initDiscordGateway()) logEvent('info', 'backend.discord_gateway.ready')
+
+// Bun only prints these; log them so the next one names its request and time.
+process.on('unhandledRejection', (error) => logError('backend.unhandled_rejection', error))
 
 const tls = getTlsOptions()
 

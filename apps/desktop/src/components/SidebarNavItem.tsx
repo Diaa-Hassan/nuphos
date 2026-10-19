@@ -1,6 +1,8 @@
 import { Button as BaseButton } from '@base-ui/react/button'
 import clsx from 'clsx'
 
+import { useHoverMarquee } from '../hooks/useHoverMarquee'
+
 import type { LucideIcon } from 'lucide-react'
 import type React from 'react'
 import type { ReactNode } from 'react'
@@ -34,6 +36,14 @@ type SidebarNavItemProps = {
    *  the badge; the caller owns its visibility and click handling (remember to
    *  stopPropagation so the row's onClick doesn't also fire). */
   trailing?: ReactNode
+  /** A control pinned to the row's right edge, after the trailing slot (a fold
+   *  chevron). */
+  edge?: ReactNode
+  /** Controls that take the trailing slot's place while the row is hovered or
+   *  focused: at rest the slot shows `trailing`, on hover these instead. */
+  hoverActions?: ReactNode
+  /** Wait for the click when a press may start a drag instead. */
+  navigateOnRelease?: boolean
 }
 
 /**
@@ -50,19 +60,31 @@ export function SidebarNavItem({
   disabled = false,
   badge,
   trailing,
+  edge,
+  hoverActions,
+  navigateOnRelease = false,
 }: SidebarNavItemProps) {
+  const { containerRef, start, stop } = useHoverMarquee<HTMLSpanElement>(label)
+
   return (
     <BaseButton
       disabled={disabled}
+      onPointerEnter={start}
+      onPointerLeave={stop}
+      // Keyboard focus reveals the label too; a click's focus does not.
+      onFocus={(event) => {
+        if (event.currentTarget.matches(':focus-visible')) start()
+      }}
+      onBlur={stop}
       onPointerDown={(event: React.PointerEvent<HTMLButtonElement>) => {
         // Navigate on press, not on release — same reasoning as the tab strip:
         // waiting for `click` adds the held mouse button to perceived latency.
         // Keyboard activation still arrives as a click with detail 0 below.
-        if (disabled || event.button !== 0) return
+        if (disabled || navigateOnRelease || event.button !== 0) return
         onClick(event)
       }}
       onClick={(event) => {
-        if (event.detail !== 0) return
+        if (event.detail !== 0 && !navigateOnRelease) return
         onClick(event)
       }}
       className={clsx(
@@ -88,20 +110,46 @@ export function SidebarNavItem({
       >
         {icon}
       </span>
-      <span className="truncate flex-1 text-left">{label}</span>
+      <span ref={containerRef} className="t-marquee flex-1 min-w-0 text-left">
+        {label}
+      </span>
       {badge !== undefined && badge > 0 && (
         <span className="flex-shrink-0 inline-flex items-center justify-center min-w-5 h-5 px-1 rounded-full bg-zViolet-500 text-white text-[11px] font-medium leading-none">
           {badge > 99 ? '99+' : badge}
         </span>
       )}
-      {trailing != null && (
-        // Presses on a trailing control must not navigate the row. Its click
-        // already stopPropagation()s, but activation now happens at
-        // pointerdown — so the press has to be fenced off here too.
-        <span className="contents" onPointerDown={(event) => event.stopPropagation()}>
-          {trailing}
-        </span>
-      )}
+      {/* One trailing slot: the row's state at rest, its actions on hover or
+          focus — never both. Only the showing one takes space, so at rest the
+          title runs up to the indicator, and on hover its clip edge (and fade)
+          moves in to make room for the actions, as Codex does. Presses here
+          must not navigate the row: activation happens at pointerdown, so they
+          are fenced off. */}
+      <Fenced>
+        {hoverActions == null ? (
+          trailing
+        ) : (
+          <span className="flex flex-shrink-0 items-center">
+            <span className="flex items-center gap-1.5 group-hover:hidden group-focus-visible:hidden">
+              {trailing}
+            </span>
+            <span className="hidden items-center gap-1 group-hover:flex group-focus-visible:flex">
+              {hoverActions}
+            </span>
+          </span>
+        )}
+      </Fenced>
+      <Fenced>{edge}</Fenced>
     </BaseButton>
+  )
+}
+
+/** Keeps presses inside from reaching the row's pointerdown navigation. */
+function Fenced({ className = 'contents', children }: { className?: string; children: ReactNode }) {
+  if (children == null) return null
+
+  return (
+    <span className={className} onPointerDown={(event) => event.stopPropagation()}>
+      {children}
+    </span>
   )
 }

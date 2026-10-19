@@ -6,7 +6,7 @@ import { LocalRuntimeController } from './controller.ts'
 
 import type { AgentCliStatus, LocalAgentProvider } from './agent-cli.ts'
 import type { LocalRuntimeControllerDeps } from './controller-types.ts'
-import type { LocalRuntimeTunnelStatus } from './tunnel-client.ts'
+import type { LocalRuntimeTunnelStatus } from './tunnel-protocol.ts'
 
 const adapter = (provider: string) => ({
   entry: `/b/${provider}.js`,
@@ -347,6 +347,32 @@ test('a restart loop cannot ask the provider on every backoff tick', async () =>
   await controller.shutdown()
 })
 
+test('the signed-out watch does not re-read a signed-in agent’s usage', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: 0 })
+  const cli: Partial<Record<LocalAgentProvider, AgentCliStatus>> = {
+    codex: { installed: true, path: '/bin/codex', loggedIn: false },
+  }
+  const { controller, usageReads } = harness(cli)
+
+  await controller.setUser('alice')
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  const afterLaunch = usageReads()
+
+  // Past the sign-in floor, inside the regular one: a forced read would land here.
+  t.mock.timers.tick(31_000)
+  await controller.refresh(false, ['codex'])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(usageReads(), afterLaunch)
+
+  // Signing Codex in is the event that does earn a read.
+  cli.codex = { installed: true, path: '/bin/codex', loggedIn: true }
+  t.mock.timers.tick(31_000)
+  await controller.refresh(false, ['codex'])
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(usageReads(), afterLaunch + 1)
+  await controller.shutdown()
+})
+
 test('a login observed by Check is recorded even though launching stops the agent first', async () => {
   // No process until the CLI is signed in: the Codex case from review.
   const installed: Partial<Record<LocalAgentProvider, AgentCliStatus>> = {
@@ -419,4 +445,24 @@ test('reconnecting Codex after login leaves the Claude process running', async (
   await controller.refresh(true, ['codex'])
   assert.deepEqual(events, ['stop', started('codex')])
   await controller.shutdown()
+})
+
+test('a host run by the `nuphos` CLI reports that CLI, which a Box updates by', async () => {
+  const { tunnelStatusOf } = await import('./controller-types.ts')
+  const agents = {
+    'claude-code': { runtime: null },
+    codex: { runtime: null },
+  } as unknown as Parameters<typeof tunnelStatusOf>[0]
+  const before = process.env.NUPHOS_CLI_VERSION
+
+  process.env.NUPHOS_CLI_VERSION = '0.4.0'
+  try {
+    assert.equal(tunnelStatusOf(agents, 'https://api.test').cliVersion, '0.4.0')
+    delete process.env.NUPHOS_CLI_VERSION
+    // The Desktop app runs the same host and is not a CLI: it reports none.
+    assert.equal('cliVersion' in tunnelStatusOf(agents, 'https://api.test'), false)
+  } finally {
+    if (before === undefined) delete process.env.NUPHOS_CLI_VERSION
+    else process.env.NUPHOS_CLI_VERSION = before
+  }
 })

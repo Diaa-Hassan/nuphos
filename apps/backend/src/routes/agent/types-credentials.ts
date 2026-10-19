@@ -21,6 +21,7 @@ export type AgentCredentialSelection = {
   secureframeIntegrationIds?: string[]
   resendIntegrationIds?: string[]
   posthogIntegrationIds?: string[]
+  plaudAccountIds?: string[]
   githubInstallationIds?: string[]
   gitlabBindingIds?: string[]
   grafanaInstanceIds?: string[]
@@ -29,6 +30,7 @@ export type AgentCredentialSelection = {
   upstashAccountIds?: string[]
   cloudflareAccountIds?: string[]
   deviceIds?: string[]
+  teamIdentity?: ('github' | 'linear')[]
 }
 
 export type AgentCredentialOptions = {
@@ -145,6 +147,10 @@ export type AgentCredentialOptions = {
     apiBaseUrl: string
     projects: { id: number; name: string }[]
   }[]
+  plaudAccounts: {
+    bindingId: string
+    label: string
+  }[]
   githubInstallations: {
     // Route key for /teams/:teamId/github-installations/:installationId, and
     // the second argument the github skill's setup script expects.
@@ -189,5 +195,7 @@ export type AgentCredentialOptions = {
     // Online with local exec allowed, i.e. usable right now. A device that is not
     // stays selectable so a selection can keep or drop it.
     available: boolean
+    /** Present for a Box (a cloud machine Nuphos made); `ready` once its machine exists, so it can be woken while offline. */
+    box?: { ready: boolean }
   }[]
 }

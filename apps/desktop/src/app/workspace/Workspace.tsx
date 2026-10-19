@@ -15,6 +15,7 @@ import { OnboardingFlow } from '../../views/onboarding/OnboardingFlow'
 import { SettingsPage } from '../../views/SettingsPage'
 import { UnknownTeamGate } from '../../views/UnknownTeamGate'
 
+import { usePaletteCommand } from './usePaletteCommand'
 import { useWorkspaceController } from './useWorkspaceController'
 import { useWorkspaceTabMigrations } from './useWorkspaceTabMigrations'
 import { WorkspaceAgentPane } from './WorkspaceAgentPane'
@@ -36,6 +37,7 @@ function WorkspacePane({ user, onLogout, onUserUpdated }: WorkspaceProps) {
   const ws = useWorkspaceController({ user, onLogout, onUserUpdated })
 
   useWorkspaceTabMigrations(ws)
+  const runPaletteCommand = usePaletteCommand(ws)
   const {
     teams,
     pendingInvitations,
@@ -55,9 +57,7 @@ function WorkspacePane({ user, onLogout, onUserUpdated }: WorkspaceProps) {
     teamsLoaded,
     onboardingActive,
     onboardingForced,
-    onboardingStep,
-    onboardingStepNonce,
-    onboardingPlatform,
+    onboardingNonce,
     landingCelebration,
     setLandingCelebration,
     loadTeams,
@@ -112,10 +112,8 @@ function WorkspacePane({ user, onLogout, onUserUpdated }: WorkspaceProps) {
     return (
       <>
         <OnboardingFlow
-          key={`onboarding-${String(onboardingStepNonce)}`}
+          key={`onboarding-${String(onboardingNonce)}`}
           user={user}
-          currentTeamId={scope?.teamId ?? null}
-          initialStep={onboardingStep}
           dismissable={onboardingForced}
           onClose={closeOnboarding}
           onCreateWorkspace={createWorkspaceForOnboarding}
@@ -124,7 +122,6 @@ function WorkspacePane({ user, onLogout, onUserUpdated }: WorkspaceProps) {
           onJoinDiscoverableTeam={joinDiscoverableTeam}
           onLogout={handleLogout}
           onFinish={finishOnboarding}
-          demoPlatform={onboardingPlatform}
         />
       </>
     )
@@ -279,6 +276,7 @@ function WorkspacePane({ user, onLogout, onUserUpdated }: WorkspaceProps) {
             teamName={ws.currentTeam?.name ?? 'Workspace'}
             userId={user.id}
             onClose={() => ws.setSessionSearchOpen(false)}
+            onCommand={runPaletteCommand}
             onOpen={(sessionId, beside) => {
               ws.setSessionSearchOpen(false)
               if (beside && pane?.openSessionBeside(sessionId, scope.teamId)) return

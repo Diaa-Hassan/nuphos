@@ -1,5 +1,6 @@
-import { beforeEach, describe, expect, test } from 'bun:test'
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test'
 
+import { deviceAccessDeps } from '@/lib/agent/devices/box-access'
 import { localRuntimeId, parseLocalRuntimeUrl } from '@/lib/agent/devices/local-runtime/address'
 import { createMemoryPresenceStore } from '@/lib/agent/devices/local-runtime/presence'
 import { useAgentDeviceStore } from '@/lib/test/doubles/agent-devices-store'
@@ -14,6 +15,7 @@ import { listRuntimeInstances, requireRuntimeInstance } from './runtime-catalog'
 import { runtimeModelCatalog } from './runtime-models'
 
 import type { AgentConversation } from '@/lib/agent/db/shared'
+import type { AppError } from '@/lib/errors'
 
 const TEAM = 'team'
 const localId = localRuntimeId({ userId: 'owner', deviceId: 'mac-1', provider: 'claude-code' })
@@ -26,21 +28,22 @@ useRuntimeRegistry({
   listTeamRuntimes: async () => [],
   resolveTeamRuntimeEndpoints: async () => [],
 })
+const ownerComputer = {
+  userId: 'owner',
+  deviceId: 'mac-1',
+  label: 'MacBook',
+  platform: 'darwin',
+  allowLocalExec: false,
+  createdAt: new Date(0),
+  updatedAt: new Date(0),
+}
+
 useAgentDeviceStore({
-  listAgentDevicesForUser: async (userId) =>
-    userId === 'owner'
-      ? [
-          {
-            userId,
-            deviceId: 'mac-1',
-            label: 'MacBook',
-            platform: 'darwin',
-            allowLocalExec: false,
-            createdAt: new Date(0),
-            updatedAt: new Date(0),
-          },
-        ]
-      : [],
+  listAgentDevicesForUser: async (userId) => (userId === 'owner' ? [ownerComputer] : []),
+  // The access check looks the device up by its owner and id.
+  getAgentDevice: async (userId, deviceId) =>
+    userId === 'owner' && deviceId === 'mac-1' ? ownerComputer : null,
+  listTeamBoxes: async () => [],
   isActiveTeamMember: async (_userId, teamId) => teamId === TEAM,
 })
 
@@ -60,8 +63,29 @@ function conversation(userId: string): AgentConversation {
 }
 
 const notFound = { status: 404, code: 'runtime_not_found' }
+const originalAccessDeps = { ...deviceAccessDeps }
+
+afterEach(() => Object.assign(deviceAccessDeps, originalAccessDeps))
 
 beforeEach(async () => {
+  // Supply the ACL's exported dependency seam; it captures store functions
+  // before the module-level device-store test double is installed.
+  const own = {
+    userId: 'owner',
+    deviceId: 'mac-1',
+    label: 'MacBook',
+    platform: 'darwin',
+    allowLocalExec: false,
+    createdAt: new Date(0),
+    updatedAt: new Date(0),
+  }
+
+  Object.assign(deviceAccessDeps, {
+    getDevice: (userId: string) => Promise.resolve(userId === 'owner' ? own : null),
+    listDevices: (userId: string) => Promise.resolve(userId === 'owner' ? [own] : []),
+    listBoxes: () => Promise.resolve([]),
+    role: () => Promise.resolve(null),
+  })
   memory = portabilityDb()
   presence = createMemoryPresenceStore()
   await presence.claim('owner', 'mac-1', 'c1')
@@ -104,6 +128,22 @@ describe('only the owner can put a session on their local agent', () => {
     })
 
     expect(parseLocalRuntimeUrl(endpoint.url)).toMatchObject({ userId: 'owner', teamId: TEAM })
+  })
+
+  test('an offline computer names the placement it authorized, never the one a send asks for', async () => {
+    presence = createMemoryPresenceStore()
+    const other = localRuntimeId({ userId: 'owner', deviceId: 'box-b', provider: 'claude-code' })
+
+    const error = (await resolveConversationChatRuntime(TEAM, conversation('owner'), {
+      userId: 'owner',
+      runtimeId: other,
+    }).then(
+      () => null,
+      (caught: unknown) => caught,
+    )) as AppError
+
+    expect([error.status, error.code]).toEqual([409, 'runtime_offline'])
+    expect(error.details).toEqual({ runtimeId: localId, runtimeLabel: 'Claude Code in MacBook' })
   })
 
   test('control calls on the owner’s conversation act as its owner', async () => {

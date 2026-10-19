@@ -34,6 +34,7 @@ import type {
   Scope,
   SecureframeIntegration,
   SentryAccount,
+  PlaudAccount,
   PosthogIntegration,
   SlackInstallation,
   SlackLinkedChannelsSummary,
@@ -88,6 +89,7 @@ export type AccountSet = {
   asana: AsanaAccount[]
   sentry: SentryAccount[]
   posthog: PosthogIntegration[]
+  plaud: PlaudAccount[]
   discordConnection?: DiscordConnection | null
   slackInstallation: SlackInstallation | null
   slackLinkedChannels: SlackLinkedChannelsSummary | null
@@ -263,4 +265,6 @@ export const LEGACY_WORKSPACE_TABS_STORAGE_KEY = 'nuphos.workspace.tabs.v1'
 // One frozen empty array for every "no rows yet" prop. A fresh `[]` per render
 // is a new identity, which alone is enough to defeat the memo below.
 export const EMPTY_LIST: never[] = []
+/** Pages that are a surface of their own, with no toolbar above them. */
+export const FULL_BLEED_PAGE_KEYS = new Set(['team.browser', 'team.terminal', 'team.desktop'])
 export const CLUSTER_NAMESPACE_STORAGE_PREFIX = 'nuphos.k8s.lastNamespace.'

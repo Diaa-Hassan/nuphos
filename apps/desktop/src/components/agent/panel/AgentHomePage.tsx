@@ -1,12 +1,10 @@
 import clsx from 'clsx'
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-
-import { track } from '../../../lib/analytics'
-import { ONBOARDING_EXTRA_STEPS_ENABLED } from '../../../views/onboarding/onboardingSteps'
+import { useCallback, useLayoutEffect, useRef, useState } from 'react'
 
 import { Composer } from './Composer'
 import { composerDraftKey } from './composerDrafts'
-import { ConnectorStrip } from './hero'
+import { successfulTurns } from './endEventEffects'
+import { StarStrip } from './hero'
 import { RevealedHistoryBlock } from './historyRows'
 import { AgentHomeAnimation, COMPOSER_REVEAL_MS, DelayedPanelReveal } from './homeAnimation'
 import { HomeWidgets } from './HomeWidgets'
@@ -20,6 +18,29 @@ import type { AgentPromptSeed } from './model'
 import type { RuntimeControl } from './RuntimeSelector'
 import type { AgentConversation, AgentStarterSuggestion, LocalAgentSessionInfo } from '../../../api'
 import type { ReactNode } from 'react'
+
+// "Not now" has to stick, or a nudge becomes nagging.
+function useStickyDismiss(key: string | null) {
+  const [dismissed, setDismissed] = useState(() => {
+    if (!key) return false
+    try {
+      return localStorage.getItem(key) === '1'
+    } catch {
+      return false
+    }
+  })
+  const dismiss = useCallback(() => {
+    setDismissed(true)
+    if (!key) return
+    try {
+      localStorage.setItem(key, '1')
+    } catch {
+      // Storage unavailable — it just won't be remembered next launch.
+    }
+  }, [key])
+
+  return [dismissed, dismiss] as const
+}
 
 export function AgentHomePage({
   conversations,
@@ -36,7 +57,6 @@ export function AgentHomePage({
   autoFocusComposer = false,
   dropRegisterRef,
   unbound = false,
-  onStartConnect,
   teamId,
   starterSuggestions = [],
   starterSuggestionsLoading = false,
@@ -71,12 +91,10 @@ export function AgentHomePage({
   // with a step-by-step connect guide and the Recent list is hidden.
   /** No integrations bound yet — starter suggestions stay off, nothing else. */
   unbound?: boolean
-  /** Starts the read-only connect flow for the cloud the user picked. */
-  onStartConnect?: () => void
   /** Whether the page is in view; each time it comes back, the entrance replays. */
   shown?: boolean
   newChatRequest?: number
-  /** Scopes the connector strip's dismissal. Undefined outside a team. */
+  /** Scopes the composer draft and mentions. Undefined outside a team. */
   teamId?: string
   // LLM-generated starter questions tailored to the team's connected resources.
   // Empty (and not loading) → the block is hidden.
@@ -99,36 +117,10 @@ export function AgentHomePage({
   }, [shown, newChatRequest])
 
   const entranceKey = useEntranceCount(shown)
-  const firstRun = unbound && ONBOARDING_EXTRA_STEPS_ENABLED
-  const handleStartConnect = useCallback(() => onStartConnect?.(), [onStartConnect])
-  // "Not now" has to stick, or the nudge becomes nagging. Per team, so
-  // dismissing it for one workspace doesn't hide it in another that genuinely
-  // has nothing connected.
-  const stripKey = teamId ? `nuphos.agent.connectStrip.dismissed.${teamId}` : null
-  const [stripDismissed, setStripDismissed] = useState(() => {
-    if (!stripKey || typeof window === 'undefined') return false
-    try {
-      return localStorage.getItem(stripKey) === '1'
-    } catch {
-      return false
-    }
-  })
-  const dismissStrip = useCallback(() => {
-    setStripDismissed(true)
-    track('agent_first_run_strip_dismissed')
-    if (!stripKey || typeof window === 'undefined') return
-    try {
-      localStorage.setItem(stripKey, '1')
-    } catch {
-      // Storage unavailable — it just won't be remembered next launch.
-    }
-  }, [stripKey])
-
-  // The funnel starts here: how many teams saw the first-run page at all,
-  // against how many went on to bind. Once per mount of the unbound page.
-  useEffect(() => {
-    if (firstRun) track('agent_first_run_home_viewed')
-  }, [firstRun])
+  // Asked once the agent has finished a few turns cleanly. Starring and
+  // "not now" both retire it for good.
+  const [starDismissed, dismissStar] = useStickyDismiss('nuphos.agent.starStrip.dismissed')
+  const showStar = !starDismissed && successfulTurns() >= 5
 
   return (
     // A size container, so the block above can measure half of what is visible.
@@ -147,18 +139,18 @@ export function AgentHomePage({
                 behind it, same width, with its square top tucked under the
                 composer's bottom so only the part below shows. */}
             <div className="relative">
-              {/* First-run backing: an opaque fill at the composer's exact
+              {/* Strip backing: an opaque fill at the composer's exact
                   radius, so the translucent composer composites over page
                   colour instead of tinting the tray tucked behind it — and
                   a soft shadow, carried here rather than by the Composer,
                   so the composer visibly presses down on the tray. In the
                   corner notches the rounded backing doesn't reach, the
                   tray's grey shows: that's the emerging-from-behind look,
-                  not a leak. Bound teams get no backing at all. */}
+                  not a leak. Only the star strip brings it. */}
               <div
                 className={clsx(
                   'relative z-10',
-                  firstRun &&
+                  showStar &&
                     'rounded-xl bg-appBg shadow-[0_1px_2px_rgb(0_0_0_/_0.05),0_6px_18px_-6px_rgb(0_0_0_/_0.08)]',
                 )}
               >
@@ -173,7 +165,6 @@ export function AgentHomePage({
                   bypassControl={bypassControl}
                   pendingSeed={pendingSeed}
                   onSeedConsumed={onSeedConsumed}
-                  firstRun={firstRun}
                   autoFocus={autoFocusComposer && shown}
                   dropRegisterRef={dropRegisterRef}
                   draftKey={composerDraftKey(teamId)}
@@ -181,9 +172,7 @@ export function AgentHomePage({
                   mentionScope={teamId ? { teamId } : undefined}
                 />
               </div>
-              {firstRun && !stripDismissed && (
-                <ConnectorStrip onStart={handleStartConnect} onDismiss={dismissStrip} />
-              )}
+              {showStar && <StarStrip onDone={dismissStar} />}
             </div>
           </DelayedPanelReveal>
         </div>

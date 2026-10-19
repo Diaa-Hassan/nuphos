@@ -5,12 +5,13 @@ import { api } from '../../api'
 import { AgentProviderIcon } from '../../components/agent/panel/icons'
 import { RuntimeUsageBar } from './RuntimeUsageBar'
 import { ConfirmDialog } from '../../components/ConfirmDialog'
+import { InlineRename } from '../../components/ui/inline-rename'
 import { toast } from '../../components/ui/toast'
 import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
 import { AGENT_PROVIDER } from '../../types/runtime'
 
+import { agentName, localRemovalId } from './agentPresentation'
 import { RuntimeActionsMenu } from './RuntimeActionsMenu'
-import { RuntimeInstanceForm } from './RuntimeInstanceForm'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
 import { RuntimeMetricsCharts } from './RuntimeMetricsCharts'
 import { RuntimeOverview, RuntimeUsageSection } from './RuntimeOverview'
@@ -85,11 +86,24 @@ export function RuntimeInstanceCard({
       setBusy(false)
     }
   }
+  // A computer's agent is not a team runtime: its name lives on that computer's row.
+  const rename = (label: string) =>
+    instance.local
+      ? api.boxRenameAgent(
+          instance.local.deviceId,
+          teamId,
+          instance.local.instanceId ?? instance.provider,
+          label,
+        )
+      : api.atlasUpdateRuntimeInstance(teamId, instance.id, { label })
   const canEdit = isAdmin && instance.kind !== 'development' && !instance.deletion
+  const removalId = localRemovalId(instance)
   const status = runtimeStatusView(instance, runtime, statusError)
   const kindTag =
     instance.kind === 'external' ? 'External' : instance.kind === 'development' ? 'Local' : null
   const hosted = instance.kind === 'managed' || instance.kind === 'external'
+  // A Box's agents report an update only when their host can install it (box-update.ts).
+  const updatable = instance.kind === 'managed' || instance.kind === 'local'
 
   return (
     <section aria-label={instance.label} className="mx-auto w-full max-w-5xl">
@@ -100,11 +114,22 @@ export function RuntimeInstanceCard({
           </div>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h3
-                className="truncate text-[16px] font-semibold tracking-tight text-main"
-                title={instance.label}
-              >
-                {instance.label}
+              <h3 className="flex min-w-0 text-[16px] font-semibold tracking-tight text-main">
+                <InlineRename
+                  value={agentName(instance)}
+                  {...(instance.local
+                    ? { defaultName: AGENT_PROVIDER[instance.provider].label }
+                    : {})}
+                  canEdit={canEdit}
+                  editing={editing}
+                  onEditingChange={setEditing}
+                  ariaLabel="Agent name"
+                  errorTitle="Could not rename agent"
+                  onSave={async (label) => {
+                    await rename(label)
+                    changed()
+                  }}
+                />
               </h3>
               {!statusError &&
                 runtime?.runtimeUpdate &&
@@ -113,12 +138,8 @@ export function RuntimeInstanceCard({
                 ) && (
                   <span className="shrink-0 rounded border border-zViolet-500/30 bg-zViolet-500/10 px-1.5 py-0.5 text-[10px] text-zViolet-400">
                     {
-                      runtimeUpdatePresentation(
-                        runtime.runtimeUpdate,
-                        instance.kind === 'managed',
-                        canEdit,
-                        enabled,
-                      ).title
+                      runtimeUpdatePresentation(runtime.runtimeUpdate, updatable, canEdit, enabled)
+                        .title
                     }
                   </span>
                 )}
@@ -130,6 +151,7 @@ export function RuntimeInstanceCard({
             </div>
             <p className="mt-0.5 truncate text-xs text-tertiary">
               {AGENT_PROVIDER[instance.provider].label}
+              {instance.local && <span> · {instance.local.deviceLabel}</span>}
               {runtime?.runtimeVersion && <span> · v{runtime.runtimeVersion}</span>}
             </p>
           </div>
@@ -143,21 +165,14 @@ export function RuntimeInstanceCard({
           {runtime?.online && runtime.latencyMs !== undefined && (
             <span className="text-tertiary">· {String(runtime.latencyMs)}ms</span>
           )}
-          {quota?.available && quota.windows.length > 0 && (
-            <RuntimeUsageBar
-              window={quota.windows.reduce(
-                (highest, window) => (window.usedPercent > highest.usedPercent ? window : highest),
-                quota.windows[0],
-              )}
-            />
-          )}
+          <RuntimeUsageBar quota={quota} />
         </span>
         <RuntimeActionsMenu
           instance={instance}
           busy={busy}
           canEdit={canEdit}
           authenticated={runtime?.authenticated}
-          onEdit={() => setEditing(true)}
+          onRename={() => setEditing(true)}
           onSignIn={() => setSigningIn(true)}
           onToggleEnabled={() =>
             void mutate(() =>
@@ -171,8 +186,8 @@ export function RuntimeInstanceCard({
       </div>
       <RuntimeUpdateNotice
         update={statusError ? undefined : runtime?.runtimeUpdate}
-        managed={instance.kind === 'managed'}
-        canUpdate={canEdit && instance.kind === 'managed'}
+        managed={updatable}
+        canUpdate={canEdit && updatable}
         enabled={enabled}
         onUpdate={async () => {
           const result = await api.atlasRequestRuntimeUpdate(teamId, instance.id)
@@ -183,7 +198,8 @@ export function RuntimeInstanceCard({
                 ...previous,
                 runtimeUpdate: {
                   ...previous.runtimeUpdate,
-                  state: 'waiting',
+                  // A managed agent's update waits for its conversations; a Box's starts now.
+                  state: instance.kind === 'local' ? 'updating' : 'waiting',
                   targetVersion: result.version,
                   releaseUrl:
                     previous.runtimeUpdate?.releaseUrl ??
@@ -191,7 +207,8 @@ export function RuntimeInstanceCard({
                 },
               },
           )
-          setUpdateRevision((value) => value + 1)
+          // A Box's host still reports the old CLI until it stops; the next poll sees it go.
+          if (instance.kind !== 'local') setUpdateRevision((value) => value + 1)
         }}
       />
       <div className="divide-y divide-zGray-800/60 border-t border-zGray-800/60">
@@ -200,18 +217,6 @@ export function RuntimeInstanceCard({
             {instance.deletion.error ??
               'Removing the agent and its files. Conversation history stays in Nuphos.'}
           </p>
-        ) : editing ? (
-          <div className="p-4">
-            <RuntimeInstanceForm
-              instance={instance}
-              onCancel={() => setEditing(false)}
-              onSave={async (input) => {
-                await api.atlasUpdateRuntimeInstance(teamId, instance.id, { label: input.label })
-                setEditing(false)
-                changed()
-              }}
-            />
-          </div>
         ) : (
           <>
             {runtime?.credentialRevoked ? (
@@ -255,11 +260,22 @@ export function RuntimeInstanceCard({
           description={
             instance.kind === 'managed'
               ? 'This permanently deletes the agent, its disks, workspaces, and sign-in, and stops running conversations. Your conversation history stays in Nuphos. Move any workspace you want to keep to another agent before removing this one.'
-              : 'This disconnects the external agent. Its files remain on the external machine. Your conversations stay in Nuphos and can be moved using conversation history.'
+              : instance.local && !instance.local.instanceId
+                ? `This signs ${instance.label} out on ${instance.local.deviceLabel} and deletes its ${instance.provider === 'codex' ? 'settings' : 'CLI history and settings'} there. Conversations on it stop working; their history stays in Nuphos.`
+                : instance.local
+                  ? `This removes the agent and its sign-in from ${instance.local.deviceLabel}. Your conversation history stays in Nuphos.`
+                  : 'This disconnects the external agent. Its files remain on the external machine. Your conversations stay in Nuphos and can be moved using conversation history.'
           }
           destructive
           confirmLabel="Remove agent"
-          onConfirm={() => mutate(() => api.atlasRemoveRuntimeInstance(teamId, instance.id))}
+          onConfirm={() =>
+            mutate(() =>
+              // The menu offers removal for a computer's agent only when it has a removal id.
+              instance.local && removalId
+                ? api.boxRemoveAgent(instance.local.deviceId, teamId, removalId)
+                : api.atlasRemoveRuntimeInstance(teamId, instance.id),
+            )
+          }
           onClose={() => setConfirmRemoval(false)}
         />
       )}

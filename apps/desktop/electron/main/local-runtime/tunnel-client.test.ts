@@ -101,6 +101,41 @@ test('relays a stream to that agent’s loopback runtime with the key for its pu
   client.stop()
 })
 
+test('a runtime socket that errors while connecting closes once and frees its stream', () => {
+  const { backend, runtimes, frames, client } = setup()
+
+  backend().emit('open')
+  backend().emit('message', {
+    data: JSON.stringify({ t: 'open', s: 's1', purpose: 'transport', provider: 'claude-code' }),
+  })
+  const socket = runtimes[0]?.socket as FakeSocket
+  let closes = 0
+
+  // Like undici: close() on a CONNECTING socket fails the connection, firing
+  // `error` synchronously before `close`. Reacting to `error` with close() recursed.
+  socket.close = () => {
+    closes += 1
+    if (closes > 1) throw new Error('close() re-entered from the error listener')
+    socket.emit('error')
+    socket.emit('close', { code: 1006 })
+  }
+  backend().emit('message', { data: JSON.stringify({ t: 'close', s: 's1' }) })
+  assert.equal(closes, 1)
+
+  // A connection that fails on its own still tells the backend the stream ended.
+  backend().emit('message', {
+    data: JSON.stringify({ t: 'open', s: 's2', purpose: 'transport', provider: 'claude-code' }),
+  })
+  const failed = runtimes[1]?.socket as FakeSocket
+
+  failed.emit('error')
+  failed.emit('close', { code: 1006 })
+  assert.deepEqual(frames().slice(-1), [{ t: 'close', s: 's2' }])
+  backend().emit('message', { data: JSON.stringify({ t: 'data', s: 's2', d: 'late' }) })
+  assert.deepEqual(failed.sent, [])
+  client.stop()
+})
+
 test('refuses streams while the runtime is not up', () => {
   const { backend, frames, client } = setup(false)
 
@@ -282,6 +317,46 @@ test('file reads use their own bounded stream and are closed on logout', () => {
   assert.equal(file.closed, true)
 })
 
+test("a file read for an agent instance opens that instance's file stream, or none", () => {
+  const backend = new FakeSocket()
+  const file = new FakeSocket()
+  const asked: (string | undefined)[] = []
+  const client = new RuntimeTunnelClient({
+    connectBackend: () => backend,
+    connectRuntime: () => null,
+    connectFile: (instanceId) => {
+      asked.push(instanceId)
+
+      return instanceId === 'unknown' ? null : file
+    },
+    status: () => ({ agents: {} }),
+  })
+  const open = (s: string, instanceId?: string) =>
+    backend.emit('message', {
+      data: JSON.stringify({
+        t: 'open',
+        s,
+        purpose: 'file',
+        ...(instanceId ? { instanceId } : {}),
+      }),
+    })
+
+  client.start()
+  backend.emit('open')
+  open('default')
+  open('instance', 'i-1')
+  open('gone', 'unknown')
+  assert.deepEqual(asked, [undefined, 'i-1', 'unknown'])
+  assert.ok(
+    backend.sent.some((raw) => {
+      const frame = JSON.parse(raw)
+
+      return frame.t === 'close' && frame.s === 'gone'
+    }),
+  )
+  client.stop()
+})
+
 test('dock terminals have a distinct capability and never fall through to local exec', () => {
   const backend = new FakeSocket()
   const terminal = new FakeSocket()
@@ -335,4 +410,47 @@ test('task activity follows real prompt frames, concurrent streams and disconnec
   } finally {
     client.stop()
   }
+})
+
+test('instance RPC shares the tunnel and returns one result then closes', async () => {
+  const backend = new FakeSocket()
+  const requests: unknown[] = []
+  const routes: unknown[] = []
+  const client = new RuntimeTunnelClient({
+    connectBackend: () => backend,
+    connectRuntime: (_purpose, _provider, instanceId) => {
+      routes.push(instanceId)
+
+      return null
+    },
+    instances: async (request) => {
+      requests.push(request)
+
+      return { instance: request }
+    },
+    status: () => ({ agents: {} }),
+  })
+
+  client.start()
+  backend.emit('open')
+  const emit = (frame: object) => backend.emit('message', { data: JSON.stringify(frame) })
+  const frames = () => backend.sent.map((raw) => JSON.parse(raw))
+
+  assert.equal(frames()[0].status.agentInstances, true)
+  emit({ t: 'open', s: 'create', purpose: 'instances' })
+  emit({ t: 'data', s: 'create', d: JSON.stringify({ method: 'create', instanceId: 'mock' }) })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.deepEqual(requests, [{ method: 'create', instanceId: 'mock' }])
+  assert.deepEqual(frames().slice(-2), [
+    { t: 'data', s: 'create', d: JSON.stringify({ ok: true, instance: requests[0] }) },
+    { t: 'close', s: 'create' },
+  ])
+  emit({ t: 'open', s: 'unknown', purpose: 'control', provider: 'codex', instanceId: 'unknown' })
+  assert.deepEqual(routes, ['unknown'])
+  assert.equal(frames().at(-1).t, 'close')
+  emit({ t: 'open', s: 'bad', purpose: 'instances' })
+  emit({ t: 'data', s: 'bad', d: '{' })
+  await new Promise((resolve) => setImmediate(resolve))
+  assert.equal(JSON.parse(frames().at(-2).d).ok, false)
+  client.stop()
 })

@@ -77,6 +77,7 @@ data class CredentialCatalog(
             Provider("linearWorkspaces", "linearWorkspaceIds", "Linear", "workspaceId", listOf("label", "workspaceName"), listOf("workspaceName")),
             Provider("jiraSites", "jiraSiteIds", "Jira", "siteId", listOf("label"), listOf("siteUrl")),
             Provider("asanaAccounts", "asanaAccountIds", "Asana", "accountId", listOf("label"), listOf("accountEmail")),
+            Provider("plaudAccounts", "plaudAccountIds", "Plaud", "bindingId", listOf("label"), emptyList()),
             Provider("vantaIntegrations", "vantaIntegrationIds", "Vanta", "integrationId", listOf("label"), emptyList()),
             Provider("secureframeIntegrations", "secureframeIntegrationIds", "Secureframe", "integrationId", listOf("label"), listOf("region")),
             Provider("resendIntegrations", "resendIntegrationIds", "Resend", "integrationId", listOf("label"), listOf("permission")),
@@ -99,6 +100,19 @@ data class CredentialSelection(
         if (!set.add(item.id)) set.remove(item.id)
         return copy(ids = ids + (item.provider.selectionKey to set))
     }
+
+    /** Add usable computers without revoking an already selected unavailable computer. */
+    fun selectAllComputers(catalog: CredentialCatalog): CredentialSelection {
+        val usable = catalog.allItems.filter { it.provider.optionsKey == "devices" && !it.unavailable }
+        return copy(ids = ids + ("deviceIds" to (ids["deviceIds"].orEmpty() + usable.map { it.id })))
+    }
+
+    fun containsAllComputers(catalog: CredentialCatalog): Boolean {
+        val usable = catalog.allItems.filter { it.provider.optionsKey == "devices" && !it.unavailable }
+        return usable.isNotEmpty() && usable.all(::contains)
+    }
+
+    fun clearComputers(): CredentialSelection = copy(ids = ids + ("deviceIds" to emptySet()))
 
     val json: JsonValue
         get() = JsonValue.Obj(

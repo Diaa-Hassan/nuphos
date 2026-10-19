@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
 
-import { agentEnv, deriveControlKey, openabConfigToml, openabEnv } from './config.ts'
+import { agentEnv, agentLoginEnv, deriveControlKey, openabConfigToml, openabEnv } from './config.ts'
 
 import type { LocalRuntimeLaunch } from './config.ts'
 
@@ -102,6 +102,32 @@ test('the runtime offers only its bundled attachment program as a job', () => {
   }
 })
 
+test('only a machine Nuphos made also runs the panel scripts the backend sends', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'bundle-'))
+  const bundled = { ...launch, bundle: { ...launch.bundle, root } }
+  const node = `/usr/bin/env ELECTRON_RUN_AS_NODE=1 ${launch.nodeExecPath}`
+
+  try {
+    writeFileSync(path.join(root, 'attachment-job.mjs'), '')
+    writeFileSync(path.join(root, 'panel-job.mjs'), '')
+    if (process.platform === 'win32') return
+
+    const attachments = `attachments=${node} ${path.join(root, 'attachment-job.mjs')}`
+
+    assert.equal(openabEnv(bundled).OPENAB_RUNTIME_JOBS, attachments)
+    assert.equal(openabEnv(bundled).OPENAB_RUNTIME_JOB_MAX_TIMEOUT_MS, undefined)
+    const env = openabEnv({ ...bundled, ownsMachine: true })
+
+    assert.equal(
+      env.OPENAB_RUNTIME_JOBS,
+      `${attachments};panel=${node} --max-old-space-size=512 ${path.join(root, 'panel-job.mjs')}`,
+    )
+    assert.equal(env.OPENAB_RUNTIME_JOB_MAX_TIMEOUT_MS, '300000')
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
 test('the config quotes paths as TOML strings', () => {
   const toml = openabConfigToml({ ...launch, workspace: 'C:\\Users\\me "x"' })
 
@@ -136,3 +162,52 @@ test('an explicit default Keychain override wins over a custom terminal config',
     process.platform === 'darwin' ? '' : launch.agentHome,
   )
 })
+
+test('tunnel sign-in uses bundled wrappers and each provider’s isolated credential directory', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'nuphos-login-wrappers-'))
+  // macOS keeps the user's HOME for the Keychain; openab's own HOME stays isolated.
+  const prefix =
+    process.platform === 'darwin' ? '/usr/bin/env HOME=/Users/me USERPROFILE=/Users/me ' : ''
+
+  try {
+    for (const provider of ['claude-code', 'codex'] as const) {
+      const wrapper = path.join(root, provider === 'codex' ? 'codex-login.mjs' : 'claude-login.mjs')
+
+      writeFileSync(wrapper, '')
+      const env = agentLoginEnv({ ...launch, provider, bundle: { ...launch.bundle, root } })
+
+      assert.equal(
+        env.OPENAB_RUNTIME_LOGIN_COMMAND,
+        `${prefix}${launch.nodeExecPath} ${wrapper}${provider === 'codex' ? ' --install' : ''}`,
+      )
+      assert.equal(env.AWS_SECRET_ACCESS_KEY, undefined)
+      if (provider === 'codex') {
+        assert.equal(env.CODEX_EXECUTABLE, launch.cliPath)
+        assert.equal(env.NUPHOS_CODEX_AUTH_DIRECTORY, launch.agentHome)
+      } else assert.equal(env.CLAUDE_CONFIG_DIR, launch.agentHome)
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test(
+  'macOS sign-in without a usable HOME is left to the computer',
+  { skip: process.platform !== 'darwin' },
+  () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'nuphos-login-wrappers-'))
+
+    try {
+      writeFileSync(path.join(root, 'claude-login.mjs'), '')
+      const bundled = { ...launch, bundle: { ...launch.bundle, root } }
+
+      assert.equal(openabEnv(bundled).HOME, launch.openabHome)
+      assert.deepEqual(
+        agentLoginEnv({ ...bundled, env: { ...launch.env, HOME: '/Users/with space' } }),
+        {},
+      )
+    } finally {
+      rmSync(root, { recursive: true, force: true })
+    }
+  },
+)

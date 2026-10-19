@@ -1,7 +1,9 @@
 import {
   Archive,
   CircleUserRound,
+  CreditCard,
   FileText,
+  KeyRound,
   Monitor,
   NotebookPen,
   ScrollText,
@@ -36,6 +38,7 @@ const TEAM_GROUPS: SettingsNavGroup[] = [
     items: [
       { key: 'workspace.general', label: 'General', icon: Settings },
       { key: 'workspace.members', label: 'Members', icon: Users },
+      { key: 'workspace.billing', label: 'Billing', icon: CreditCard },
       { key: 'workspace.instructions', label: 'Instructions', icon: FileText },
       { key: 'workspace.archived', label: 'Archived chats', icon: Archive },
       { key: 'workspace.audit', label: 'Audit log', icon: ScrollText },
@@ -50,7 +53,10 @@ const TEAM_GROUPS: SettingsNavGroup[] = [
 const USER_GROUPS: SettingsNavGroup[] = [
   {
     title: 'Account',
-    items: [{ key: 'account.profile', label: 'Profile', icon: CircleUserRound }],
+    items: [
+      { key: 'account.profile', label: 'Profile', icon: CircleUserRound },
+      { key: 'account.personalCredentials', label: 'Personal Credentials', icon: KeyRound },
+    ],
   },
   {
     title: 'This computer',
