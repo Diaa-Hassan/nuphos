@@ -20,6 +20,7 @@ import {
 
 import { AgentUpdateBadge } from './AgentUpdateBadge'
 import { AgentProviderIcon } from './icons'
+import { selectedAgentReachability } from './runtimeControlSignOut'
 
 import type { RuntimeInstance, RuntimeQuota } from '../../../types/runtime'
 
@@ -59,6 +60,12 @@ export type RuntimeControl = {
   }
 }
 
+const AGENT_DOT = {
+  ready: { color: 'bg-success', label: 'Box online · agent ready' },
+  signIn: { color: 'bg-warning', label: 'Box online · agent needs sign-in' },
+  offline: { color: 'bg-error', label: 'Box offline' },
+} as const
+
 function runtimeOptionNote(instance: RuntimeInstance, quota?: RuntimeQuota): string {
   if (instance.deletion) return ' · Being removed'
   if (instance.starting) return ' · Starting…'
@@ -68,6 +75,8 @@ function runtimeOptionNote(instance: RuntimeInstance, quota?: RuntimeQuota): str
 }
 
 export function RuntimeSelector({
+  menuOpen,
+  onMenuOpenChange,
   teamId,
   canUpdateTeamAgents,
   value,
@@ -81,7 +90,11 @@ export function RuntimeSelector({
   onSettings,
   onAddAgent,
   confirm,
-}: RuntimeControl) {
+}: RuntimeControl & {
+  /** Lets the composer open the list, e.g. from the agent-status banner. */
+  menuOpen?: boolean
+  onMenuOpenChange?: (open: boolean) => void
+}) {
   const providerName = AGENT_PROVIDER[value?.provider ?? 'claude-code'].label
   const owner = useThisComputer()
   const selected = value?.id ? options.find((instance) => instance.id === value.id) : undefined
@@ -102,6 +115,8 @@ export function RuntimeSelector({
 
     return () => clearTimeout(timer)
   }, [value?.id])
+  const reachability = selectedAgentReachability({ value, options })
+  const dot = reachability ? AGENT_DOT[reachability] : null
   const usageLoading = Boolean(
     value?.id &&
     usageWaitExpired !== value.id &&
@@ -121,11 +136,17 @@ export function RuntimeSelector({
       ) : (
         <span className="max-w-40 truncate">{label}</span>
       )}
+      {dot && (
+        <span
+          role="img"
+          aria-label={dot.label}
+          title={dot.label}
+          className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot.color}`}
+        />
+      )}
       {selectedUpdate && <AgentUpdateBadge update={selectedUpdate} />}
       {unavailable && <span className="shrink-0 text-amber-400">· Unavailable</span>}
-      {!unavailable && quotaSignedOut(selectedQuota) ? (
-        <span className="shrink-0 text-amber-400">· Sign in required</span>
-      ) : usageLoading ? (
+      {usageLoading ? (
         <span
           aria-label="Loading usage"
           role="status"
@@ -158,7 +179,7 @@ export function RuntimeSelector({
           onClose={confirm.onCancel}
         />
       )}
-      <Menu>
+      <Menu open={menuOpen} onOpenChange={onMenuOpenChange}>
         <MenuTrigger
           aria-label={`Conversation agent: ${label}`}
           className={`${classes} transition-colors hover:bg-zGray-800/60 hover:text-main`}
