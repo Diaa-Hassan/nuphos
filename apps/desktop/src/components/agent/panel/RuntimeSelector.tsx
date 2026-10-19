@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { ChevronDown, Plus, Settings2 } from 'lucide-react'
 import { useEffect, useState } from 'react'
 
@@ -118,7 +119,11 @@ export function RuntimeSelector({
   onSettings,
   onAddAgent,
   confirm,
-}: RuntimeControl) {
+  hero = false,
+}: RuntimeControl & {
+  /** Sized like the hero composer's other controls; compact otherwise. */
+  hero?: boolean
+}) {
   const providerName = AGENT_PROVIDER[value?.provider ?? 'claude-code'].label
   const owner = useThisComputer()
   const selected = value?.id ? options.find((instance) => instance.id === value.id) : undefined
@@ -173,8 +178,10 @@ export function RuntimeSelector({
       )}
     </>
   )
-  const classes =
-    'flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2 text-[12px] text-secondary'
+  const classes = clsx(
+    hero ? 'h-8 px-2.5' : 'h-7 px-2',
+    'flex min-w-0 max-w-full items-center gap-1.5 rounded-full text-[12px] text-secondary',
+  )
 
   if (!onSelect)
     return (

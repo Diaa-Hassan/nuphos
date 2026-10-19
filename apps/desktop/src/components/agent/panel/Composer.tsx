@@ -255,10 +255,15 @@ export function Composer({
                 <CredentialSelectorButton {...credentialSelector} hero={hero} />
               )}
               {bypassControl && <BypassControlMenu bypassControl={bypassControl} hero={hero} />}
-              {runtimeControl && <RuntimeSelector {...runtimeControl} />}
+              {runtimeControl && <RuntimeSelector {...runtimeControl} hero={hero} />}
             </div>
             {modelSession ? (
-              <ModelSelector control={modelControl} disabled={readOnly} streaming={streaming} />
+              <ModelSelector
+                control={modelControl}
+                disabled={readOnly}
+                streaming={streaming}
+                hero={hero}
+              />
             ) : (
               newConversationModelControl
             )}
