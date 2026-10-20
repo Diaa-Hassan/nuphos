@@ -6,13 +6,14 @@ import { app, BrowserWindow, powerMonitor, shell } from 'electron'
 import { createDockTerminalStream } from '../../agent/dock-terminal.ts'
 import { callJson } from '../../agent/http.ts'
 import { logLocalTool } from '../../agent/local-exec.ts'
-import { apiUrl } from '../../api-endpoint.ts'
+import { apiUrl, deviceRegistrationAllowed, onApiUrlChange } from '../../api-endpoint.ts'
 import { authSession } from '../../auth-session.ts'
 import { unverifiedTokenSubject } from '../../auth-status.ts'
 import { CLIENT_VERSION_HEADER, CLIENT_VERSION_VALUE } from '../../client-version.ts'
 import { resolveShellEnv } from '../../shell-env.ts'
 import { syncDeviceRegistration } from '../device-controller.ts'
 import { readDeviceIdentity } from '../device-identity.ts'
+import { isDev } from '../env.ts'
 
 import { LOCAL_AGENT_PROVIDERS, findAgentCli, probeAgentCli, readAgentUsage } from './agent-cli.ts'
 import { prepareAgentHome } from './agent-home.ts'
@@ -118,6 +119,8 @@ const controller: LocalRuntimeController = new LocalRuntimeController({
       instances,
       activity: sleep.taskActivity,
       connectBackend: () => {
+        if (!deviceRegistrationAllowed(isDev))
+          throw new Error('Development builds do not register devices with Nuphos Cloud')
         const token = authSession.current()
 
         if (!token) throw new Error('Not signed in')
@@ -213,7 +216,8 @@ export function cancelLocalCodexLogin(): void {
 export function initLocalRuntime(): void {
   sleep.initSleepPrevention(broadcastState)
   const follow = (token: string | null) => {
-    const userId = token ? (unverifiedTokenSubject(token) ?? null) : null
+    const userId =
+      token && deviceRegistrationAllowed(isDev) ? (unverifiedTokenSubject(token) ?? null) : null
 
     if (userId !== controller.state().userId) {
       cancelLocalClaudeLogin()
@@ -223,6 +227,7 @@ export function initLocalRuntime(): void {
   }
 
   authSession.subscribe(follow)
+  onApiUrlChange(() => follow(authSession.current()))
   follow(authSession.current())
   if (devBuild())
     watchDevBundle(bundleRoot(), {

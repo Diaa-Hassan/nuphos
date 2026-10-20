@@ -9,6 +9,7 @@ import path from 'node:path'
 import { CLI_CONFIG_PATH } from './cli-config-path.ts'
 
 const DEFAULT_API_URL = 'https://api.nuphos.ai'
+const listeners = new Set<() => void>()
 
 // What this process was launched with; resetting the switch returns here, so a
 // `bun run dev` build never falls through to Nuphos Cloud.
@@ -32,8 +33,25 @@ export function apiUrl(): string {
   return process.env.NUPHOS_API_URL || process.env.ATLAS_API_URL || DEFAULT_API_URL
 }
 
+/** A dev window may use Cloud, but must not advertise this computer there. */
+export function deviceRegistrationAllowed(dev: boolean): boolean {
+  if (!dev) return true
+
+  return new URL(apiUrl()).hostname.replace(/\.$/u, '') !== new URL(DEFAULT_API_URL).hostname
+}
+
+export function onApiUrlChange(listener: () => void): () => void {
+  listeners.add(listener)
+
+  return () => {
+    listeners.delete(listener)
+  }
+}
+
 /** Saves the endpoint (`null` restores the launch-time one, else Nuphos Cloud) and returns the new one. */
 export function setApiUrl(raw: string | null): string {
+  const previous = apiUrl()
+
   delete process.env.ATLAS_API_URL
   if (raw === null) {
     fs.rmSync(SAVED_PATH, { force: true })
@@ -47,6 +65,8 @@ export function setApiUrl(raw: string | null): string {
     fs.writeFileSync(SAVED_PATH, `${url.origin}\n`, 'utf8')
     process.env.NUPHOS_API_URL = url.origin
   }
+
+  if (apiUrl() !== previous) for (const listener of listeners) listener()
 
   return apiUrl()
 }
