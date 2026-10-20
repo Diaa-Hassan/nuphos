@@ -4,6 +4,7 @@ import { DEFAULT_LINEAR_NAV, LINEAR_PAGE_KEY } from '../../lib/linearNav'
 import { buildCloudConnectorRows } from '../../views/cloud/team-home-rows-cloud'
 import { buildDevConnectorRows } from '../../views/cloud/team-home-rows-dev'
 import { buildSaasConnectorRows } from '../../views/cloud/team-home-rows-saas'
+import { connectorRowFor } from '../../views/connector-info/connectorRowMatch'
 import { DEFAULT_GITLAB_NAV } from '../../views/gitlabNav'
 
 import type { ScopeRenderContext } from './context'
@@ -165,13 +166,11 @@ export function connectorInfoActions(
   }
 }
 
-export function connectorInfoDisconnectAction(
-  ctx: ScopeRenderContext,
-  connectorId: string,
-): (() => Promise<void>) | undefined {
+/** The connector-list row for one connection of the open detail page. */
+function connectorInfoRow(ctx: ScopeRenderContext, connectorId: string) {
   const { accounts, connectorDetail, databaseConnections, scope } = ctx
 
-  if (!accounts || !connectorDetail || scope.kind !== 'team') return undefined
+  if (!accounts || !connectorDetail || scope.kind !== 'team') return
 
   const ignoreOpen = () => {}
   const rows = [
@@ -188,7 +187,6 @@ export function connectorInfoDisconnectAction(
       uptimeKumaInstances: accounts.uptimeKuma,
       tailscaleClients: accounts.tailscale,
       zeaburProviders: accounts.zeabur,
-      onManageOnpremAccess: ignoreOpen,
       onOpenConnectorInfo: ignoreOpen,
     }),
     ...buildSaasConnectorRows({
@@ -224,7 +222,21 @@ export function connectorInfoDisconnectAction(
       onOpenConnectorInfo: ignoreOpen,
     }),
   ]
-  const rowProvider = connectorDetail.provider === 'mongodb' ? 'database' : connectorDetail.provider
 
-  return rows.find((row) => row.key === `${rowProvider}:${connectorId}`)?.onDelete
+  return connectorRowFor(rows, connectorDetail.provider, connectorId)
+}
+
+export function connectorInfoDisconnectAction(
+  ctx: ScopeRenderContext,
+  connectorId: string,
+): (() => Promise<void>) | undefined {
+  return connectorInfoRow(ctx, connectorId)?.onDelete
+}
+
+/** What the connection needs before it works again, or undefined when it is healthy. */
+export function connectorInfoAttention(
+  ctx: ScopeRenderContext,
+  connectorId: string,
+): string | undefined {
+  return connectorInfoRow(ctx, connectorId)?.attention
 }

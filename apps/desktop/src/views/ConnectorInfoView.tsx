@@ -7,12 +7,16 @@ import { installedConnectorAddAction } from './cloud/connector-actions'
 import { TeamHomeBindFlow } from './cloud/team-home-bind-flow'
 import { ConnectorInfoPage } from './connector-info/ConnectorInfoPage'
 import { ConnectorManagementSection } from './connector-info/ConnectorManagementSection'
+import { ConnectorsBackButton } from './connector-info/ConnectorsBackButton'
 import { DisconnectConnectorDialog } from './connector-info/DisconnectConnectorDialog'
 import { loadConnectorInfos } from './connector-info/loadConnectorInfo'
 import { hasConnectorManagement } from './connector-info/managementProviders'
+import { useEscapeToExit } from './connector-info/useEscapeToExit'
+import { ManageOnpremCredentialDialog } from './ManageOnpremCredentialDialog'
 import { useResetOnKey } from './useResetOnKey'
 
 import type { ConnectorInfoProvider } from '../lib/appRoutes'
+import type { OnpremCluster } from '../types'
 import type { TeamHomeBindFlowHandle } from './cloud/team-home-bind-flow'
 import type { ConnectorInfoAction } from './connector-info/ConnectorInfoPage'
 import type { DisconnectTarget } from './connector-info/DisconnectConnectorDialog'
@@ -61,6 +65,15 @@ function ConnectorInfoSkeleton() {
   )
 }
 
+/** On-prem clusters edit their access credential from the detail view. */
+function withManageAccess(
+  actions: ConnectorInfoAction[],
+  cluster: OnpremCluster | undefined,
+  open: (cluster: OnpremCluster) => void,
+): ConnectorInfoAction[] {
+  return cluster ? [...actions, { label: 'Manage access', onOpen: () => open(cluster) }] : actions
+}
+
 /**
  * Shared connector-info page. Fetches its own binding by id so a deep-linked
  * /connectors/<provider>/<id> URL restores without any tab-local state.
@@ -74,6 +87,9 @@ export function ConnectorInfoView({
   onNameResolved,
   inAppActionsForConnection,
   disconnectActionForConnection,
+  onpremCluster,
+  attentionForConnection,
+  onExit,
   onConnectionsChanged,
   onOpenAgentChat,
   onOpenSettingsSection,
@@ -91,6 +107,12 @@ export function ConnectorInfoView({
   inAppActionsForConnection: (connectorId: string) => ConnectorInfoAction[]
   /** Returns the provider's existing unbind action for this connection. */
   disconnectActionForConnection: (connectorId: string) => (() => Promise<void>) | undefined
+  /** The on-prem cluster behind a connection, for its access-credential editor. */
+  onpremCluster?: (connectorId: string) => OnpremCluster | undefined
+  /** What a connection needs before it works again; undefined when healthy. */
+  attentionForConnection?: (connectorId: string) => string | undefined
+  /** Returns to the Connectors list; Esc calls it when nothing else claims the key. */
+  onExit?: () => void
   onConnectionsChanged: () => void
   /** Prefill a fresh Agent conversation so the user can review or adjust the task. */
   onOpenAgentChat: (prompt: string, options?: { send?: boolean }) => void
@@ -104,6 +126,7 @@ export function ConnectorInfoView({
   )
   const [state, setState] = useState<'loading' | 'ready' | 'missing'>('loading')
   const [disconnectTarget, setDisconnectTarget] = useState<DisconnectTarget | null>(null)
+  const [manageAccess, setManageAccess] = useState<OnpremCluster | null>(null)
 
   useResetOnKey(
     `${teamId}|${provider}|${connectorId}|${String(refreshKey)}|${String(reloadKey)}`,
@@ -140,6 +163,10 @@ export function ConnectorInfoView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId, provider, connectorId, refreshKey, reloadKey])
 
+  const rootRef = useRef<HTMLDivElement>(null)
+
+  useEscapeToExit(onExit, rootRef)
+
   const providerLabel = CONNECTOR_INFO_LABELS[provider]
   const addAction = installedConnectorAddAction(provider)
   const onBindingsChanged = () => {
@@ -148,7 +175,12 @@ export function ConnectorInfoView({
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin selectable">
+    <div
+      ref={rootRef}
+      data-connector-detail
+      className="connector-quiet-focus flex-1 min-h-0 overflow-y-auto scrollbar-thin selectable"
+    >
+      {onExit && <ConnectorsBackButton onBack={onExit} />}
       {state !== 'ready' && (
         <>
           {state === 'loading' && <ConnectorInfoSkeleton />}
@@ -167,8 +199,13 @@ export function ConnectorInfoView({
           providerLabel={providerLabel}
           connections={connections.map((connection) => ({
             ...connection,
-            inAppActions: inAppActionsForConnection(connection.id),
+            inAppActions: withManageAccess(
+              inAppActionsForConnection(connection.id),
+              provider === 'onprem-k8s' ? onpremCluster?.(connection.id) : undefined,
+              setManageAccess,
+            ),
             canDisconnect: Boolean(disconnectActionForConnection(connection.id)),
+            attention: attentionForConnection?.(connection.id),
             details:
               connection.id === selectedId && hasConnectorManagement(provider) ? (
                 <ConnectorManagementSection
@@ -210,10 +247,19 @@ export function ConnectorInfoView({
           if (detail.provider === provider) setSelectedId(detail.connectorId)
         }}
       />
+      {manageAccess && (
+        <ManageOnpremCredentialDialog
+          teamId={teamId}
+          cluster={manageAccess}
+          onClose={() => setManageAccess(null)}
+          onSaved={onBindingsChanged}
+        />
+      )}
       {disconnectTarget && (
         <DisconnectConnectorDialog
           target={disconnectTarget}
           onClose={() => setDisconnectTarget(null)}
+          onFailed={onBindingsChanged}
           onDisconnected={(id) => {
             const remaining = connections.filter((connection) => connection.id !== id)
 

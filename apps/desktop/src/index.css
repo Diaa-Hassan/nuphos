@@ -2317,3 +2317,41 @@ html.light {
 .workspace-content-surface .workspace-page-toolbar {
   background-color: transparent;
 }
+
+/* The Connectors list and a connector's detail page use a quiet neutral focus outline instead of
+   the app's violet inset ring. zGray-500 is the theme pivot, so it keeps contrast in both themes. */
+.connector-quiet-focus
+  :where(button, a[href], summary, [role='button'], [tabindex]:not([tabindex='-1'])):focus-visible {
+  box-shadow: none;
+  outline: 1px solid rgb(var(--color-zGray-500));
+  outline-offset: -1px;
+}
+
+/* Connector rows: an overflowing description slides to its end on hover or keyboard focus, then
+   back (see OverflowMarquee). Reduced motion wraps it to two lines instead of moving it. */
+@keyframes connector-marquee {
+  0%,
+  15% {
+    text-indent: 0;
+  }
+  50%,
+  65% {
+    text-indent: var(--marquee-shift);
+  }
+  100% {
+    text-indent: 0;
+  }
+}
+
+.group:hover .connector-marquee,
+.group:has(:focus-visible) .connector-marquee {
+  animation: connector-marquee var(--marquee-duration) ease-in-out 200ms 1;
+  text-overflow: clip;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .group:hover .connector-marquee,
+  .group:has(:focus-visible) .connector-marquee {
+    animation: none;
+  }
+}

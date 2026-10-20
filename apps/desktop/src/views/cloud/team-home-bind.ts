@@ -72,12 +72,11 @@ export type IntegrationPlatformRow = {
   account: string
   principal: string
   status: string
-  // Optional: rows for read-only providers with no detail/access view (Vanta,
-  // Secureframe) omit this so the row click and "Manage access" menu item are
-  // inert rather than wired to a no-op.
+  // Optional: rows for read-only providers with no per-connection detail view
+  // (Vanta, Secureframe) omit this and open the provider's list instead.
   onAction?: () => void
-  /** Separate access editor when opening the resource itself is the row action. */
-  onManageAccess?: () => void
+  /** Set when the connection is bound but cannot work until someone acts, e.g. "Reconnect required". */
+  attention?: string
   onDelete?: () => Promise<void>
 }
 
