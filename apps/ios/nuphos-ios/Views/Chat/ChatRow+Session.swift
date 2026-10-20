@@ -40,20 +40,23 @@ extension ChatRow {
         }
         rows.append(contentsOf: timeline.trailing.map(timelineRow))
 
+        // The transcript already says why the last turn failed; the runtime
+        // status and that turn's stream error would only repeat it below.
+        let failure = shownFailure(in: messages)
         if session.sending != nil {
             rows.append(.sending)
         } else if session.isNativeRuntime {
             if let status = session.runtimeStatus {
                 if session.isStreaming {
                     rows.append(.activity(text: status))
-                } else {
+                } else if failure == nil {
                     rows.append(.hint(id: "runtime-status", text: status, isError: false))
                 }
             }
         } else if session.isStreaming {
             rows.append(.activity(text: session.phaseLabel ?? "Thinking…"))
         }
-        if let error = session.error, !session.stoppedByUser {
+        if let error = session.error, !session.stoppedByUser, error != failure {
             rows.append(.hint(id: "error", text: error, isError: true))
         }
         return rows
