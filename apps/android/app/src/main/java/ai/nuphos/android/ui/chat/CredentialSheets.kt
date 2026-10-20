@@ -47,7 +47,13 @@ fun CredentialPickerSheet(
                 TextButton(onClick = onDismiss) { Text("Done") }
             }
         }
-        val catalog = store.credentialCatalog
+        // Extra provider kinds belong to the fresh composer only. Stored-chat
+        // parsing/wire keys retain their existing contract in this change.
+        val catalog = store.credentialCatalog?.let { loaded ->
+            if (selection.newConversation) loaded else ai.nuphos.android.model.CredentialCatalog(
+                loaded.sections.filter { it.provider in ai.nuphos.android.model.CredentialCatalog.PROVIDERS },
+            )
+        }
         val error = store.credentialCatalogError
         when {
             catalog == null && error != null -> Text(error, modifier = Modifier.padding(24.dp), color = MaterialTheme.colorScheme.error)

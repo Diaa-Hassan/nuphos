@@ -37,7 +37,7 @@ class ComputerAvailabilityDeviceTest {
             "awsRoles":[{"roleId":"cloud","accountAlias":"Fixture existing cloud"}]}""")!!)
         var selection by mutableStateOf(CredentialSelection(JsonValue.parse("""{"deviceIds":["selected"],"awsRoleIds":["cloud"]}""")!!))
         @Suppress("UNCHECKED_CAST")
-        val cache = AgentStore::class.java.getDeclaredField("credentialCatalog\$delegate").also { it.isAccessible = true }.get(store) as MutableState<CredentialCatalog?>
+        val cache = AgentStore::class.java.getDeclaredField("credentials\$delegate").also { it.isAccessible = true }.get(store) as MutableState<ai.nuphos.android.model.CredentialDraft>
         fun shot(step: String) {
             compose.waitForIdle()
             instrumentation.uiAutomation.takeScreenshot().useBitmap {
@@ -45,7 +45,7 @@ class ComputerAvailabilityDeviceTest {
             }
         }
         try {
-            compose.runOnIdle { cache.value = catalog }
+            compose.runOnIdle { cache.value = ai.nuphos.android.model.CredentialDraft(catalog = catalog) }
             compose.setContent {
                 NuphosTheme(darkTheme = dark) {
                     CompositionLocalProvider(LocalAgentStore provides store) {

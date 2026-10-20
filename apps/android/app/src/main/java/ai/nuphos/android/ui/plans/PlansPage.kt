@@ -103,11 +103,17 @@ fun PlansPage(
                 "When you ask the agent to do something that needs confirmation, it drafts a plan here for the team to review and approve.",
                 "Ask the agent to plan a change",
             ) {
-                val session = store.newSession() ?: return@EmptyState
-                store.pendingPrompt = ai.nuphos.android.model.ComposerSubmission(
-                    "Help me plan an infrastructure change — ask me what I want to do, then draft a plan for the team to review.",
-                )
-                nav.navigate("conversation/${session.sessionId}?fresh=true")
+                val teamId = store.selectedTeam?.id
+                val revision = store.workspaceRevision
+                scope.launch {
+                    store.loadCredentialOptions()
+                    if (store.selectedTeam?.id != teamId || store.workspaceRevision != revision) return@launch
+                    val session = store.newSession() ?: return@launch
+                    store.pendingPrompt = ai.nuphos.android.model.ComposerSubmission(
+                        "Help me plan an infrastructure change — ask me what I want to do, then draft a plan for the team to review.",
+                    )
+                    nav.navigate("conversation/${session.sessionId}?fresh=true")
+                }
             }
             plans.rows.isEmpty() -> EmptyState(
                 Icons.Outlined.Assignment, "No plans to show", "Dismissed plans are hidden.", "Show dismissed",

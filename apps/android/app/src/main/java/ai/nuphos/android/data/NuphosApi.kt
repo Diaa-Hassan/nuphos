@@ -117,9 +117,9 @@ object NuphosApi {
             timeoutSeconds = 12, forbiddenIsUnauthorized = false,
         ).resources
 
-    suspend fun credentialOptions(token: String, teamId: String): CredentialCatalog {
+    suspend fun credentialOptions(token: String, teamId: String, forNewConversation: Boolean = false): CredentialCatalog {
         val json: JsonValue = get("agent/credential-options", token, listOf("teamId" to teamId), timeoutSeconds = 20)
-        return CredentialCatalog(json["options"] ?: json)
+        return CredentialCatalog(json["options"] ?: json, if (forNewConversation) CredentialCatalog.NEW_CONVERSATION_PROVIDERS else CredentialCatalog.PROVIDERS)
     }
 
     @Serializable

@@ -21,7 +21,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.serialization.json.Json
+import ai.nuphos.android.model.CredentialDraft
 
 class AgentStore(
     private val token: String,
@@ -31,7 +31,6 @@ class AgentStore(
 
     val pageSize = 30
     private val prefs = context.getSharedPreferences("nuphos.prefs", Context.MODE_PRIVATE)
-    private val json = Json { ignoreUnknownKeys = true }
 
     var teams: List<Team> by mutableStateOf(emptyList())
         private set
@@ -204,12 +203,11 @@ class AgentStore(
         }
     }
 
-    var credentialCatalog: CredentialCatalog? by mutableStateOf(null)
-        private set
-    var credentialCatalogError: String? by mutableStateOf(null)
-        private set
-    var credentialSelection by mutableStateOf(CredentialSelection())
-        private set
+    private var credentials by mutableStateOf(CredentialDraft())
+    val credentialCatalog: CredentialCatalog? get() = credentials.catalog
+    val credentialCatalogError: String? get() = credentials.error
+    val credentialsReady: Boolean get() = !disposed && hasAiAccess() && credentials.isReady
+    val credentialSelection: CredentialSelection get() = credentials.selection
     var permissionMode by mutableStateOf(
         PermissionMode.from(prefs.getString(PERMISSION_KEY, null)),
     )
@@ -255,20 +253,25 @@ class AgentStore(
     }
 
     fun updateCredentialSelection(selection: CredentialSelection) {
-        credentialSelection = selection
-        persistCredentialSelection()
+        if (disposed || !hasAiAccess() || selectedTeam == null) return
+        credentials = credentials.copy(selection = selection.copy(newConversation = true))
     }
 
     suspend fun loadCredentialOptions(force: Boolean = false) {
+        if (disposed || !hasAiAccess()) return
         val team = selectedTeam ?: return
         if (!force && credentialCatalog != null) return
+        credentials = credentials.begin()
+        val request = credentials.request
+        val revision = workspaceRevision
+        fun isCurrent() = !disposed && hasAiAccess() && selectedTeam?.id == team.id && workspaceRevision == revision
         try {
-            val catalog = NuphosApi.credentialOptions(token, team.id)
-            credentialCatalog = catalog
-            credentialCatalogError = null
-            credentialSelection = credentialSelection.pruned(catalog)
+            val catalog = NuphosApi.credentialOptions(token, team.id, forNewConversation = true)
+            if (isCurrent()) credentials = credentials.finish(request, Result.success(catalog))
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            credentialCatalogError = e.message
+            if (isCurrent()) credentials = credentials.finish(request, Result.failure(e))
         }
     }
 
@@ -290,11 +293,9 @@ class AgentStore(
                 selectedTeam = pick
                 resetHistory()
                 clearFavorites()
-                credentialCatalog = null
-                restoreCredentialSelection()
+                credentials = credentials.reset()
                 reload()
             } else if (phase == Phase.Idle) {
-                restoreCredentialSelection()
                 reload()
             }
         } catch (e: Exception) {
@@ -323,10 +324,10 @@ class AgentStore(
                 selectedTeam = null
                 resetHistory()
                 clearFavorites()
-                credentialCatalog = null
-                restoreCredentialSelection()
+                credentials = credentials.reset()
             } else {
                 if (refreshed != old) {
+                    credentials = credentials.reset()
                     workspaceRevision++
                     unlinkingSessionId = null
                     unlinkError = null
@@ -350,8 +351,7 @@ class AgentStore(
         resetHistory()
         clearFavorites()
         prefs.edit().putString(LAST_TEAM_KEY, team.id).apply()
-        credentialCatalog = null
-        restoreCredentialSelection()
+        credentials = credentials.reset()
         storeScope.launch { reload() }
     }
 
@@ -465,17 +465,19 @@ class AgentStore(
     }
 
     fun newSession(selection: RuntimeSelections.Selection? = null): ChatSession? {
+        if (!credentialsReady) return null
         val team = selectedTeam ?: return null
         if (selection != null && (!selection.valid || selection.teamId != team.id || selection.reselectionRequired)) return null
         val session = ChatSession.fresh(token, team.id, selection?.binding)
         session.presetPermissionMode(permissionMode)
-        session.credentialAccess = if (credentialSelection.isEmpty) null else credentialSelection
+        session.credentialAccess = credentialSelection
         sessions[SessionKey(team.id, session.sessionId)] = session
         return session
     }
 
     fun disposeForConsent() {
         disposed = true
+        credentials = credentials.reset()
         membershipRequest++
         workspaceRevision++
         unlinkingSessionId = null
@@ -488,29 +490,6 @@ class AgentStore(
         pendingPrompt?.attachments?.forEach { it.releaseOwnedCopy() }
         pendingPrompt = null
     }
-
-    private fun restoreCredentialSelection() {
-        val team = selectedTeam
-        if (team == null) {
-            credentialSelection = CredentialSelection()
-            return
-        }
-        val raw = prefs.getString(credentialKey(team), null)
-        credentialSelection = if (raw != null) {
-            runCatching { json.decodeFromString(CredentialSelection.serializer(), raw) }
-                .getOrDefault(CredentialSelection())
-        } else {
-            CredentialSelection()
-        }
-    }
-
-    private fun persistCredentialSelection() {
-        val team = selectedTeam ?: return
-        val raw = json.encodeToString(CredentialSelection.serializer(), credentialSelection)
-        prefs.edit().putString(credentialKey(team), raw).apply()
-    }
-
-    private fun credentialKey(team: Team) = "nuphos.credentialSelection.${team.id}"
 
     companion object {
         private const val LAST_TEAM_KEY = "nuphos.workspace.lastTeamId"

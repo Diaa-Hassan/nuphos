@@ -85,6 +85,7 @@ fun AgentPage(
     val team = store.selectedTeam
     val revision = store.workspaceRevision
     val consentRevision = ai.nuphos.android.session.AiAccess.revision
+    LaunchedEffect(store, team, revision) { store.loadCredentialOptions() }
     val authGeneration = auth.generation
     val selection = remember(account, team?.id, authGeneration, consentRevision) {
         if (account != null && team != null && auth.aiAllowed) auth.runtimeSelections.bind(account, team.id) else null
@@ -274,6 +275,7 @@ fun AgentPage(
             },
             draft = draft,
             draftingEnabled = draft != null && draftAuth.aiAllowed && store.selectedTeam != null,
+            canSubmit = store.credentialsReady,
             isStreaming = false,
             onSend = { submission ->
                 val session = store.newSession(selection) ?: return@ChatComposer false

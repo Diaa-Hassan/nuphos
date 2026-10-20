@@ -35,9 +35,9 @@ class ComputerCredentialFixtureDeviceTest {
         session.credentialAccess = CredentialSelection(JsonValue.parse("""{"deviceIds":["mac"],"awsRoleIds":["aws"]}""")!!)
         // No workspace is selected, so the sheet cannot load a live catalog.
         @Suppress("UNCHECKED_CAST")
-        val cached = AgentStore::class.java.getDeclaredField("credentialCatalog\$delegate").also { it.isAccessible = true }.get(store) as MutableState<CredentialCatalog?>
+        val cached = AgentStore::class.java.getDeclaredField("credentials\$delegate").also { it.isAccessible = true }.get(store) as MutableState<ai.nuphos.android.model.CredentialDraft>
         try {
-            compose.runOnIdle { cached.value = catalog }
+            compose.runOnIdle { cached.value = ai.nuphos.android.model.CredentialDraft(catalog = catalog) }
             compose.setContent {
                 NuphosTheme {
                     CompositionLocalProvider(LocalAgentStore provides store) {

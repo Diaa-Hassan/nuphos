@@ -258,3 +258,32 @@ active notification; Android does not offer APNs-style independent numeric app b
 `PushParityDeviceTest` is opt-in (`localPushParity=true`) and requires the loopback debug build
 and its existing fixture binding. It checks same-conversation suppression, other-conversation
 foreground display, badge updates, zero-count clearing and rejection of another account's update.
+
+### New conversation credential defaults
+
+Each app launch and workspace switch starts a fresh in-memory credential draft.
+The first successful catalog load selects usable providers and online computers;
+Resend stays opt-in. The composer loads this catalog before the first send.
+A failed load permits sending with the current selection, matching iOS, and a
+later successful retry still supplies defaults. A successful empty catalog counts
+as loaded. Subsequent refreshes only prune IDs no longer offered, preserving
+manual deselection, explicit Resend opt-in, and selected computers that went
+offline. Old `nuphos.credentialSelection.<teamId>` preferences are no longer read
+or written. Existing conversations retain their server-provided credential access.
+
+`CredentialDraftTest` covers defaults, all provider identifiers, refresh and failure
+semantics, empty catalogs, request ordering, resets, and existing wire keys.
+
+New drafts send explicit empty arrays for unselected connector kinds. This matters
+because the backend treats omitted legacy connector keys as team-wide reach.
+That wire mode is limited to fresh drafts; stored conversation parsing and its
+original wire keys are unchanged. The new draft catalog includes the 30 provider
+kinds supported by iOS, including the eight connector kinds absent from Android's
+legacy catalog.
+
+`CredentialDefaultsFixtureDeviceTest` requires the separate
+`ai.nuphos.android.credentialfixture` installation. It intercepts every API read,
+uses a separate preference file, restores consent state and callbacks, and checks
+old preferences, new/stored sessions, exact catalog GETs, failed/empty catalogs,
+and late results after team, account or consent invalidation. It never opens an
+Activity or modifies a live integration. Default device runs skip this fixture.

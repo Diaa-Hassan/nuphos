@@ -29,8 +29,8 @@ data class CredentialCatalog(
     val isEmpty: Boolean get() = sections.isEmpty()
     val allItems: List<Item> get() = sections.flatMap { it.items }
 
-    constructor(json: JsonValue) : this(
-        PROVIDERS.mapNotNull { provider ->
+    constructor(json: JsonValue, providers: List<Provider> = PROVIDERS) : this(
+        providers.mapNotNull { provider ->
             val rows = json[provider.optionsKey]?.arrayValue ?: emptyList()
             val items = rows.mapNotNull { row ->
                 val id = row[provider.idKey]?.stringValue ?: return@mapNotNull null
@@ -82,12 +82,26 @@ data class CredentialCatalog(
             Provider("secureframeIntegrations", "secureframeIntegrationIds", "Secureframe", "integrationId", listOf("label"), listOf("region")),
             Provider("resendIntegrations", "resendIntegrationIds", "Resend", "integrationId", listOf("label"), listOf("permission")),
         )
+
+        // New-composer catalog parity with iOS. Stored conversation parsing and its
+        // existing wire keys keep using PROVIDERS, so opening a chat cannot expand access.
+        val NEW_CONVERSATION_PROVIDERS = PROVIDERS + listOf(
+            Provider("posthogIntegrations", "posthogIntegrationIds", "PostHog", "integrationId", listOf("label"), listOf("apiBaseUrl")),
+            Provider("githubInstallations", "githubInstallationIds", "GitHub", "installationId", listOf("accountLogin"), listOf("accountType")),
+            Provider("gitlabBindings", "gitlabBindingIds", "GitLab", "bindingId", listOf("username"), listOf("hostUrl")),
+            Provider("grafanaInstances", "grafanaInstanceIds", "Grafana", "instanceId", listOf("name"), listOf("grafanaUrl")),
+            Provider("sonarqubeIntegrations", "sonarqubeIntegrationIds", "SonarQube", "integrationId", listOf("label"), listOf("baseUrl")),
+            Provider("notionIntegrations", "notionIntegrationIds", "Notion", "integrationId", listOf("label"), listOf("workspaceName")),
+            Provider("upstashAccounts", "upstashAccountIds", "Upstash", "accountId", listOf("label"), listOf("email")),
+            Provider("cloudflareAccounts", "cloudflareAccountIds", "Cloudflare", "accountId", listOf("accountName"), listOf("accountId")),
+        )
     }
 }
 
 @Serializable
 data class CredentialSelection(
     val ids: Map<String, Set<String>> = emptyMap(),
+    @kotlinx.serialization.Transient val newConversation: Boolean = false,
 ) {
     val isEmpty: Boolean get() = ids.values.all { it.isEmpty() }
     val count: Int get() = ids.values.sumOf { it.size }
@@ -99,6 +113,14 @@ data class CredentialSelection(
         val set = (ids[item.provider.selectionKey] ?: emptySet()).toMutableSet()
         if (!set.add(item.id)) set.remove(item.id)
         return copy(ids = ids + (item.provider.selectionKey to set))
+    }
+
+    /** Fresh composer defaults; mail remains an explicit opt-in. Never used for stored chats. */
+    fun selectDefaults(catalog: CredentialCatalog): CredentialSelection {
+        val usable = catalog.allItems.filter { !it.unavailable }
+        val defaults = usable.groupBy { it.provider.selectionKey }.mapValues { (_, items) -> items.map { it.id }.toSet() }
+        return copy(newConversation = true, ids = ids.mapValues { (key, selected) -> selected + defaults[key].orEmpty() } +
+            defaults.filterKeys { it !in ids } + ("resendIntegrationIds" to emptySet()))
     }
 
     /** Add usable computers without revoking an already selected unavailable computer. */
@@ -116,7 +138,9 @@ data class CredentialSelection(
 
     val json: JsonValue
         get() = JsonValue.Obj(
-            CredentialCatalog.PROVIDERS.associate { provider ->
+            CredentialCatalog.NEW_CONVERSATION_PROVIDERS.filter {
+                newConversation || it in CredentialCatalog.PROVIDERS
+            }.associate { provider ->
                 provider.selectionKey to JsonValue.Arr(
                     (ids[provider.selectionKey] ?: emptySet()).sorted().map { JsonValue.Str(it) },
                 )
