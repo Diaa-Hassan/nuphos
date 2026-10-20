@@ -1,0 +1,18 @@
+{
+  "base": "03be279608d40f387794bbf4b9f1febfde3b6700",
+  "branch": "feat/android-watch-unwatch",
+  "files": {
+    "apps/android/README.md": "1246e834a101df477c3d04841a29010a2fecdb895ca6fd52e14de1c19b331f31",
+    "apps/android/app/src/androidTest/java/ai/nuphos/android/ConversationWatchFixtureDeviceTest.kt": "d5ac0e156becbe663b8cf025ca6638fbe56c934f8d5461178437b71c388996be",
+    "apps/android/app/src/main/java/ai/nuphos/android/data/ConversationActions.kt": "57e9a5b57f6f686304c61f302d55fbd33ca482b96bbfa2dece319309f00cff8a",
+    "apps/android/app/src/main/java/ai/nuphos/android/model/ConversationModels.kt": "10a74ab8842cfe56a2afa9c6b4c0ea87ec58b981db396fa60af68f7d553d2f74",
+    "apps/android/app/src/main/java/ai/nuphos/android/session/AgentStore.kt": "62301190fe078b07399953c46f120ff650a066163ddf9f763322762261518f71",
+    "apps/android/app/src/main/java/ai/nuphos/android/session/ChatSession.kt": "f7c2b25ee3665ef941ac2c8495a5de75124c57e38a7b496473a790d2f998793a",
+    "apps/android/app/src/main/java/ai/nuphos/android/ui/agent/AgentPage.kt": "b454b94cfc377283692c6f2ee059fc3b524caf45591a88253cd3754cd6b8e1b7",
+    "apps/android/app/src/main/java/ai/nuphos/android/ui/chat/ConversationMenu.kt": "ff023efee50cb0a0e8626df09f8ca46d1cbd36d4d9b0dad8f26d114376b16206",
+    "apps/android/app/src/test/java/ai/nuphos/android/ConversationWatchTest.kt": "587023a5697d1e02046be65bbcf5c2df01b466b4922d17c041e85a78ea7164df",
+    "apps/android/app/src/test/java/ai/nuphos/android/session/ConversationAgentMoveTest.kt": "78f288c0f9d507302aac238ca2b2d8fd63d9103573669972e123bb4e22b59259",
+    "apps/android/app/src/test/java/ai/nuphos/android/session/ConversationWatchingTest.kt": "8fda4161d1c4454584e92205e3dccc4bfb8e1408b68ff8e74b010bd32a7f9e7e",
+    "apps/android/app/src/test/java/ai/nuphos/android/session/RuntimeSessionRegressionTest.kt": "ab8ce11a8a2d22bcb18746a872933c949002f971165a5717a4594c304660a03b"
+  }
+}
