@@ -16,6 +16,53 @@ const HOW_IT_WORKS = [
   { icon: Settings2, text: 'Change or cancel anytime in the billing portal.' },
 ]
 
+/** The Box plans with price and size, and a Checkout per plan when `billing` is given. */
+export function PlanCards({ billing }: { billing: OpenBilling | null }) {
+  return (
+    <div className="grid grid-cols-3 gap-3">
+      {BOX_PLANS.map((plan) => (
+        <section
+          key={plan.vcpus}
+          className={clsx(
+            'flex flex-col gap-3 rounded-[10px] border bg-zGray-850 p-4 text-[13px]',
+            plan.recommended ? 'border-zViolet-500' : 'border-white/[0.09]',
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <h3 className="text-[15px] font-semibold text-main">{plan.name}</h3>
+            {plan.recommended && (
+              <span className="rounded-full bg-zViolet-accent/15 px-2 py-0.5 text-[11px] text-zViolet-accent">
+                Recommended
+              </span>
+            )}
+          </div>
+          <p className="text-main">
+            <span className="text-[22px] font-semibold">${plan.usdPerMonth}</span>
+            <span className="text-tertiary"> / month</span>
+          </p>
+          <div>
+            <p className="font-medium text-main">Up to {plan.vcpus} vCPU running</p>
+            <p className="text-[12px] text-tertiary">{plan.example}</p>
+          </div>
+          <ul className="flex flex-1 flex-col gap-1.5 text-secondary">
+            {plan.perks.map((perk) => (
+              <li key={perk} className="flex gap-2">
+                <Check size={14} className="mt-0.5 shrink-0 text-success" />
+                {perk}
+              </li>
+            ))}
+          </ul>
+          {billing && (
+            <BillingButton billing={billing} vcpus={plan.vcpus} className="justify-center">
+              Start with {plan.name}
+            </BillingButton>
+          )}
+        </section>
+      ))}
+    </div>
+  )
+}
+
 /** Before a plan: what a Box plan gets the team, and a Checkout per plan for administrators. */
 export function NoPlan({
   teamId,
@@ -36,47 +83,7 @@ export function NoPlan({
           desktop, shared with your teammates.
         </p>
       </section>
-      <div className="grid grid-cols-3 gap-3">
-        {BOX_PLANS.map((plan) => (
-          <section
-            key={plan.vcpus}
-            className={clsx(
-              'flex flex-col gap-3 rounded-[10px] border bg-zGray-850 p-4 text-[13px]',
-              plan.recommended ? 'border-zViolet-500' : 'border-white/[0.09]',
-            )}
-          >
-            <div className="flex items-center gap-2">
-              <h3 className="text-[15px] font-semibold text-main">{plan.name}</h3>
-              {plan.recommended && (
-                <span className="rounded-full bg-zViolet-accent/15 px-2 py-0.5 text-[11px] text-zViolet-accent">
-                  Recommended
-                </span>
-              )}
-            </div>
-            <p className="text-main">
-              <span className="text-[22px] font-semibold">${plan.usdPerMonth}</span>
-              <span className="text-tertiary"> / month</span>
-            </p>
-            <div>
-              <p className="font-medium text-main">Up to {plan.vcpus} vCPU running</p>
-              <p className="text-[12px] text-tertiary">{plan.example}</p>
-            </div>
-            <ul className="flex flex-1 flex-col gap-1.5 text-secondary">
-              {plan.perks.map((perk) => (
-                <li key={perk} className="flex gap-2">
-                  <Check size={14} className="mt-0.5 shrink-0 text-success" />
-                  {perk}
-                </li>
-              ))}
-            </ul>
-            {billing && (
-              <BillingButton billing={billing} vcpus={plan.vcpus} className="justify-center">
-                Start with {plan.name}
-              </BillingButton>
-            )}
-          </section>
-        ))}
-      </div>
+      <PlanCards billing={billing} />
       {!billing && (
         <p className="text-[13px] text-tertiary">Ask a team administrator to choose a plan.</p>
       )}

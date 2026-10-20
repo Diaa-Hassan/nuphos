@@ -7,6 +7,7 @@ import { CurrentUserContext } from './hooks/useCurrentUser'
 import { forgetMacAccounts } from './hooks/useMacSignIn'
 import { identifyUser, resetAnalytics, track } from './lib/analytics'
 import { LoginView } from './views/LoginView'
+import { BoxPaywallHost } from './views/settings/BoxPaywall'
 
 import type { UserInfo } from './types'
 
@@ -77,6 +78,7 @@ export default function App() {
           setAuth({ status: 'anonymous' })
         }}
       />
+      <BoxPaywallHost />
     </CurrentUserContext>
   )
 }

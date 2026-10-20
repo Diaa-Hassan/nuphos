@@ -1,10 +1,10 @@
 import { useEffect, useState } from 'react'
 
 import { api } from '../../api'
-import { parseAtlasError } from '../../api/errors'
 import { toast } from '../../components/ui/toast'
 import { RUNTIME_INSTANCES_CHANGED, useRuntimeInstances } from '../../hooks/useRuntimeInstances'
 
+import { openBoxPaywall } from './boxPaywallStore'
 import { BOX_CREATING_POLL_MS, boxAgents, boxSetupPhase } from './boxPresentation'
 import { useAgentDevices } from './useAgentDevices'
 
@@ -16,7 +16,6 @@ export function useBoxSetup(
   teamId: string,
   deviceId: string | null,
   onCreated: (deviceId: string) => void,
-  onOpenBilling?: () => void,
 ) {
   const [creating, setCreating] = useState(false)
   const { instances } = useRuntimeInstances(teamId)
@@ -42,16 +41,9 @@ export function useBoxSetup(
     try {
       onCreated((await api.boxCreate(label, teamId)).deviceId)
     } catch (error) {
-      const { code, message } = parseAtlasError(error)
-
-      // No plan, or past it: the plan is chosen in Settings › Billing, as from New Box.
-      if (code === 'box_vcpu_limit')
-        toast.error(
-          'Could not create Box',
-          message,
-          onOpenBilling && { action: { label: 'Open Billing', onClick: onOpenBilling } },
-        )
-      else toast.apiError('Could not create Box', error)
+      // No plan, or past it: the paywall offers one, then makes the Box.
+      if (!openBoxPaywall(teamId, error, () => void create(label)))
+        toast.apiError('Could not create Box', error)
     } finally {
       setCreating(false)
     }

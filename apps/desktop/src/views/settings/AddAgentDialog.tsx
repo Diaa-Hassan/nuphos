@@ -21,7 +21,6 @@ import { ExternalRuntimePasswordForm } from './ExternalRuntimePasswordForm'
 import { RuntimeLoginDialog } from './RuntimeLoginDialog'
 import { useBoxAvailable } from './useAgentDevices'
 import { useBoxSetup } from './useBoxSetup'
-import { useBoxUsage } from './useBoxUsage'
 
 import type { AddAgentAction, AddAgentStep } from './addAgentFlow'
 import type { BoxJoin } from './BoxParts'
@@ -77,15 +76,13 @@ function BoxAgentForm({
   teamId,
   onBack,
   onChosen,
-  onOpenBilling,
 }: {
   teamId: string
   onBack: () => void
   onChosen: (instance: RuntimeInstance) => void
-  onOpenBilling?: () => void
 }) {
   const [deviceId, setDeviceId] = useState<string | null>(null)
-  const box = useBoxSetup(teamId, deviceId, setDeviceId, onOpenBilling)
+  const box = useBoxSetup(teamId, deviceId, setDeviceId)
   const button =
     'rounded-md px-3 py-1.5 text-[12.5px] text-secondary hover:bg-zGray-800/60 disabled:opacity-50'
 
@@ -135,17 +132,13 @@ export function AddAgentDialog({
   teamId,
   onClose,
   onAdded,
-  onOpenBilling,
 }: {
   teamId: string
   onClose: () => void
   onAdded?: (runtimeId: string) => void
-  /** Without it, a team with no Box plan can only read where to get one. */
-  onOpenBilling?: () => void
 }) {
   const [step, setStep] = useState<AddAgentStep>('choose')
   const boxAvailable = useBoxAvailable()
-  const noPlan = useBoxUsage(teamId).usage?.limitVcpus === 0
   const [signingIn, setSigningIn] = useState<RuntimeInstance | null>(null)
   const [join, setJoin] = useState<BoxJoin | null>(null)
   // Slide direction of the step that just entered: deeper from the right, back
@@ -208,17 +201,8 @@ export function AddAgentDialog({
                         <Choice
                           icon={<Box className="h-4 w-4" />}
                           title="New Box"
-                          description={
-                            noPlan
-                              ? 'Needs a Box plan → Billing'
-                              : 'A cloud computer Nuphos runs for you, with Claude Code and Codex. Sign in with your own account.'
-                          }
-                          disabled={noPlan && !onOpenBilling}
-                          onClick={() => {
-                            if (!noPlan) return go('box')
-                            onClose()
-                            onOpenBilling?.()
-                          }}
+                          description="A cloud computer Nuphos runs for you, with Claude Code and Codex. Sign in with your own account."
+                          onClick={() => go('box')}
                         />
                       )}
                       {boxAvailable && (
@@ -269,13 +253,6 @@ export function AddAgentDialog({
                       teamId={teamId}
                       onBack={() => go('back')}
                       onChosen={setSigningIn}
-                      onOpenBilling={
-                        onOpenBilling &&
-                        (() => {
-                          onClose()
-                          onOpenBilling()
-                        })
-                      }
                     />
                   )}
                 </div>

@@ -16,6 +16,7 @@ import {
 
 import { DesktopFrame } from './DesktopFrame'
 import { MacSignIn } from './MacSignIn'
+import { openBoxPaywall } from './settings/boxPaywallStore'
 
 import type { DesktopAttach, DesktopPhase } from '../lib/desktopConnection'
 
@@ -54,7 +55,7 @@ export function SessionDesktopView({
   const host = useRef<HTMLDivElement>(null)
   const rfbRef = useRef<RFB | null>(null)
   const channelRef = useRef<IpcVncChannel | null>(null)
-  const retryRef = useRef<() => void>(() => undefined)
+  const retryRef = useRef<() => void>(() => {})
   const [phase, setPhase] = useState<DesktopPhase>({ kind: 'connecting' })
   const [holding, setHolding] = useState(false)
   const title = useSyncExternalStore(subscribeSessionDesktops, () =>
@@ -181,7 +182,7 @@ export function BoxDesktopView({
   switcher?: React.ReactNode
 }) {
   const host = useRef<HTMLDivElement>(null)
-  const retryRef = useRef<() => void>(() => undefined)
+  const retryRef = useRef<() => void>(() => {})
   const [phase, setPhase] = useState<DesktopPhase>({ kind: 'connecting' })
   const [label, setLabel] = useState<string>()
 
@@ -206,7 +207,7 @@ export function BoxDesktopView({
           .then((text: unknown) => {
             if (typeof text === 'string' && BOX_PAGE_ENDED.test(text)) closed()
           })
-          .catch(() => undefined)
+          .catch(() => {})
       }, 3000)
 
       view.addEventListener('did-finish-load', opened)
@@ -247,7 +248,10 @@ export function BoxDesktopView({
     if (phase.kind === 'stopped' && phase.reason === 'offline')
       void api
         .boxResume(deviceId, teamId)
-        .catch(() => undefined)
+        // A Box the plan has no room for: the paywall offers one, then tries again.
+        .catch((error: unknown) => {
+          openBoxPaywall(teamId, error, retry)
+        })
         .then(() => retryRef.current())
     else retryRef.current()
   }

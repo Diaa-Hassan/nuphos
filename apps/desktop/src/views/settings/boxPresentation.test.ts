@@ -20,7 +20,6 @@ import {
   boxState,
   newAgentAction,
   machineLine,
-  newBoxBlockedReason,
   vanishedBoxes,
 } from './boxPresentation.ts'
 
@@ -164,29 +163,6 @@ test('New Agent adds an agent on a capable host, and only signs in the existing 
   assert.equal(newAgentAction(old, 'claude-code'), null)
 })
 
-const usage = (limitVcpus: number | null, usedVcpus: number | null, boxVcpus: number | null) => ({
-  limitVcpus,
-  usedVcpus,
-  boxVcpus,
-  subscribed: limitVcpus !== null && limitVcpus > 0,
-  billingUrl: 'http://billing.test',
-})
-
-test('no Box plan blocks a new Box and tells who can fix it', () => {
-  assert.match(newBoxBlockedReason(usage(0, 0, 4), true) ?? '', /no Box plan/)
-  assert.match(newBoxBlockedReason(usage(0, 0, 4), false) ?? '', /administrator/)
-})
-
-test('a Box that fits the plan may start; one past it is blocked', () => {
-  assert.equal(newBoxBlockedReason(usage(12, 8, 4), true), null)
-  assert.match(newBoxBlockedReason(usage(12, 12, 4), true) ?? '', /12 of 12 vCPU/)
-})
-
-test('a bigger Box is checked at its own size', () => {
-  assert.equal(newBoxBlockedReason(usage(12, 4, 4), true, 8), null)
-  assert.match(newBoxBlockedReason(usage(12, 8, 4), true, 8) ?? '', /needs 8\./)
-})
-
 test('sizes are named by rank and say how many sessions they hold', () => {
   const small = { vcpus: 4, memMiB: 8192 }
   const large = { vcpus: 8, memMiB: 16384 }
@@ -210,12 +186,6 @@ test('sizes are named by rank and say how many sessions they hold', () => {
     ['Small Box', 'Medium Box', 'Large Box'],
   )
   assert.equal(boxSessions(4096), 1)
-})
-
-test('unlimited or unknown usage never blocks', () => {
-  assert.equal(newBoxBlockedReason(usage(null, null, null), true), null)
-  assert.equal(newBoxBlockedReason(usage(12, null, 4), true), null)
-  assert.equal(newBoxBlockedReason(null, true), null)
 })
 
 test('a running Box whose host is away is Host offline; until its first join the backend says creating', () => {

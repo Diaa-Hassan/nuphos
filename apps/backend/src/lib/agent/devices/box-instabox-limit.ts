@@ -90,6 +90,28 @@ export async function teamBoxUsage(teamId: string) {
   return { machines, usedVcpus: runningVcpus(machines) + ordering }
 }
 
+async function checkWithinLimit(
+  teamId: string,
+  limit: number,
+  starting: { vcpus: number } | { sandboxId: string },
+) {
+  const { machines, usedVcpus } = await teamBoxUsage(teamId)
+  // A machine already running, or gone, starts nothing new.
+  const vcpus =
+    'vcpus' in starting
+      ? starting.vcpus
+      : machines.find((m) => m.sandboxId === starting.sandboxId && !isRunning(m.state))?.vcpus
+
+  if (vcpus !== undefined) assertWithinLimit(teamId, limit, usedVcpus, vcpus)
+}
+
+/** Refuses, with the 402 a start would give, resuming a Box the team's limit does not allow now. */
+export async function assertCanResume(teamId: string, sandboxId: string): Promise<void> {
+  const { limit } = await teamVcpuLimit(teamId)
+
+  if (limit !== undefined) await checkWithinLimit(teamId, limit, { sandboxId })
+}
+
 /** How long a start may hold the team's start lease if it never releases it. */
 const LEASE_MS = 60_000
 /** How long a start waits for another start in the same team. */
@@ -131,14 +153,7 @@ export async function startWithinLimit<T>(
   if (!token)
     throw new AppError(409, 'box_starting', 'Another Box in this team is starting; try again')
   try {
-    const { machines, usedVcpus } = await teamBoxUsage(teamId)
-    // A machine already running, or gone, starts nothing new.
-    const vcpus =
-      'vcpus' in starting
-        ? starting.vcpus
-        : machines.find((m) => m.sandboxId === starting.sandboxId && !isRunning(m.state))?.vcpus
-
-    if (vcpus !== undefined) assertWithinLimit(limit, usedVcpus, vcpus)
+    await checkWithinLimit(teamId, limit, starting)
 
     return await start()
   } finally {

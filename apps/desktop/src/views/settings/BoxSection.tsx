@@ -10,13 +10,8 @@ import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
 import { useThisComputer } from '../../hooks/useThisComputer'
 import { useWorkspaceTab } from '../../hooks/useWorkspaceTab'
 
-import {
-  boxAgents,
-  boxPollMs,
-  boxSizeChoices,
-  newBoxBlockedReason,
-  vanishedBoxes,
-} from './boxPresentation'
+import { openBoxPaywall } from './boxPaywallStore'
+import { boxAgents, boxPollMs, boxSizeChoices, vanishedBoxes } from './boxPresentation'
 import { BoxRow } from './BoxRow'
 import { PanelHeading } from './RuntimePanel'
 import { useAgentDevices } from './useAgentDevices'
@@ -79,15 +74,12 @@ export function BoxSection({
   instances,
   onSelect,
   canCreate,
-  onOpenBilling,
 }: {
   teamId: string
   /** Only the team's administrators make Boxes; the backend enforces it. */
   canCreate: boolean
   instances: RuntimeInstance[]
   onSelect: (runtimeId: string) => void
-  /** Where a New Box the plan has no room for goes. */
-  onOpenBilling: () => void
 }) {
   const thisComputer = useThisComputer()
   const [creating, setCreating] = useState(false)
@@ -97,7 +89,6 @@ export function BoxSection({
   // The smallest until one is picked; a pick the backend no longer offers falls back too.
   const [picked, setPicked] = useState<number>()
   const vcpus = (sizes.find((size) => size.vcpus === picked) ?? sizes.at(0))?.vcpus
-  const blocked = newBoxBlockedReason(usage, canCreate, vcpus)
   const { isActive } = useWorkspaceTab()
   const {
     list,
@@ -123,18 +114,14 @@ export function BoxSection({
   }, [list])
 
   const create = async () => {
-    if (blocked) {
-      toast.info(blocked)
-      onOpenBilling()
-
-      return
-    }
     setCreating(true)
     try {
       await api.boxCreate(undefined, teamId, vcpus)
       reload()
     } catch (error) {
-      toast.apiError('Could not create Box', error)
+      // No plan, or past it: the paywall offers one, then makes the Box.
+      if (!openBoxPaywall(teamId, error, () => void create()))
+        toast.apiError('Could not create Box', error)
     } finally {
       setCreating(false)
       reloadUsage()

@@ -4,7 +4,6 @@ import type {
   BoxAccess,
   BoxState,
   BoxStatus,
-  BoxUsage,
   LocalAgentProvider,
 } from '../../api/device-types'
 import type { RuntimeInstance } from '../../types/runtime'
@@ -236,22 +235,6 @@ export const BOX_PLANS = [
     perks: ['Many agents working in parallel', 'Boxes for the whole team at once'],
   },
 ]
-
-/** Why the team's vCPU limit keeps a new Box of `vcpus` from starting; null when one can start. */
-export function newBoxBlockedReason(
-  usage: BoxUsage | null,
-  isAdmin: boolean,
-  vcpus: number | null | undefined = usage?.boxVcpus,
-): string | null {
-  if (usage?.limitVcpus === 0)
-    return isAdmin
-      ? 'Your team has no Box plan yet. Choose a plan to start a Box.'
-      : 'Ask a team administrator to add a Box plan.'
-  if (usage?.limitVcpus == null || usage.usedVcpus === null || vcpus == null) return null
-  if (usage.usedVcpus + vcpus <= usage.limitVcpus) return null
-
-  return `Your running Boxes use ${String(usage.usedVcpus)} of ${String(usage.limitVcpus)} vCPU, and a new Box needs ${String(vcpus)}. Pause a Box or upgrade.`
-}
 
 /**
  * Sessions a Box of `memMiB` runs at once: 2 GiB for the system, the host and the Box's

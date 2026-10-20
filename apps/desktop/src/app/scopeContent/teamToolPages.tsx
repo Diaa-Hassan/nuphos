@@ -15,20 +15,20 @@ import {
 
 import { NuphosDashboardsView } from '../../dashboards/NuphosDashboardsView'
 import { dashboardsPageTitle } from '../../dashboards/view/pageTitle'
-import { AgentSection } from '../../views/settings/AgentSection'
 import { AgentMemoriesView } from '../../views/AgentMemoriesView'
 import { ArchitectureView } from '../../views/ArchitectureView'
 import { ArchivedChatsView } from '../../views/ArchivedChatsView'
 import { AuditLogView } from '../../views/AuditLogView'
 import { BrowserView } from '../../views/BrowserView'
-import { TerminalView } from '../../views/TerminalView'
 import { DesktopView } from '../../views/DesktopView'
 import { InboxView } from '../../views/InboxView'
 import { MonitoringView } from '../../views/MonitoringView'
 import { PlansView } from '../../views/PlansView'
 import { RuntimeFilesView } from '../../views/RuntimeFilesView'
+import { AgentSection } from '../../views/settings/AgentSection'
 import { TeamMembersView } from '../../views/TeamMembersView'
 import { TeamSkillsView } from '../../views/TeamSkillsView'
+import { TerminalView } from '../../views/TerminalView'
 import { TriggersView } from '../../views/TriggersView'
 
 import type { ScopeRenderContext } from './context'
@@ -62,7 +62,6 @@ export function renderTeamToolPages(ctx: ScopeRenderContext): React.ReactNode | 
     onOpenAuditConversation,
     onOpenConversation,
     onOpenNodeLink,
-    onOpenSettingsSection,
     onSelectActive,
     renderPage,
   } = ctx
@@ -82,7 +81,6 @@ export function renderTeamToolPages(ctx: ScopeRenderContext): React.ReactNode | 
         refreshKey={refreshKey}
         onCount={onCount}
         onLoading={onLoading}
-        onOpenBilling={() => onOpenSettingsSection('workspace.billing')}
       />,
     )
   }

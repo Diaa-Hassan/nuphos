@@ -11,11 +11,12 @@ import { toast } from '../../components/ui/toast'
 import { RUNTIME_INSTANCES_CHANGED } from '../../hooks/useRuntimeInstances'
 
 import { visibleAgent } from './agentPresentation'
-import { BoxMetrics } from './BoxMetrics'
+import { BoxAccessDialog } from './BoxAccessDialog'
 import { BoxAgentSignIn } from './BoxAgentSignIn'
 import { openBoxDesktop } from './boxDesktop'
-import { BoxAccessDialog } from './BoxAccessDialog'
+import { BoxMetrics } from './BoxMetrics'
 import { AccessHint, AgentTile, LiveDot, MachineIcon, MachineLine, NewAgentMenu } from './BoxParts'
+import { openBoxPaywall } from './boxPaywallStore'
 import {
   BOX_BADGE,
   boxActions,
@@ -77,7 +78,9 @@ export function BoxRow({
       await action()
       changed()
     } catch (error) {
-      toast.apiError(title, error, fallback === undefined ? undefined : { fallback })
+      // A Resume the plan has no room for: the paywall offers one, then resumes.
+      if (!openBoxPaywall(teamId, error, () => void run(title, action, fallback)))
+        toast.apiError(title, error, fallback === undefined ? undefined : { fallback })
     } finally {
       setBusy(false)
     }

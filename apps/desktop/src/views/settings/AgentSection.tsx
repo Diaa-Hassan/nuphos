@@ -29,11 +29,9 @@ export function AgentSection({
   refreshKey,
   onCount,
   onLoading,
-  onOpenBilling,
 }: {
   teamId: string
   isAdmin: boolean
-  onOpenBilling: () => void
   filter: string
   refreshKey: number
   onCount: (count: number) => void
@@ -101,7 +99,6 @@ export function AgentSection({
           teamId={teamId}
           onClose={() => setAdding(false)}
           onAdded={select}
-          onOpenBilling={onOpenBilling}
         />
       )}
       {catalog.error && (
@@ -119,7 +116,6 @@ export function AgentSection({
             instances={catalog.instances}
             onSelect={select}
             canCreate={isAdmin}
-            onOpenBilling={onOpenBilling}
           />
           {catalog.loading && instances.length === 0 && <AgentUsageSkeleton />}
           {!catalog.loading && !catalog.error && instances.length === 0 && (
