@@ -19,7 +19,7 @@ import {
 import { readDeviceMetrics } from '../device-metrics.ts'
 
 import { LOCAL_AGENT_PROVIDERS, probeAgentCli, readAgentUsage } from './agent-cli.ts'
-import { prepareAgentHome } from './agent-home.ts'
+import { podOwnerAgentHome } from './agent-home.ts'
 import { agentEnv, readBundle } from './config.ts'
 import { readCliCache, writeCliCache } from './cli-cache.ts'
 import { LocalRuntimeController } from './controller.ts'
@@ -133,6 +133,7 @@ if (!bundle()) {
   process.exit(1)
 }
 
+const prepareAgentHome = podOwnerAgentHome(owner, dataDir)
 const controller: LocalRuntimeController = new LocalRuntimeController({
   bundle,
   ownsMachine: ownsMachine(deviceCredential),
@@ -296,4 +297,4 @@ setInterval(() => {
   if (!stopping && (signedOut.length || instanceSignedOut))
     void controller.refresh(false, signedOut)
 }, 30_000)
-await signInClaude(controller, dataDir, owner)
+await signInClaude(controller, dataDir, owner, prepareAgentHome)
