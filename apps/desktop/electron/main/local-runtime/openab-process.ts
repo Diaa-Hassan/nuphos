@@ -149,6 +149,12 @@ export class OpenabProcess {
     this.child = child
     child.stdout.pipe(log, { end: false })
     child.stderr.pipe(log, { end: false })
+    // A failed log (a full disk) unpipes openab's output and leaves it paused, which would
+    // stall openab; it is discarded instead. Unhandled, the error would exit the host.
+    log.on('error', () => {
+      child.stdout.resume()
+      child.stderr.resume()
+    })
     child.once('exit', (code, signal) => {
       log.end(`=== openab exited code=${String(code)} signal=${String(signal)} ===\n`)
       if (this.child !== child) return
