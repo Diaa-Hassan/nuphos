@@ -82,3 +82,26 @@ test('inline markdown keeps snake_case and lone asterisks', () => {
 test('preview drops list markers and keeps underscores inside words', () => {
   assert.equal(previewText('- **one** item\n- uses node_selector'), 'one item uses node_selector')
 })
+
+test('a very long reply is cut before it is stripped, and still previews its start', () => {
+  const long = [
+    msg('u', 'user', 'Summarize'),
+    msg('a', 'assistant', `Start here. ${'word '.repeat(50_000)}`),
+  ]
+  const [turn] = pickRailTurns(long)
+  const preview = turnPreview(long, turn!)
+
+  assert.ok(preview.startsWith('Start here.'))
+  assert.ok(preview.length <= 241)
+})
+
+test('prose after a long code block still reaches the preview', () => {
+  const code = `\`\`\`ts\n${'const x = 1\n'.repeat(200)}\`\`\``
+  const transcript = [
+    msg('u', 'user', 'fix it'),
+    msg('a', 'assistant', `${code}\nThe build passes now.`),
+  ]
+  const [turn] = pickRailTurns(transcript)
+
+  assert.equal(turnPreview(transcript, turn!), 'The build passes now.')
+})
