@@ -2,6 +2,7 @@ import { runtimeAllows, runtimeStateLabel } from '../../../lib/runtimeExecution.
 
 import { AGENT_PHASE_LABELS } from './agentPhase.ts'
 import { isAgentMemoryIngestEventItem } from './memoryIngestEvent.ts'
+import { shellsFromRuntimeState } from './shells.ts'
 
 import type { AgentPhase } from './agentPhase.ts'
 import type { AgentStatus, Message, Tab } from './model.ts'
@@ -107,6 +108,9 @@ export function computeStatus(tab: Tab, lastMsg: Message | undefined): AgentStat
   )
     return null
   if (failedTurnExplainedInline(snapshot, lastMsg)) return null
+  // Running background work already shows as the composer's chip; one place says so.
+  if (snapshot.phase === 'background_tools' && shellsFromRuntimeState(snapshot).length > 0)
+    return null
 
   return { label: runtimeStateLabel(snapshot) }
 }

@@ -1,5 +1,4 @@
 import { ChevronDown, Plus, Settings2 } from 'lucide-react'
-import { useEffect, useState } from 'react'
 
 import { useAgentUpdates } from '../../../hooks/useAgentUpdates'
 import { useThisComputer } from '../../../hooks/useThisComputer'
@@ -105,25 +104,8 @@ export function RuntimeSelector({
       ? 'Loading agents…'
       : 'Choose agent'
   const updates = useAgentUpdates(teamId, options, canUpdateTeamAgents)
-  const selectedUpdate = value?.id ? updates.get(value.id) : undefined
-  const selectedQuota = value?.id ? quotas?.get(value.id) : undefined
-  const [usageWaitExpired, setUsageWaitExpired] = useState<string | undefined>()
-
-  useEffect(() => {
-    if (!value?.id) return
-    const timer = setTimeout(() => setUsageWaitExpired(value.id), 15_000)
-
-    return () => clearTimeout(timer)
-  }, [value?.id])
   const reachability = selectedAgentReachability({ value, options })
   const dot = reachability ? AGENT_DOT[reachability] : null
-  const usageLoading = Boolean(
-    value?.id &&
-    usageWaitExpired !== value.id &&
-    selected?.status === 'active' &&
-    selected.local?.signedIn !== false &&
-    (!selectedQuota || selectedQuota.reason === 'That computer has not reported usage yet'),
-  )
   const content = (
     <>
       <AgentProviderIcon provider={value?.provider} className="h-3.5 w-3.5 shrink-0" />
@@ -134,7 +116,7 @@ export function RuntimeSelector({
           className="h-3 w-16 rounded bg-zGray-700/60 animate-pulse motion-reduce:animate-none"
         />
       ) : (
-        <span className="max-w-40 truncate">{label}</span>
+        <span className="min-w-0 max-w-40 truncate">{label}</span>
       )}
       {dot && (
         <span
@@ -144,21 +126,11 @@ export function RuntimeSelector({
           className={`h-1.5 w-1.5 shrink-0 rounded-full ${dot.color}`}
         />
       )}
-      {selectedUpdate && <AgentUpdateBadge update={selectedUpdate} />}
       {unavailable && <span className="shrink-0 text-amber-400">· Unavailable</span>}
-      {usageLoading ? (
-        <span
-          aria-label="Loading usage"
-          role="status"
-          className="h-3 w-16 rounded bg-zGray-700/60 animate-pulse motion-reduce:animate-none"
-        />
-      ) : (
-        <RuntimeUsageBar quota={selectedQuota} />
-      )}
     </>
   )
   const classes =
-    'flex h-7 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2 text-[12px] text-secondary'
+    'hidden h-7 min-w-0 max-w-fit grow basis-16 items-center gap-1.5 overflow-hidden rounded-full px-2 text-[12px] text-secondary @[230px]:flex'
 
   if (!onSelect)
     return (

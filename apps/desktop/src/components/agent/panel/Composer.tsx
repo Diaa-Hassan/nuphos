@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { runtimeAllows } from '../../../lib/runtimeExecution'
 
 import { AttachmentChips } from './composerAttachments'
-import { ComposerEditor, ComposerSendControls } from './composerControls'
+import { ComposerEditor, ComposerSendControls, ComposerTools } from './composerControls'
 import { BypassControlMenu, ComposerAttachmentMenu } from './composerMenus'
 import { CredentialSelectorButton } from './CredentialSelectorButton'
 import { ModelSelector } from './ModelSelector'
@@ -12,6 +12,7 @@ import { runtimeMayAcceptLater } from './queuedAutoSend'
 import { AgentStatusBanner, ReadOnlyConversationNotice } from './ReadOnlyNotice'
 import { runtimeControlSendBlock } from './runtimeControlSignOut'
 import { RuntimeSelector } from './RuntimeSelector'
+import { ShellsPanel } from './ShellsPanel'
 import { useComposerActions } from './useComposerActions'
 import { useComposerDraft } from './useComposerDraft'
 import { useComposerMentions } from './useComposerMentions'
@@ -166,9 +167,7 @@ export function Composer({
       <div
         className={clsx(
           'relative mx-auto w-full',
-          // No clipping: the sketch guide lines whose ±9999px extensions this
-          // used to contain are gone, and the clip was slicing the composer's
-          // shadow off at both sides.
+          // No clipping: it would slice the composer's shadow off at both sides.
           hero ? '' : 'max-w-[760px]',
         )}
       >
@@ -246,8 +245,8 @@ export function Composer({
               }}
             />
           )}
-          <div className="flex items-end gap-2 mt-1 min-w-0">
-            <div className="flex flex-1 flex-wrap items-center gap-1 min-w-0">
+          <div className="@container flex items-end gap-1 mt-1 min-w-0 @[320px]:gap-2">
+            <ComposerTools>
               <ComposerAttachmentMenu
                 open={state.attachmentMenuOpen}
                 onOpenChange={state.setAttachmentMenuOpen}
@@ -273,7 +272,8 @@ export function Composer({
                   onMenuOpenChange={setAgentMenuOpen}
                 />
               )}
-            </div>
+            </ComposerTools>
+            {!hero && <ShellsPanel snapshot={runtimeState} />}
             {modelSession ? (
               <ModelSelector control={modelControl} disabled={readOnly} streaming={streaming} />
             ) : (
