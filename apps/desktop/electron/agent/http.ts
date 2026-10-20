@@ -71,6 +71,7 @@ export async function callJson<T>(
   body?: unknown,
   timeoutMs?: number,
 ): Promise<T> {
+  const baseUrl = apiUrl()
   const token = await readToken()
 
   if (!token) throw new Error('Not signed in')
@@ -89,7 +90,7 @@ export async function callJson<T>(
   let res: Response
 
   try {
-    res = await fetch(`${apiUrl()}${route}`, init)
+    res = await fetch(`${baseUrl}${route}`, init)
   } catch (error) {
     throw backendFailure(error, route, requestId)
   }

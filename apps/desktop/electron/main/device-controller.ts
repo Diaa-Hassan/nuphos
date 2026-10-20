@@ -3,8 +3,10 @@ import { promisify } from 'node:util'
 
 import { callJson } from '../agent/http.ts'
 import { logLocalTool, normalizeToolError } from '../agent/local-exec.ts'
+import { deviceRegistrationAllowed } from '../api-endpoint.ts'
 
 import { readDeviceIdentity, setDeviceLabel } from './device-identity.ts'
+import { isDev } from './env.ts'
 
 import type { DeviceIdentity } from './device-identity-core.ts'
 
@@ -27,8 +29,10 @@ function machineModel(): Promise<string | undefined> {
 
 // Local exec is available on every signed-in device while Desktop is open.
 async function syncRegistration(identity: DeviceIdentity): Promise<void> {
+  if (!deviceRegistrationAllowed(isDev)) return
   const machine = await machineModel()
 
+  if (!deviceRegistrationAllowed(isDev)) return
   try {
     await callJson(
       'PUT',
