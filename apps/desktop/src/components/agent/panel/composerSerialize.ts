@@ -1,5 +1,51 @@
 import { api } from '../../../api'
+import { svg } from '../../../lib/atlas-link-mention/icons'
 import { isAtlasUrl, renderMentionChip } from '../../../lib/atlasLinkMention'
+
+import { isImageAttachmentPath } from './attachments'
+
+// ------------------------------------------------------------------------
+// Image references: an "Image #N" chip marks where the Nth attached image
+// belongs in the message, and sends as the plain token `[Image #N]`.
+// ------------------------------------------------------------------------
+const IMAGE_REF = /\[Image #(\d+)\]/
+
+export function imageRefChip(n: number): HTMLElement {
+  const chip = document.createElement('span')
+
+  chip.className = 'atlas-mention'
+  chip.contentEditable = 'false'
+  chip.dataset.imageRef = String(n)
+  chip.innerHTML = `${svg('image')}<span class="atlas-mention-label">Image #${String(n)}</span>`
+
+  return chip
+}
+
+/** Put an "Image #N" chip at the caret for each image new to `attached`. */
+export function insertImageRefs(el: HTMLDivElement, attached: string[], paths: string[]): boolean {
+  const images = attached.filter(isImageAttachmentPath)
+  const fresh = [...new Set(paths)].filter((p) => isImageAttachmentPath(p) && !images.includes(p))
+
+  fresh.forEach((_, i) => insertChipIntoEditor(el, imageRefChip(images.length + i + 1)))
+
+  return fresh.length > 0
+}
+
+/** Drop the chips of a removed image and close the gap in the later numbers. */
+export function renumberImageRefs(el: HTMLElement, removed: number) {
+  for (const chip of el.querySelectorAll<HTMLElement>('[data-image-ref]')) {
+    const n = Number(chip.dataset.imageRef)
+
+    if (n === removed) {
+      // Take the space the chip was inserted with, so no gap is left behind.
+      const next = chip.nextSibling
+
+      if (next?.nodeType === Node.TEXT_NODE)
+        next.textContent = next.textContent?.replace(/^ /, '') ?? ''
+      chip.remove()
+    } else if (n > removed) chip.replaceWith(imageRefChip(n - 1))
+  }
+}
 
 // ------------------------------------------------------------------------
 // Serialization: walk the editor's DOM and produce plain text. Mention
@@ -11,6 +57,7 @@ export function serializeNode(node: Node): string {
   if (node.nodeName === 'BR') return '\n'
   if (node instanceof HTMLElement) {
     if (node.dataset.atlasUrl) return node.dataset.atlasUrl
+    if (node.dataset.imageRef) return `[Image #${node.dataset.imageRef}]`
     if (node.nodeName === 'DIV' || node.nodeName === 'P') {
       // Browsers wrap soft-broken lines in <div>/<p> on contenteditable.
       // Treat them as line breaks.
@@ -31,16 +78,32 @@ export function readEditorText(el: HTMLDivElement | null): string {
   return serializeNode(el).replace(/^\n+/, '')
 }
 
-/** Rebuild the editor from serialized text, turning Nuphos links back into chips. */
-export function restoreEditorText(el: HTMLDivElement, text: string) {
+/**
+ * Rebuild the editor from serialized text, turning Nuphos links back into
+ * chips. `[Image #N]` becomes a chip only when the caller restores the same
+ * images (a draft); a recalled message has none, so it stays plain text.
+ */
+export function restoreEditorText(el: HTMLDivElement, text: string, images = 0) {
   const nodes: Node[] = []
 
   text.split('\n').forEach((line, index) => {
     if (index > 0) nodes.push(document.createElement('br'))
-    for (const part of line.split(/(\S+)/)) {
-      if (!part) continue
-      nodes.push(isAtlasUrl(part) ? renderMentionChip(part) : document.createTextNode(part))
-    }
+    // split() with a capture group puts each reference's N at an odd index.
+    line.split(IMAGE_REF).forEach((segment, i) => {
+      if (i % 2) {
+        const n = Number(segment)
+
+        nodes.push(
+          n >= 1 && n <= images ? imageRefChip(n) : document.createTextNode(`[Image #${segment}]`),
+        )
+
+        return
+      }
+      for (const part of segment.split(/(\S+)/)) {
+        if (!part) continue
+        nodes.push(isAtlasUrl(part) ? renderMentionChip(part) : document.createTextNode(part))
+      }
+    })
   })
   el.replaceChildren(...nodes)
 }
@@ -57,6 +120,14 @@ export function restoreEditorText(el: HTMLDivElement, text: string) {
 export function insertMentionIntoEditor(
   el: HTMLDivElement,
   url: string,
+  opts?: { appendToEnd?: boolean },
+) {
+  insertChipIntoEditor(el, renderMentionChip(url), opts)
+}
+
+export function insertChipIntoEditor(
+  el: HTMLDivElement,
+  chip: HTMLElement,
   opts?: { appendToEnd?: boolean },
 ) {
   el.focus()
@@ -79,8 +150,6 @@ export function insertMentionIntoEditor(
     range.insertNode(document.createTextNode(' '))
     range.collapse(false)
   }
-  const chip = renderMentionChip(url)
-
   range.insertNode(chip)
   const trailing = document.createTextNode(' ')
 
