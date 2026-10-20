@@ -16,6 +16,8 @@ import {
 import os from 'node:os'
 import path from 'node:path'
 
+import { prepareShimHome } from './providers.ts'
+
 import type { LocalAgentProvider } from './agent-cli.ts'
 
 const CUA_PLUGIN = 'unified-computer-use@openai-bundled'
@@ -212,7 +214,7 @@ export function deleteDefaultLogin(
   userDir: string,
   env: NodeJS.ProcessEnv,
 ): void {
-  rmSync(path.join(userDir, provider === 'codex' ? 'codex-home' : 'claude-home'), {
+  rmSync(path.join(userDir, provider === 'claude-code' ? 'claude-home' : `${provider}-home`), {
     recursive: true,
     force: true,
   })
@@ -225,9 +227,10 @@ export function prepareAgentHome(
   workspace: string,
   env: NodeJS.ProcessEnv = process.env,
 ): string | undefined {
-  return provider === 'codex'
-    ? prepareCodexHome(userDir, env)
-    : prepareClaudeHome(userDir, workspace)
+  if (provider === 'codex') return prepareCodexHome(userDir, env)
+  if (provider === 'claude-code') return prepareClaudeHome(userDir, workspace)
+
+  return prepareShimHome(provider, userDir)
 }
 
 /**
@@ -258,6 +261,7 @@ export function prepareIsolatedAgentHome(
   workspace: string,
 ): string | undefined {
   if (provider === 'claude-code') return prepareClaudeHome(userDir, workspace)
+  if (provider !== 'codex') return prepareShimHome(provider, userDir)
   const home = path.join(userDir, 'codex-home')
 
   try {
