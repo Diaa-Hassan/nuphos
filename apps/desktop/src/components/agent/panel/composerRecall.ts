@@ -130,7 +130,20 @@ export function recallKey(event: {
   return null
 }
 
-/** Arrows browse history only from the edge line they point past. */
-export function caretAtEdge(textBefore: string, textAfter: string, direction: 'up' | 'down') {
-  return direction === 'up' ? !textBefore.includes('\n') : !textAfter.includes('\n')
+/**
+ * Whether an arrow browses history rather than moving the caret. Up starts
+ * browsing only from the very start of the draft, so moving up through a
+ * multi-line draft (wrapped lines included) never swaps it out: the first Up
+ * on the top line takes the caret to its start, the next one recalls. Once
+ * browsing, either arrow steps from the edge line it points past.
+ */
+export function caretAtEdge(
+  textBefore: string,
+  textAfter: string,
+  direction: 'up' | 'down',
+  browsing: boolean,
+) {
+  if (direction === 'up') return browsing ? !textBefore.includes('\n') : textBefore === ''
+
+  return !textAfter.includes('\n')
 }

@@ -147,13 +147,21 @@ test('Up walks back, Down walks forward, and past the newest restores the draft'
   assert.equal(historyStep(IDLE_CURSOR, 'up', [], ''), null)
 })
 
-test('arrows recall only from the first (Up) or last (Down) line', () => {
-  assert.equal(caretAtEdge('', '', 'up'), true)
-  assert.equal(caretAtEdge('', '', 'down'), true)
-  assert.equal(caretAtEdge('line one', '\nline two', 'up'), true)
-  assert.equal(caretAtEdge('line one', '\nline two', 'down'), false)
-  assert.equal(caretAtEdge('line one\nline', ' two', 'up'), false)
-  assert.equal(caretAtEdge('line one\nline', ' two', 'down'), true)
+test('Up recalls only from the start of a draft, then steps from the edge line', () => {
+  for (const browsing of [false, true]) {
+    assert.equal(caretAtEdge('', '', 'up', browsing), true)
+    assert.equal(caretAtEdge('', '', 'down', browsing), true)
+    assert.equal(caretAtEdge('', 'line one\nline two', 'up', browsing), true)
+    assert.equal(caretAtEdge('line one', '\nline two', 'down', browsing), false)
+    assert.equal(caretAtEdge('line one\nline', ' two', 'up', browsing), false)
+    assert.equal(caretAtEdge('line one\nline', ' two', 'down', browsing), true)
+  }
+  // A draft of your own: Up on the top line moves the caret to its start first,
+  // including a long line the editor wraps, and only recalls from there.
+  assert.equal(caretAtEdge('line one', '\nline two', 'up', false), false)
+  assert.equal(caretAtEdge('a long wrapped', ' line', 'up', false), false)
+  // Already browsing: Up steps on from anywhere on the top line.
+  assert.equal(caretAtEdge('line one', '\nline two', 'up', true), true)
 })
 
 test('keys during IME composition or with a modifier never recall', () => {

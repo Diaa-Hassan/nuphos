@@ -60,8 +60,6 @@ export function Composer({
   newChat?: boolean // a new chat fixes an unusable agent by picking another
   onSend: (text: string, filePaths: string[]) => void
   onStop: () => void
-  /** Pending transport work; execution itself comes from the runtime snapshot. */
-  streaming: boolean
   runtimeState?: RuntimeExecution
   executing?: boolean
   readOnly?: boolean
@@ -245,7 +243,7 @@ export function Composer({
               }}
             />
           )}
-          <div className="@container flex items-end gap-1 mt-1 min-w-0 @[320px]:gap-2">
+          <div className="@container flex items-start gap-1 mt-1 min-w-0 @[320px]:gap-2">
             <ComposerTools>
               <ComposerAttachmentMenu
                 open={state.attachmentMenuOpen}
@@ -270,12 +268,13 @@ export function Composer({
                   {...runtimeControl}
                   menuOpen={agentMenuOpen}
                   onMenuOpenChange={setAgentMenuOpen}
+                  hero={hero}
                 />
               )}
             </ComposerTools>
             {!hero && <ShellsPanel snapshot={runtimeState} />}
             {modelSession ? (
-              <ModelSelector control={modelControl} disabled={readOnly} streaming={streaming} />
+              <ModelSelector control={modelControl} disabled={readOnly} hero={hero} />
             ) : (
               newConversationModelControl
             )}

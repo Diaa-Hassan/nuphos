@@ -97,7 +97,7 @@ export function useComposerRecall(
     }
     const around = textAroundCaret(state.ref.current)
     const step =
-      around && caretAtEdge(around[0], around[1], key)
+      around && caretAtEdge(around[0], around[1], key, cursor.current.index !== null)
         ? historyStep(cursor.current, key, recall.history, state.readText())
         : null
 

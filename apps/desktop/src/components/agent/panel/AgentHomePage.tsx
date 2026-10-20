@@ -47,7 +47,6 @@ export function AgentHomePage({
   loading,
   onSend,
   onStop,
-  streaming,
   credentialSelector,
   runtimeControl,
   newConversationModelControl,
@@ -74,7 +73,6 @@ export function AgentHomePage({
   loading: boolean
   onSend: (text: string, filePaths: string[]) => void
   onStop: () => void
-  streaming: boolean
   credentialSelector?: CredentialSelectorControl
   runtimeControl?: RuntimeControl
   /** Default-model picker for the runtime this conversation will start on —
@@ -159,7 +157,6 @@ export function AgentHomePage({
                   newChat
                   onSend={onSend}
                   onStop={onStop}
-                  streaming={streaming}
                   credentialSelector={credentialSelector}
                   runtimeControl={runtimeControl}
                   newConversationModelControl={newConversationModelControl}

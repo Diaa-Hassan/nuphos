@@ -32,11 +32,12 @@ export type ModelControl = Pick<
 export function ModelSelector({
   control,
   disabled,
-  streaming,
+  hero = false,
 }: {
   control: ModelControl
   disabled: boolean
-  streaming: boolean
+  /** Sized like the hero composer's other controls; compact otherwise. */
+  hero?: boolean
 }) {
   const { data, loading, slow, saving, error, stalled } = control
   const [view, setView] = useState<'effort' | 'models'>('effort')
@@ -52,7 +53,7 @@ export function ModelSelector({
   const effort = options?.find((option) => option.kind === 'effort')
   const fast = options?.find((option) => option.kind === 'fast')
   const status = data?.status
-  const busy = status === 'busy' || streaming
+  const busy = status === 'busy'
   const name = model ? modelName(model) : status === 'offline' ? 'Model unavailable' : ''
   const level = effortName(effort)
   const effortLevels = [
@@ -163,7 +164,10 @@ export function ModelSelector({
             data-model-chip=""
             aria-label={`Model settings: ${[name, level].filter(Boolean).join(' ')}${fast?.currentValue === 'on' ? ', fast mode on' : ''}`}
             // A filled pill at rest, so opening it changes nothing but the text.
-            className="flex h-8 min-w-0 max-w-64 items-center gap-1 rounded-full px-2 text-[13px] text-main outline-none transition-colors hover:bg-zGray-800 focus-visible:bg-zGray-800"
+            className={clsx(
+              hero ? 'h-8' : 'h-7',
+              'flex min-w-0 max-w-64 items-center gap-1 rounded-full px-2 text-[13px] text-main outline-none transition-colors hover:bg-zGray-800 focus-visible:bg-zGray-800',
+            )}
           >
             {saving && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
             <ModelChipLabel

@@ -1,3 +1,4 @@
+import clsx from 'clsx'
 import { ChevronDown, Plus, Settings2 } from 'lucide-react'
 
 import { useAgentUpdates } from '../../../hooks/useAgentUpdates'
@@ -89,10 +90,13 @@ export function RuntimeSelector({
   onSettings,
   onAddAgent,
   confirm,
+  hero = false,
 }: RuntimeControl & {
   /** Lets the composer open the list, e.g. from the agent-status banner. */
   menuOpen?: boolean
   onMenuOpenChange?: (open: boolean) => void
+  /** Sized like the hero composer's other controls; compact otherwise. */
+  hero?: boolean
 }) {
   const providerName = AGENT_PROVIDER[value?.provider ?? 'claude-code'].label
   const owner = useThisComputer()
@@ -129,8 +133,10 @@ export function RuntimeSelector({
       {unavailable && <span className="shrink-0 text-amber-400">· Unavailable</span>}
     </>
   )
-  const classes =
-    'hidden h-7 min-w-0 max-w-fit grow basis-16 items-center gap-1.5 overflow-hidden rounded-full px-2 text-[12px] text-secondary @[230px]:flex'
+  const classes = clsx(
+    hero ? 'h-8 px-2.5' : 'h-7 px-2',
+    'hidden min-w-0 max-w-fit grow basis-16 items-center gap-1.5 overflow-hidden rounded-full text-[12px] text-secondary @[230px]:flex',
+  )
 
   if (!onSelect)
     return (
