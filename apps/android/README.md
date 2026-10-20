@@ -287,3 +287,18 @@ uses a separate preference file, restores consent state and callbacks, and check
 old preferences, new/stored sessions, exact catalog GETs, failed/empty catalogs,
 and late results after team, account or consent invalidation. It never opens an
 Activity or modifies a live integration. Default device runs skip this fixture.
+
+### Chat list refresh fixture
+
+Chat history supports the Material pull-to-refresh gesture on populated, empty,
+search and failed states. A gesture refreshes the current history filters and
+pinned shortcuts, keeps existing successful data on failure, and prevents
+pagination until refresh finishes. It does not reset the composer or tree folds.
+
+`HistoryRefreshTest` covers the refresh lifecycle on the JVM.
+`PullRefreshFixtureDeviceTest` intercepts all network requests and exercises real
+Compose swipe gestures, retries, filter retention, duplicate suppression and
+late workspace responses. It refuses any application ID that does not end in
+`.refreshfixture`. Build a separate local fixture variant with that application
+ID suffix and run only this test class; do not install a debug build over the
+Play application or clear its data. Keep `FLAG_SECURE` enabled.

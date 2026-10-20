@@ -1,5 +1,7 @@
 package ai.nuphos.android.ui.agent
 
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.IntrinsicSize
@@ -51,6 +53,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -70,7 +73,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Locale
 
-@OptIn(ExperimentalMaterial3ExpressiveApi::class)
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun AgentPage(
     searching: Boolean,
@@ -174,10 +177,14 @@ fun AgentPage(
                 Button(onClick = { scope.launch { store.reload() } }) { Text("Retry history") }
             }
         }
-        Box(Modifier.weight(1f)) {
+        PullToRefreshBox(
+            isRefreshing = store.isRefreshing,
+            onRefresh = store::refresh,
+            modifier = Modifier.weight(1f).fillMaxWidth().testTag("chat-history-refresh"),
+        ) {
             when {
                 store.phase == AgentStore.Phase.Loading || store.phase == AgentStore.Phase.Idle -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    RefreshableHistoryState {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             LoadingIndicator()
                             Text("Loading chats…", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -185,23 +192,24 @@ fun AgentPage(
                     }
                 }
                 store.phase == AgentStore.Phase.Failed -> {
-                    EmptyState(
+                    RefreshableHistoryState { EmptyState(
                         icon = Icons.Outlined.WifiOff,
                         title = "Couldn't load chats",
                         body = store.phaseError.orEmpty(),
                         action = "Try again",
-                        onAction = { scope.launch { store.loadTeams() } },
-                    )
+                        onAction = store::refresh,
+                    ) }
                 }
                 store.conversations.isEmpty() && pins.isEmpty() -> {
-                    EmptyState(
+                    RefreshableHistoryState { EmptyState(
                         icon = Icons.Outlined.ChatBubbleOutline,
                         title = if (store.search.isEmpty()) "No chats yet" else "No matches",
                         body = if (store.search.isEmpty()) "Start a conversation from the bar below." else "No conversations match your search.",
-                    )
+                    ) }
                 }
                 else -> {
                     LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
                         state = listState,
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -289,6 +297,16 @@ fun AgentPage(
             agentEnabled = setup != null && auth.aiAllowed,
             onChooseAgent = { setupVisible = true },
         )
+    }
+}
+
+/** An empty/error page still dispatches nested scroll without losing viewport centering. */
+@Composable
+private fun RefreshableHistoryState(content: @Composable () -> Unit) {
+    LazyColumn(Modifier.fillMaxSize()) {
+        item {
+            Box(Modifier.fillParentMaxSize(), contentAlignment = Alignment.Center) { content() }
+        }
     }
 }
 

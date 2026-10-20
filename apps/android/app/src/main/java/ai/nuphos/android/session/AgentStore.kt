@@ -99,7 +99,26 @@ class AgentStore(
         favoritesLoading = false
     }
 
+    private val refreshRequests = HistoryRefresh()
+    val isRefreshing get() = refreshRequests.running
+    private var isReloading = false
+
+    /** Work belongs to the store, rather than to the current composition. */
+    fun refresh() {
+        if (disposed || !hasAiAccess() || isRefreshing) return
+        searchJob?.cancel()
+        refreshRequests.start(storeScope) {
+            if (selectedTeam == null) loadTeams()
+            else kotlinx.coroutines.coroutineScope {
+                launch { reload() }
+                launch { loadFavorites() }
+            }
+        }
+    }
+
     private fun resetHistory() {
+        refreshRequests.invalidate()
+        isReloading = false
         loadGeneration++
         conversations = emptyList()
         nextCursor = null
@@ -131,6 +150,8 @@ class AgentStore(
             if (!favoritesRequests.accepts(ticket, selectedTeam?.id, hasAiAccess())) return
             favorites = loaded
             favoritesError = null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
             if (favoritesRequests.accepts(ticket, selectedTeam?.id, hasAiAccess()))
                 favoritesError = e.message ?: "Could not load pinned chats."
@@ -185,6 +206,7 @@ class AgentStore(
             // Discard earlier reads so an old page cannot reattach the child. Keep all
             // loaded pages, pins, descendants and drafts; every tree section derives here.
             loadGeneration++
+            isReloading = false
             isLoadingMore = false
             conversations = conversations.map {
                 if (it.sessionId == current.sessionId && (it.teamId ?: teamId) == teamId) it.copy(parentSessionId = null) else it
@@ -374,6 +396,7 @@ class AgentStore(
     }
 
     suspend fun reload() {
+        if (disposed || !hasAiAccess()) return
         val team = selectedTeam
         if (team == null) {
             resetHistory()
@@ -383,8 +406,10 @@ class AgentStore(
         loadGeneration += 1
         isLoadingMore = false
         val generation = loadGeneration
+        val workspace = workspaceRevision
+        isReloading = true
         val hasLoadedHistory = phase == Phase.Loaded || conversations.isNotEmpty()
-        if (conversations.isEmpty()) phase = Phase.Loading
+        if (!hasLoadedHistory) phase = Phase.Loading
         try {
             val observedAt = RuntimeObservation.now()
             val page = NuphosApi.conversations(
@@ -395,26 +420,37 @@ class AgentStore(
                 search = search,
                 archivedOnly = archivedOnly,
             )
-            if (generation != loadGeneration || selectedTeam?.id != team.id || !hasAiAccess()) return
+            if (generation != loadGeneration || selectedTeam?.id != team.id || workspace != workspaceRevision || disposed || !hasAiAccess()) return
             observeHistory(page.conversations, team.id, observedAt)
             conversations = mergeHistory(page.conversations, team.id)
             nextCursor = page.nextCursor
             hasMore = page.hasMore
             phase = Phase.Loaded
             phaseError = null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (e: Exception) {
-            if (generation != loadGeneration || selectedTeam?.id != team.id || !hasAiAccess()) return
+            if (generation != loadGeneration || selectedTeam?.id != team.id || workspace != workspaceRevision || disposed || !hasAiAccess()) return
             phase = if (hasLoadedHistory) Phase.Loaded else Phase.Failed
             phaseError = e.message
+        } finally {
+            if (generation == loadGeneration) {
+                isReloading = false
+                if (phase == Phase.Loading) {
+                    phase = if (hasLoadedHistory) Phase.Loaded else Phase.Failed
+                    if (!hasLoadedHistory) phaseError = "Chat refresh was interrupted. Try again."
+                }
+            }
         }
     }
 
     suspend fun loadMore() {
         val team = selectedTeam
         val cursor = nextCursor
-        if (!hasMore || isLoadingMore || team == null || cursor == null) return
+        if (disposed || !hasAiAccess() || isRefreshing || isReloading || phase != Phase.Loaded || !hasMore || isLoadingMore || team == null || cursor == null) return
         isLoadingMore = true
         val generation = loadGeneration
+        val workspace = workspaceRevision
         try {
             val observedAt = RuntimeObservation.now()
             val page = NuphosApi.conversations(
@@ -426,7 +462,7 @@ class AgentStore(
                 search = search,
                 archivedOnly = archivedOnly,
             )
-            if (generation != loadGeneration || selectedTeam?.id != team.id || !hasAiAccess()) return
+            if (generation != loadGeneration || selectedTeam?.id != team.id || workspace != workspaceRevision || disposed || !hasAiAccess()) return
             observeHistory(page.conversations, team.id, observedAt)
             val merged = mergeHistory(page.conversations, team.id)
             val seen = conversations.map { it.sessionId }.toSet()
@@ -435,6 +471,8 @@ class AgentStore(
             } + merged.filter { it.sessionId !in seen }
             nextCursor = page.nextCursor
             hasMore = page.hasMore
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
         } catch (_: Exception) {
             // Leave what we have.
         } finally {
