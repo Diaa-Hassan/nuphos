@@ -228,6 +228,8 @@ export const k8sAppApi = {
     ipcRenderer.invoke('atlas:startPersonalCredential', provider),
   atlasDeletePersonalCredential: (provider: PersonalCredentialProvider) =>
     ipcRenderer.invoke('atlas:deletePersonalCredential', provider),
+  authUploadAvatar: (image: Uint8Array) => ipcRenderer.invoke('auth:uploadAvatar', image),
+  authRemoveAvatar: () => ipcRenderer.invoke('auth:removeAvatar'),
   authStatus: () => ipcRenderer.invoke('auth:status'),
   authLogin: () => ipcRenderer.invoke('auth:login'),
   authLogout: () => ipcRenderer.invoke('auth:logout'),
@@ -240,6 +242,7 @@ export const k8sAppApi = {
   analyticsSetTeam: (teamId: string | null) => ipcRenderer.invoke('analytics:setTeam', teamId),
   appGetVersion: () => ipcRenderer.invoke('app:getVersion'),
   appSetApiEndpoint: (url: string | null) => ipcRenderer.invoke('app:setApiEndpoint', url),
+  apiUrlSync: (): string => ipcRenderer.sendSync('app:apiUrlSync') as string,
   appGetPlatform: () => ipcRenderer.invoke('app:getPlatform'),
   appSelectAsciiInputSource: () => ipcRenderer.invoke('app:selectAsciiInputSource'),
   appSetNativeTheme: (source: 'system' | 'light' | 'dark') =>

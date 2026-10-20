@@ -2,15 +2,15 @@ import type { AgentProvider } from '../../src/types/runtime'
 import fsSync from 'node:fs'
 import fs from 'node:fs/promises'
 
-import { app, BrowserWindow, dialog, nativeTheme, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, nativeTheme, shell } from 'electron'
 
 import * as agentChatSkill from '../agent-chat-skill'
 import { resetAnalyticsUser, setAnalyticsTeam, setAnalyticsUser } from '../analytics'
-import { setApiUrl } from '../api-endpoint'
+import { apiUrl, setApiUrl } from '../api-endpoint'
 import { selectAsciiInputSource } from '../input-source'
 import * as atlas from '../atlas'
 import * as auth from '../auth'
-import { updateProfile } from '../auth/profile'
+import { removeAvatar, updateProfile, uploadAvatar } from '../auth/profile'
 import * as fileTransfer from '../fileTransfer'
 import { readImageAttachment, registerAttachment } from '../imageAttachment'
 import { raiseWindow } from '../window-raise'
@@ -41,6 +41,8 @@ export const appChannels = {
     atlas.startPersonalCredential(provider),
   'atlas:deletePersonalCredential': (_e: unknown, provider: PersonalCredentialProvider) =>
     atlas.deletePersonalCredential(provider),
+  'auth:uploadAvatar': (_e: unknown, image: Uint8Array) => uploadAvatar(image),
+  'auth:removeAvatar': () => removeAvatar(),
   'auth:status': () => auth.status(),
   // login/logout PostHog events are owned by the renderer (posthog-js in
   // App.tsx), which has the user object at the moment of success. The main
@@ -245,3 +247,8 @@ export const appChannels = {
     if (getUpdaterState().kind === 'downloaded') autoUpdater.quitAndInstall()
   },
 } as const
+
+// Avatar trust runs during render, so the renderer reads the endpoint synchronously.
+ipcMain.on('app:apiUrlSync', (event) => {
+  event.returnValue = apiUrl()
+})

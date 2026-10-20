@@ -1,7 +1,8 @@
 import { MongoServerError, ObjectId } from 'mongodb'
 import { z } from 'zod'
 
-import { trustedAvatarURL } from './avatar-url'
+import { pruneAvatars } from './avatar-upload'
+import { hostedAvatarOwner, trustedAvatarURL } from './avatar-url'
 import { users, mapUser } from './shared'
 
 import { upsertCachedUser } from '@/lib/agent/directory'
@@ -24,7 +25,7 @@ export const profileUpdateSchema = z
         .url()
         .refine(
           (value) => trustedAvatarURL(value) !== undefined,
-          'Use a Google profile-image URL (lh3–lh6.googleusercontent.com)',
+          'Upload a photo or use a Google profile-image URL',
         ),
     ]),
   })
@@ -35,14 +36,28 @@ export async function updateProfile(userId: string, input: unknown) {
 
   if (!parsed.success)
     throw new AppError(400, 'invalid_profile', parsed.error.issues[0]?.message ?? 'Invalid profile')
+  const owner = parsed.data.avatarURL && hostedAvatarOwner(parsed.data.avatarURL)
+
+  if (owner && owner !== userId)
+    throw new AppError(400, 'invalid_profile', "Another account's photo can't be used")
+  // Only the upload and remove routes publish or unpublish an uploaded photo. A
+  // profile save carrying one, such as an older client resending its cached
+  // URL, leaves the avatar as stored: republishing an outdated photo here could
+  // race the prune that deletes it.
+  const { avatarURL, ...fields } = parsed.data
+  const changes = owner ? fields : { ...fields, avatarURL }
+
   try {
     const user = await users().findOneAndUpdate(
       { _id: new ObjectId(userId), deletedAt: { $exists: false } },
-      { $set: { ...parsed.data, profileEdited: true, updatedAt: new Date() } },
+      { $set: { ...changes, profileEdited: true, updatedAt: new Date() } },
       { returnDocument: 'after' },
     )
 
     if (!user) throw new AppError(404, 'user_not_found', 'Your account no longer exists')
+    // A photo this change replaced stops being served, and is deleted once no
+    // concurrent upload can still publish it.
+    await pruneAvatars(userId)
     const result = mapUser(user)
 
     upsertCachedUser(result)

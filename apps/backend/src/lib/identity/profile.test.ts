@@ -3,6 +3,7 @@ import { MongoServerError, ObjectId } from 'mongodb'
 
 import { profileUpdateSchema, updateProfile } from './profile'
 
+import { config } from '@/config'
 import { useDb } from '@/lib/test/doubles/db'
 
 const profile = {
@@ -40,11 +41,19 @@ test('avatars allow removal and HTTPS images, not local files or active content'
 
 let update: { filter: unknown; values: unknown } | undefined
 let duplicate = false
+let purged: unknown[] = []
+let currentURL = ''
 const id = new ObjectId()
 
 useDb({
   db: () => ({
-    collection: () => ({
+    collection: (name: string) => ({
+      deleteMany: async (filter: unknown) => {
+        if (name === 'user_avatars') purged.push(filter)
+
+        return { deletedCount: 1 }
+      },
+      findOne: async () => ({ _id: id, avatarURL: currentURL }),
       findOneAndUpdate: async (filter: unknown, values: unknown) => {
         update = { filter, values }
         if (duplicate) throw new MongoServerError({ code: 11000, message: 'duplicate' })
@@ -91,4 +100,36 @@ test('duplicate username returns a conflict', async () => {
   } finally {
     duplicate = false
   }
+})
+
+test('a PATCH prunes every stored photo but the one it now points at', async () => {
+  const hash = 'a'.repeat(64)
+  const hosted = `${config.auth.publicBaseUrl}/avatars/${id.toHexString()}/${hash}.webp`
+
+  for (const [avatarURL, keep] of [
+    ['', undefined],
+    [profile.avatarURL, undefined],
+    [hosted, hash],
+  ] as const) {
+    purged = []
+    currentURL = avatarURL
+    await updateProfile(id.toHexString(), { ...profile, avatarURL })
+    expect(purged).toEqual([
+      {
+        userId: id,
+        ...(keep ? { hash: { $ne: keep } } : {}),
+        updatedAt: { $lt: expect.any(Date) },
+      },
+    ])
+  }
+})
+
+test('a PATCH carrying an uploaded photo URL leaves the stored avatar alone', async () => {
+  const hosted = `${config.auth.publicBaseUrl}/avatars/${id.toHexString()}/${'a'.repeat(64)}.webp`
+
+  await updateProfile(id.toHexString(), { ...profile, avatarURL: hosted })
+  expect((update?.values as { $set: Record<string, unknown> }).$set).not.toHaveProperty('avatarURL')
+  // A Google URL or a cleared photo is still the profile save's to set.
+  await updateProfile(id.toHexString(), { ...profile, avatarURL: '' })
+  expect((update?.values as { $set: Record<string, unknown> }).$set.avatarURL).toBe('')
 })
