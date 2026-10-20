@@ -42,7 +42,7 @@ import {
 } from './chat-preview-handoff'
 import { carriedUserMessages, preparePreviewTurn } from './chat-preview-prepare'
 import { createPreviewRunState, createPreviewToolLog } from './chat-preview-run'
-import { handlePreviewToolUpdate } from './chat-preview-tool-update'
+import { handlePreviewToolUpdate, trackSteerCutOff } from './chat-preview-tool-update'
 import { appendAgentRunError, appendAgentRunPhase } from './run-frames'
 import type { PreviewChatTurnArgs, TurnEnd } from './chat-preview-run'
 import type { PreviewDecision } from '@/lib/claude-code-preview/decision-waiter'
@@ -79,6 +79,7 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
   // Mid-turn assistant/user segments persisted before the final assistant.
   const steered: UIMessage[] = []
   const segmentStepStart = 0
+  const steer = trackSteerCutOff(state.emit, toolLog)
 
   appendAgentRunPhase(run, 'connecting-model')
   const [prepared, desktops] = await Promise.all([preparePreviewTurn(args, requestId), tracking])
@@ -118,6 +119,12 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
     },
   })
 
+  const handleTool = (update: Parameters<typeof handlePreviewToolUpdate>[2]) => {
+    handlePreviewToolUpdate(state.emit, toolLog, update)
+    if (toolLog.list().some((step) => step.toolCallId === update.toolCallId)) {
+      orderedParts.appendTool(update.toolCallId)
+    }
+  }
   const permissionRequest: OpenAbPermissionHandler = (request) => {
     return handleOpenAbPermissionRequest({
       userId: actorUserId,
@@ -125,12 +132,7 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
       conversationId: sessionId,
       request,
       emit: state.emit,
-      handleTool: (update) => {
-        handlePreviewToolUpdate(state.emit, toolLog, update)
-        if (toolLog.list().some((step) => step.toolCallId === update.toolCallId)) {
-          orderedParts.appendTool(update.toolCallId)
-        }
-      },
+      handleTool,
       signal: state.signal,
       onDecision: adopt,
     })
@@ -154,6 +156,7 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
       signal: state.signal,
       onTextDelta: (delta) => {
         diagnostic.progress()
+        steer.observe()
         acc.text += delta
         orderedParts.appendText(delta)
         state.emit({ type: 'text-delta', delta })
@@ -165,6 +168,7 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
 
           return
         }
+        steer.observe(update)
         if (update.kind === 'steering') {
           const receipt = steeringReceipt(update.id, update.text, steeringAttribution())
 
@@ -181,10 +185,7 @@ export async function runClaudeCodePreviewChatTurn(args: PreviewChatTurnArgs): P
 
           return
         }
-        handlePreviewToolUpdate(state.emit, toolLog, update)
-        if (toolLog.list().some((step) => step.toolCallId === update.toolCallId)) {
-          orderedParts.appendTool(update.toolCallId)
-        }
+        handleTool(update)
       },
       onPermissionRequest: permissionRequest,
     })

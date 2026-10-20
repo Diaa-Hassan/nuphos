@@ -2,6 +2,7 @@ import type { createPreviewToolLog } from './chat-preview-run'
 import type { PreviewAgentUpdate } from '@/lib/claude-code-preview/preview-agent-update'
 
 import { isToolSearchTitle, nuphosToolName } from '@/lib/claude-code-preview/preview-agent-update'
+import { INTERRUPTED_TOOL_ERROR } from '@/lib/claude-code-preview/preview-transcript'
 
 export function handlePreviewToolUpdate(
   emit: (frame: Record<string, unknown>) => void,
@@ -14,14 +15,20 @@ export function handlePreviewToolUpdate(
   const hidden = update.revealed
     ? false
     : (known?.hidden ?? (isToolSearchTitle(name) || classic !== undefined))
-  const input = update.rawInput ?? known?.input ?? {}
+  // Undefined until the call's input arrives; a steer can cut a call off before.
+  const input = update.rawInput ?? known?.input
   const revealing = known?.hidden === true && !hidden
 
   if (!known || revealing || update.rawInput !== undefined || name !== known.name) {
     log.states.set(update.toolCallId, { name, toolName: classic ?? name, input, hidden })
-    if (!isToolSearchTitle(name)) log.record(update.toolCallId, classic ?? name, input)
+    if (!isToolSearchTitle(name)) log.record(update.toolCallId, classic ?? name, input ?? {})
     if (!hidden) {
-      emit({ type: 'tool-input-available', toolCallId: update.toolCallId, toolName: name, input })
+      emit({
+        type: 'tool-input-available',
+        toolCallId: update.toolCallId,
+        toolName: name,
+        input: input ?? {},
+      })
     }
   }
   if (update.status === 'completed') {
@@ -38,5 +45,60 @@ export function handlePreviewToolUpdate(
 
     if (!hidden)
       emit({ type: 'tool-output-error', toolCallId: update.toolCallId, errorText: cause })
+  }
+}
+
+/** Calls still waiting on a result: the ones a steer arriving now could cut off. */
+export function openToolCalls(log: ReturnType<typeof createPreviewToolLog>): string[] {
+  return log
+    .list()
+    .filter((step) => step.output === undefined && step.errorText === undefined)
+    .map((step) => step.toolCallId)
+}
+
+/**
+ * A steer aborts the running cycle. A call it cut off while the model was
+ * still writing its input never runs, so no result ever arrives and its timer
+ * would tick until the turn ends. Once the agent answers the steer, close the
+ * calls that were open at the steer and never got their input. A call with
+ * input may be a background command that is still running, so it stays open.
+ */
+export function closeCallsCutOffBySteer(
+  emit: (frame: Record<string, unknown>) => void,
+  log: ReturnType<typeof createPreviewToolLog>,
+  cutOff: readonly string[],
+): void {
+  const open = new Set(openToolCalls(log))
+
+  for (const toolCallId of cutOff) {
+    const state = log.states.get(toolCallId)
+
+    if (!open.has(toolCallId) || state?.input !== undefined) continue
+    const errorText = log.fail(toolCallId, INTERRUPTED_TOOL_ERROR)
+
+    if (!state?.hidden) emit({ type: 'tool-output-error', toolCallId, errorText })
+  }
+}
+
+/** Calls open when the latest steer arrived, closed by the agent's next output. */
+export function trackSteerCutOff(
+  emit: (frame: Record<string, unknown>) => void,
+  log: ReturnType<typeof createPreviewToolLog>,
+) {
+  let cutOff: string[] = []
+
+  return {
+    /** No update: streamed text. An update for a call open at the steer is not an answer. */
+    observe(update?: PreviewAgentUpdate) {
+      if (update?.kind === 'steering') {
+        cutOff = openToolCalls(log)
+
+        return
+      }
+      if (cutOff.length === 0) return
+      if (update?.kind === 'tool' && cutOff.includes(update.toolCallId)) return
+      closeCallsCutOffBySteer(emit, log, cutOff)
+      cutOff = []
+    },
   }
 }
