@@ -74,7 +74,7 @@ function describe(ref: GithubRef, summary: GithubRefSummary | null | undefined):
 }
 
 const CHIP =
-  'group/gh inline-flex h-[22px] max-w-full items-center gap-1.5 rounded-md border border-zGray-800 bg-zGray-900/60 px-1.5 align-[-0.35em] text-[12.5px] leading-none text-main no-underline transition-colors duration-150 hover:border-zGray-700 hover:bg-zGray-850 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zViolet-accent motion-reduce:transition-none'
+  'group/gh inline-flex h-[22px] max-w-full items-center gap-1.5 rounded-md border border-zGray-800 bg-zGray-900/60 px-1.5 align-middle text-[12.5px] leading-none text-main no-underline transition-colors duration-150 hover:border-zGray-700 hover:bg-zGray-850 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zViolet-accent motion-reduce:transition-none'
 
 /** A pull request or issue with its title, number and state; opens like any chat link. */
 export function GithubRefChip({
