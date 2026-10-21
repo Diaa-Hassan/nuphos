@@ -1,6 +1,12 @@
 import Foundation
 
 extension ChatRow {
+    /// Closes a turn the user stopped, as the desktop does.
+    static func stoppedText(_ message: ChatMessage) -> String {
+        let calls = message.parts.filter { if case .tool(let t) = $0 { return !ToolRuns.hiddenTools.contains(t.toolName) }; return false }.count
+        return calls == 0 ? "Stopped by you" : "Stopped by you · \(calls) \(calls == 1 ? "call" : "calls")"
+    }
+
     /// Builds rows for the whole transcript.
     static func rows(for session: ChatSession) -> [ChatRow] {
         var rows: [ChatRow] = []
@@ -14,6 +20,10 @@ extension ChatRow {
             let previous = index > 0 ? messages[index - 1].createdAt : nil
             switch message.role {
             case .user:
+                if let event = message.event {
+                    rows.append(.event(id: "user.\(message.id)", event: event))
+                    continue
+                }
                 if ChatTime.showsTimestamp(message.createdAt, after: previous), let date = message.createdAt {
                     rows.append(.timestamp(id: "time.\(message.id)", date: date))
                 }
@@ -31,8 +41,8 @@ extension ChatRow {
                 rows.append(contentsOf: assistantRows(message, live: isLive, lastApprovalCallId: lastApprovalCallId))
                 rows.append(contentsOf: (downloads[message.id] ?? []).map { .downloads(id: "downloads.\($0.groupId)", groupId: $0.groupId) })
                 let interrupted = message.parts.contains { if case .turnInterrupted = $0 { return true }; return false }
-                if message.stoppedByUser == true, index == messages.count - 1, !session.isStreaming, !interrupted {
-                    rows.append(.hint(id: "stopped.\(message.id)", text: "Stopped.", isError: false))
+                if message.stoppedByUser == true, !isLive, !interrupted {
+                    rows.append(.hint(id: "stopped.\(message.id)", text: stoppedText(message), isError: false))
                 }
             case .system:
                 continue
@@ -46,15 +56,11 @@ extension ChatRow {
         if session.sending != nil {
             rows.append(.sending)
         } else if session.isNativeRuntime {
-            if let status = session.runtimeStatus {
-                if session.isStreaming {
-                    rows.append(.activity(text: status))
-                } else if failure == nil {
-                    rows.append(.hint(id: "runtime-status", text: status, isError: false))
-                }
+            if let status = session.runtimeStatus, session.isStreaming || failure == nil {
+                rows.append(.activity(text: status, live: session.isStreaming))
             }
         } else if session.isStreaming {
-            rows.append(.activity(text: session.phaseLabel ?? "Thinking…"))
+            rows.append(.activity(text: session.phaseLabel ?? "Thinking…", live: true))
         }
         if let error = session.error, !session.stoppedByUser, error != failure {
             rows.append(.hint(id: "error", text: error, isError: true))
