@@ -1,5 +1,5 @@
-//! A prompt's session `_meta` refreshes a live agent's credential files and the
-//! meta a respawn replays, without restarting the agent.
+//! A prompt's session `_meta`, or a mid-turn refresh, updates a live agent's
+//! credential files and the meta a respawn replays, without restarting the agent.
 #![cfg(unix)]
 use openab_core::acp::session_credentials::session_credentials_dir;
 use openab_core::acp::SessionPool;
@@ -73,6 +73,47 @@ done
     assert_eq!(token(), "second");
     assert_eq!(spawns().len(), 1, "a live agent must not be restarted");
 
+    // Mid-turn refresh: same files, same agent, and the meta a respawn replays.
+    let creds = |token: &str| json!({"NUPHOS_TOKEN": token});
+    let refresh = |expected: &str, next: &str| {
+        let (expected, next) = (creds(expected), creds(next));
+        let pool = &pool;
+        async move {
+            pool.refresh_session_credentials("acp:c", &expected, next)
+                .await
+        }
+    };
+    assert!(refresh("first", "late").await.is_err(), "a stale refresh must not apply");
+    assert_eq!(token(), "second");
+    refresh("second", "third").await.unwrap();
+    assert_eq!(token(), "third");
+    assert_eq!(spawns().len(), 1, "a refresh must not restart the agent");
+    assert!(pool
+        .refresh_session_credentials("acp:unknown", &creds("third"), creds("x"))
+        .await
+        .is_err());
+
+    // A write that fails is reported and leaves the stored meta alone.
+    let file = dir.join("NUPHOS_TOKEN");
+    std::fs::remove_file(&file).unwrap();
+    std::fs::create_dir(&file).unwrap();
+    std::fs::write(file.join("blocker"), "").unwrap();
+    let failed = refresh("third", "fourth").await;
+    std::fs::remove_dir_all(&file).unwrap();
+    std::fs::write(&file, "third").unwrap();
+    assert!(failed.is_err(), "a failed write must be reported");
+    assert!(refresh("fourth", "fifth").await.is_err(), "meta kept the old value");
+    assert_eq!(spawns().len(), 1);
+
+    // So is a credential that could not be revoked.
+    let stale = dir.join("REVOKED");
+    std::fs::create_dir(&stale).unwrap();
+    std::fs::write(stale.join("blocker"), "").unwrap();
+    let failed = refresh("third", "fourth").await;
+    std::fs::remove_dir_all(&stale).unwrap();
+    assert!(failed.is_err(), "a failed revoke must be reported");
+    assert!(refresh("fourth", "fifth").await.is_err(), "meta kept the old value");
+
     std::process::Command::new("kill")
         .arg(pid)
         .status()
@@ -89,6 +130,6 @@ done
         .lines()
         .find(|line| line.contains("\"session/load\""))
         .expect("respawn resumes the saved session");
-    assert!(load.contains("\"NUPHOS_TOKEN\":\"second\""), "{load}");
-    assert_eq!(token(), "second");
+    assert!(load.contains("\"NUPHOS_TOKEN\":\"third\""), "{load}");
+    assert_eq!(token(), "third");
 }
