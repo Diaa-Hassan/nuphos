@@ -1,3 +1,4 @@
+import { redactSignedTokens } from './mcp-token'
 import { connectOpenAbAcpSocket } from './openab-acp-connect.ts'
 import { OpenAbConnectionLostError, cancelSession, settlePendingCall } from './openab-acp-errors.ts'
 import { OpenAbAcpLifecycle, attachmentPrompt } from './openab-acp-lifecycle.ts'
@@ -9,7 +10,6 @@ import {
   resumeSessionAlive,
   sessionMeta,
 } from './openab-acp-session.ts'
-import { redactSignedTokens } from './mcp-token'
 import { createCallTimer, refreshSessionTimers } from './openab-acp-timers.ts'
 import { observeOpenAbSessionUpdates, routeOpenAbSessionUpdate } from './openab-acp-updates.ts'
 import { rememberPushedRuntimeState } from './runtime-state-store'
@@ -26,7 +26,7 @@ import type {
   PromptSessionContext,
 } from './openab-acp-session.ts'
 import type { OpenAbSessionUpdate } from './openab-acp-updates.ts'
-import type { PreviewAgentUpdate } from './preview-agent-update.ts'
+import type { PreviewAgentUpdate, PreviewTextMetadata } from './preview-agent-update.ts'
 import type { PromptAttachment } from './runtime-attachments'
 
 export type { AcpHttpMcpServer, OpenAbAcpClientOptions } from './openab-acp-session.ts'
@@ -123,7 +123,7 @@ export class OpenAbAcpClient extends OpenAbAcpLifecycle {
   prompt(
     sessionId: string,
     text: string,
-    onTextDelta: (text: string) => void,
+    onTextDelta: (text: string, metadata?: PreviewTextMetadata) => void,
     onAgentUpdate?: (update: PreviewAgentUpdate) => void,
     onPermissionRequest?: OpenAbPermissionHandler,
     onAccepted?: () => void,
