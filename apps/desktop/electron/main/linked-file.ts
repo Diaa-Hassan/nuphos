@@ -1,5 +1,7 @@
-import { readFile, stat } from 'node:fs/promises'
-import { basename, isAbsolute, relative, resolve } from 'node:path'
+import { readFile, realpath, stat } from 'node:fs/promises'
+import { basename, isAbsolute, relative, resolve, sep } from 'node:path'
+
+import { buildAtlasError } from '../atlas/error.ts'
 
 const LIMIT = 512 * 1024
 
@@ -8,18 +10,26 @@ const LIMIT = 512 * 1024
 // `/workspace/…` (how the renderer writes a relative link) resolves against
 // this computer's working directory, the local agent's workspace, and must
 // stay inside it; without one, only explicit absolute paths are tried here.
-// Anything not readable here (missing, a directory, over the preview limit)
-// falls through to the agent.
+// Missing files and directories fall through to the agent. A local file over
+// the inline limit stays local and uses the media/download transfer instead.
 export async function readThisComputerFile(
   path: string,
   workspace: string | null,
 ): Promise<{ name: string; size: number; data: string } | null> {
   const target = await resolveThisComputerFile(path, workspace)
-  const data = target && (await stat(target)).size <= LIMIT ? await readFile(target) : null
 
-  return target && data
-    ? { name: basename(target), size: data.length, data: data.toString('base64') }
-    : null
+  if (!target) return null
+  const tooLarge = () =>
+    buildAtlasError('File preview is limited to 512 KiB.', 'file_too_large', {
+      origin: 'this-computer',
+    })
+
+  if ((await stat(target)).size > LIMIT) throw tooLarge()
+  const data = await readFile(target)
+
+  if (data.length > LIMIT) throw tooLarge()
+
+  return { name: basename(target), size: data.length, data: data.toString('base64') }
 }
 
 /** Where a linked path is on this computer, if it is a file there. */
@@ -34,8 +44,20 @@ export async function resolveThisComputerFile(
     inWorkspace && workspace ? resolve(workspace, `.${path.slice('/workspace'.length)}`) : path
   const outside = workspace ? relative(workspace, target) : ''
 
-  if (inWorkspace && (outside.startsWith('..') || isAbsolute(outside))) return null
+  if (inWorkspace && (outside === '..' || outside.startsWith(`..${sep}`) || isAbsolute(outside)))
+    return null
+  const canonical = await realpath(target).catch(() => null)
+
+  if (!canonical) return null
+  if (inWorkspace && workspace) {
+    const root = await realpath(workspace).catch(() => null)
+
+    if (!root) return null
+    const resolved = relative(root, canonical)
+
+    if (resolved === '..' || resolved.startsWith(`..${sep}`) || isAbsolute(resolved)) return null
+  }
   const info = await stat(target).catch(() => null)
 
-  return info?.isFile() ? target : null
+  return info?.isFile() ? (inWorkspace ? canonical : target) : null
 }
