@@ -1,12 +1,13 @@
 import { Slider } from '@base-ui/react/slider'
 import clsx from 'clsx'
 import { ChevronRight, RotateCcw, Zap } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { effortLabel } from '../../../lib/configLabels'
 import { effortStops, resolvedEffort, stopFraction } from '../../../lib/effortStops'
 import { Tooltip } from '../../ui/tooltip'
 
+import { effortCommit } from './effortCommit'
 import { fastUnavailableReason } from './modelSelectorParts'
 
 import type { SessionConfigOption } from '../../../api/session-config-types'
@@ -87,6 +88,9 @@ export function ModelEffortPanel({
   // A draft only holds until the runtime reports a different level.
   const [draft, setDraft] = useState<{ index: number; from: string }>()
   const [wasSaving, setWasSaving] = useState(saving)
+  const [commit] = useState(effortCommit)
+
+  useEffect(() => () => commit.flush(), [commit])
 
   // Drop a draft once the runtime reports any change, or once a save ends,
   // so a failed change never lingers on the slider.
@@ -96,9 +100,6 @@ export function ModelEffortPanel({
   }
   if (draft && draft.from !== effort.currentValue) setDraft(undefined)
   const index = draft?.from === effort.currentValue ? draft.index : committed
-  const pending = useRef<ReturnType<typeof setTimeout>>(undefined)
-
-  useEffect(() => () => clearTimeout(pending.current), [])
   const current = index >= 0 ? stops[index] : undefined
   const fraction = stopFraction(stops.length, index)
   const fastOn = fast?.currentValue === 'on'
@@ -175,11 +176,11 @@ export function ModelEffortPanel({
         onValueCommitted={(value) => {
           const stop = stops[value]
 
-          clearTimeout(pending.current)
-          // Arrow keys commit on every press; send only where they come to rest.
-          pending.current = setTimeout(() => {
-            if (stop && stop.value !== effort.currentValue) onSelect(effort.id, stop.value)
-          }, 350)
+          commit.schedule(
+            stop && stop.value !== effort.currentValue
+              ? () => onSelect(effort.id, stop.value)
+              : undefined,
+          )
         }}
         className="mt-4 data-[disabled]:opacity-60"
       >
