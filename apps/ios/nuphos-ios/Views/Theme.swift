@@ -145,3 +145,11 @@ private extension NSColor {
     }
 }
 #endif
+
+extension View {
+    /// Centers the content in a column no wider than comfortable reading,
+    /// for wide windows. Narrower windows are unaffected.
+    func readableWidth() -> some View {
+        frame(maxWidth: 720).frame(maxWidth: .infinity)
+    }
+}

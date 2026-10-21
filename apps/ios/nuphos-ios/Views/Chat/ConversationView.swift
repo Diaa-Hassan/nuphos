@@ -249,7 +249,6 @@ struct ConversationView: View {
                 Text(" ").font(Theme.Text.micro).accessibilityHidden(true)
             }
         }
-        .frame(maxWidth: 240)
     }
 
     /// Plan links open the plan here and session links open that chat the
@@ -316,10 +315,11 @@ struct ConversationView: View {
     private var transcript: some View {
         #if os(iOS)
         TranscriptList(rows: showsTranscript ? rows : [], submittedRowID: session.lastSubmittedRowID, sessionID: session.sessionId,
-                       composer: AnyView(composer.environment(store)), placeholder: AnyView(placeholder)) { row in
+                       composer: AnyView(composer.environment(store).readableWidth()), placeholder: AnyView(placeholder)) { row in
             AnyView(rowView(row)
                 .padding(.horizontal, 16)
-                .padding(.bottom, rowSpacing(row)))
+                .padding(.bottom, rowSpacing(row))
+                .readableWidth())
         }
         .ignoresSafeArea(.all, edges: .bottom)
         #else

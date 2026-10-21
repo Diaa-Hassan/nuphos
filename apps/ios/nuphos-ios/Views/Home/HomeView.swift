@@ -14,9 +14,14 @@ struct HomeView: View {
     @State private var store: AgentStore?
     @State private var plans: PlansStore?
     @State private var connectors: ConnectorsStore?
+    @State private var openChat: AgentPage.OpenChat?
+    /// The window's, not a column's: a split view's columns report compact.
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     var body: some View {
-        NavigationStack {
+        // Collapses to a single stack when compact; side by side when wide,
+        // such as iPhone Duo's inner display and iPad.
+        NavigationSplitView {
             Group {
                 if let store, let plans, let connectors {
                     pageContent
@@ -99,9 +104,32 @@ struct HomeView: View {
                 if CommandLine.arguments.contains("-preview-logos") { LogoPreviewGrid() }
             }
             #endif
+        } detail: {
+            NavigationStack {
+                if let openChat {
+                    ConversationView(session: openChat.session, initialPrompt: openChat.prompt)
+                        .id(openChat.id)
+                        // Compact pops back to the list's composer; wide has
+                        // no back, so this returns the column to it.
+                        .toolbar {
+                            if sizeClass == .regular {
+                                ToolbarItem(placement: .topBarLeading) {
+                                    Button("New chat", systemImage: "square.and.pencil") { self.openChat = nil }
+                                }
+                            }
+                        }
+                } else if page == .agent, store != nil, sizeClass == .regular {
+                    Theme.chatCanvas.ignoresSafeArea()
+                        .safeAreaInset(edge: .bottom, spacing: 0) {
+                            NewChatComposer(openChat: $openChat).readableWidth()
+                        }
+                } else {
+                    Theme.canvas.ignoresSafeArea()
+                }
+            }
         }
-        // On the stack itself, so pushed destinations (ConversationView,
-        // DraftConversationView) see the store too — not only pageContent.
+        // On the split view itself, so the detail column and pushed
+        // destinations see the store too — not only pageContent.
         .environment(store)
         .environment(plans)
         .environment(connectors)
@@ -121,6 +149,7 @@ struct HomeView: View {
         }
         .onChange(of: page) { oldPage, newPage in
             isSearching = false
+            openChat = nil
             UIEventLog.pageTransition(from: oldPage.rawValue, to: newPage.rawValue)
             Analytics.shared.screen(newPage.rawValue, teamID: store?.selectedTeam?.id)
         }
@@ -147,7 +176,7 @@ struct HomeView: View {
     private var pageContent: some View {
         switch page {
         case .agent:
-            AgentPage(page: $page, isSearching: $isSearching, titleCollapsed: $titleCollapsed)
+            AgentPage(page: $page, isSearching: $isSearching, titleCollapsed: $titleCollapsed, openChat: $openChat, showsComposer: sizeClass != .regular)
         case .plans:
             PlansPage(page: $page, isSearching: $isSearching, titleCollapsed: $titleCollapsed)
         case .connectors:

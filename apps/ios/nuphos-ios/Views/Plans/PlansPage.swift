@@ -15,7 +15,7 @@ struct PlansPage: View {
 
     @State private var unplanTarget: Plan?
     @State private var chatTarget: PlanChatTarget?
-    @State private var newChat: AgentPage.NewChat?
+    @State private var newChat: AgentPage.OpenChat?
     @State private var showPolicy = false
 
     var body: some View {
@@ -139,7 +139,7 @@ struct PlansPage: View {
             } actions: {
                 Button("Ask the agent to plan a change") {
                     if let session = store.newSession() {
-                        newChat = AgentPage.NewChat(session: session, prompt: ComposerSubmission(
+                        newChat = AgentPage.OpenChat(session: session, prompt: ComposerSubmission(
                             text: "Help me plan a change — ask me what I want to do, then draft a plan for the team to review.",
                             attachments: []
                         ))
