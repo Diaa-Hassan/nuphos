@@ -31,6 +31,8 @@ import type { OpenAbPermissionHandler, OpenAbSessionRuntime } from './openab-acp
 import type { RuntimeAttachment } from './runtime-attachments'
 import type { TeamRuntimeEndpoint, TeamSession } from './team-openab-runtime'
 
+import type { previewSessionAccess } from './credentials-mcp'
+import { RENEWED_TOKEN_TTL_SEC, renewTurnCredentials } from './turn-credential-renewal'
 export {
   previewRuntimeObservability,
   cancelPreviewConversationSession,
@@ -85,6 +87,8 @@ export async function runClaudeCodePreviewPrompt(args: {
   onTextDelta: (text: string) => void
   onAgentUpdate?: (update: PreviewAgentUpdate) => void
   onPermissionRequest?: OpenAbPermissionHandler
+  /** Re-mints this turn's MCP servers and runtime env with the given token lifetime. */
+  renewAccess?: NonNullable<ReturnType<typeof previewSessionAccess>['renew']>
 }): Promise<{ stopReason: string }> {
   if (args.conversationId.length > MAX_PREVIEW_CONVERSATION_ID_LENGTH) {
     throw new Error('Conversation id is invalid.')
@@ -160,7 +164,9 @@ export async function runClaudeCodePreviewPrompt(args: {
     locale: args.locale,
   }
   const activeTurn = { cancelled: cancels(args.signal) } as NonNullable<TeamSession['activeTurn']>
+  let renewal: ReturnType<typeof renewTurnCredentials> | undefined
   const onAbort = () => {
+    if (args.signal.reason instanceof RunHandoff) void renewal?.handOff()
     if (!cancels(args.signal)) return
     activeTurn.cancelled = true
     if (session.activeTurn === activeTurn) cancelActiveTeamTurn(session)
@@ -174,6 +180,23 @@ export async function runClaudeCodePreviewPrompt(args: {
 
     activeTurn.client = client
     if (activeTurn.cancelled) return { stopReason: 'cancelled' }
+    // A runtime that takes credentials mid-turn gets short-lived tokens, renewed
+    // for as long as this turn runs; older runtimes keep the long default. Desktop
+    // shells do not re-read the token file yet, so local runtimes keep it too.
+    const renew = client.credentialRefresh && !session.endpoint.local ? args.renewAccess : undefined
+    const refresh = client.refreshCredentials?.bind(client)
+
+    if (renew && refresh) {
+      const access = renew(RENEWED_TOKEN_TTL_SEC)
+
+      nextContext.mcpServers = access.mcpServers
+      nextContext.runtime = { ...nextContext.runtime, env: access.runtimeEnv }
+      renewal = renewTurnCredentials({
+        installed: access.runtimeEnv,
+        renew,
+        refresh: (expected, next) => refresh(session.openabSessionId, expected, next),
+      })
+    }
     // MCP tokens, runtime environment, and the personal portion of the system
     // prompt are execution-principal scoped. A shared Slack conversation can
     // legitimately switch actors between serialized turns; re-load even on
@@ -251,6 +274,7 @@ export async function runClaudeCodePreviewPrompt(args: {
 
     return { stopReason: await settledCodexStopReason(session, result, text.last()) }
   } finally {
+    renewal?.stop()
     args.signal.removeEventListener('abort', onAbort)
     if (session.activeTurn === activeTurn) {
       session.activeTurn = undefined
