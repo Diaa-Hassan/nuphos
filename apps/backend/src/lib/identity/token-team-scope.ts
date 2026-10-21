@@ -1,0 +1,38 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+
+/**
+ * The one team an agent token may reach, for the rest of its request. Team
+ * access is checked in a few central places (membership, the team list,
+ * conversation access) rather than in every route, so those consult this
+ * instead of each route learning about agent tokens.
+ */
+const scope = new AsyncLocalStorage<{ teamId: string }>()
+
+export function runInTokenTeamScope<T>(teamId: string, fn: () => T): T {
+  return scope.run({ teamId }, fn)
+}
+
+/** The team the current request is limited to, or undefined for no limit. */
+export function tokenTeamScope(): string | undefined {
+  return scope.getStore()?.teamId
+}
+
+/**
+ * The `teamId` a query must match under an agent token: its own team, or
+ * nothing at all when the caller names another one. Undefined without a token
+ * limit, so callers keep their usual filter. Team-less rows never match.
+ */
+export function tokenTeamFilter(teamId: string | undefined): string | { $in: [] } | undefined {
+  const limit = tokenTeamScope()
+
+  if (limit === undefined) return undefined
+
+  return teamId === undefined || teamId === limit ? limit : { $in: [] }
+}
+
+/** Whether a request limited by an agent token may touch `teamId`. */
+export function inTokenTeamScope(teamId: string | undefined): boolean {
+  const limit = tokenTeamScope()
+
+  return limit === undefined || limit === teamId
+}
