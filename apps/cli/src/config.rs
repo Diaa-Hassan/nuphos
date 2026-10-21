@@ -32,6 +32,14 @@ pub struct Session {
     pub username: Option<String>,
     #[serde(rename = "userInfo", skip_serializing_if = "Option::is_none")]
     pub user_info: Option<Value>,
+    /// A device or agent token's own record (`kind`, `name`, `teamId`), when
+    /// the session is one.
+    #[serde(rename = "cliToken", default, skip_serializing_if = "Option::is_none")]
+    pub cli_token: Option<Value>,
+    /// The token is `NUPHOS_CLI_TOKEN`, not the saved sign-in, which must then
+    /// be left alone when the token fails.
+    #[serde(skip)]
+    pub from_env: bool,
 }
 
 /// What this client remembers between runs; the desktop keeps the same
@@ -153,9 +161,14 @@ fn read_session_file() -> Session {
         .unwrap_or_default()
 }
 
-/// The sign-in with its token: from the keychain, or from the file, which
-/// moves it to the keychain where there is one.
+/// The sign-in with its token: `NUPHOS_CLI_TOKEN`, then the keychain, or the
+/// file, which moves it to the keychain where there is one. The environment
+/// variable is not `NUPHOS_TOKEN`: Nuphos's own agent sandboxes set that one to
+/// a conversation credential.
 pub fn read_session() -> Session {
+    if let Some(token) = std::env::var("NUPHOS_CLI_TOKEN").ok().filter(|t| !t.trim().is_empty()) {
+        return Session { token: Some(token.trim().to_string()), from_env: true, ..Session::default() };
+    }
     let mut session = read_session_file();
     if session.token.is_some() {
         if secret::enabled() {
@@ -222,8 +235,21 @@ fn keychain_account(session: &Session) -> String {
     format!("{user}@{}", api_url())
 }
 
+/// Signs out after the backend rejected `session`'s token, as the desktop
+/// does. A rejected `NUPHOS_CLI_TOKEN` is only reported: the saved sign-in it
+/// overrode is a different credential.
+pub fn forget_rejected(session: &Session) -> anyhow::Result<()> {
+    if session.from_env {
+        anyhow::bail!("NUPHOS_CLI_TOKEN was rejected (revoked or expired); unset it or set a valid token");
+    }
+    write_session(&Session::default())
+}
+
 /// Where `read_session` found the token, for `nuphos auth status`.
 pub fn token_storage(session: &Session) -> String {
+    if session.from_env {
+        return "the NUPHOS_CLI_TOKEN environment variable".to_string();
+    }
     match &session.keychain_account {
         Some(_) => "macOS Keychain".to_string(),
         None => format!("plaintext in {}", session_path().display()),
@@ -266,7 +292,7 @@ fn write_private(path: &PathBuf, data: &[u8]) -> anyhow::Result<()> {
 mod tests {
     use std::path::Path;
 
-    use super::{sibling, Prefs, Session};
+    use super::{forget_rejected, read_session_file, sibling, write_private, Prefs, Session};
 
     #[test]
     fn the_desktop_sign_in_sits_beside_the_cli_one() {
@@ -295,6 +321,27 @@ mod tests {
         assert!(desktop.token.is_none());
         let legacy: Session = serde_yaml::from_str("token: tok\n").unwrap();
         assert_eq!(legacy.token.as_deref(), Some("tok"));
+    }
+
+    #[test]
+    fn a_rejected_env_token_keeps_the_saved_sign_in() {
+        let dir = std::env::temp_dir().join(format!("nuphos-cli-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::env::set_var("NUPHOS_CLI_CONFIG", dir.join("cli.yaml"));
+        write_private(&dir.join("cli.yaml"), b"token: saved\nkeychainAccount: u1@x\n").unwrap();
+
+        let env = Session { token: Some("revoked".into()), from_env: true, ..Session::default() };
+        assert!(forget_rejected(&env).is_err());
+        let saved = read_session_file();
+        assert_eq!(saved.token.as_deref(), Some("saved"));
+        assert_eq!(saved.keychain_account.as_deref(), Some("u1@x"));
+
+        // The saved sign-in itself rejected: signed out.
+        let saved = Session { token: Some("saved".into()), ..Session::default() };
+        forget_rejected(&saved).unwrap();
+        assert!(read_session_file().token.is_none());
+        std::env::remove_var("NUPHOS_CLI_CONFIG");
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
