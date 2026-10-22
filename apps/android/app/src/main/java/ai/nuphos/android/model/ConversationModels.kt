@@ -204,3 +204,9 @@ object PlanLink {
         return Target(parts[1], parts[3])
     }
 }
+
+/** The two history orders exposed by the native clients. */
+enum class ConversationSort(val raw: String, val title: String) {
+    Created("created", "Date created"),
+    Activity("activity", "Recent activity"),
+}

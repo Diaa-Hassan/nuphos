@@ -23,6 +23,10 @@ import androidx.compose.material.icons.outlined.Bolt
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.FilterList
 import androidx.compose.material.icons.outlined.MonitorHeart
+import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.ui.semantics.selected
+import ai.nuphos.android.model.ConversationSort
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.rounded.Link
@@ -497,33 +501,48 @@ private fun HomePage.icon(selected: Boolean): ImageVector = when (this) {
 }
 
 @Composable
-private fun FilterButton(page: HomePage) {
+internal fun FilterButton(page: HomePage) {
     val store = LocalAgentStore.current
     val plans = LocalPlansStore.current
     var expanded by remember { mutableStateOf(false) }
-    IconButton(onClick = { expanded = true }) {
-        Icon(
-            if ((page == HomePage.Agent && store.scope != ConversationScope.Mine) ||
-                (page == HomePage.Plans && plans.showDismissed)
-            ) Icons.Rounded.FilterList else Icons.Outlined.FilterList,
-            contentDescription = "Filter",
-        )
-    }
-    DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
-        if (page == HomePage.Agent) {
-            DropdownMenuItem(
-                text = { Text("My chats") },
-                onClick = { store.updateScope(ConversationScope.Mine); expanded = false },
+    Box {
+        IconButton(onClick = { expanded = true }) {
+            Icon(
+                if ((page == HomePage.Agent && (store.scope != ConversationScope.Mine || store.archivedOnly || store.sort != ConversationSort.Created)) ||
+                    (page == HomePage.Plans && plans.showDismissed)
+                ) Icons.Rounded.FilterList else Icons.Outlined.FilterList,
+                contentDescription = if (page == HomePage.Agent) "Filter chats" else "Filter",
             )
-            DropdownMenuItem(
-                text = { Text("Team chats") },
-                onClick = { store.updateScope(ConversationScope.Team); expanded = false },
-            )
-        } else {
-            DropdownMenuItem(
-                text = { Text("Show dismissed") },
-                onClick = { plans.showDismissed = !plans.showDismissed; expanded = false },
-            )
+        }
+        DropdownMenu(expanded, onDismissRequest = { expanded = false }) {
+            if (page == HomePage.Agent) {
+                DropdownMenuItem(
+                    text = { Text("My chats") },
+                    onClick = { store.updateScope(ConversationScope.Mine); expanded = false },
+                )
+                DropdownMenuItem(
+                    text = { Text("Team chats") },
+                    onClick = { store.updateScope(ConversationScope.Team); expanded = false },
+                )
+                HorizontalDivider()
+                DropdownMenuItem(text = { Text("Sort") }, onClick = {}, enabled = false)
+                ConversationSort.entries.forEach { order ->
+                    DropdownMenuItem(
+                        text = { Text(order.title) },
+                        modifier = Modifier.semantics { selected = store.sort == order },
+                        leadingIcon = {
+                            if (store.sort == order) Icon(Icons.Outlined.Check, contentDescription = null)
+                            else Spacer(Modifier.size(24.dp))
+                        },
+                        onClick = { store.updateSort(order); expanded = false },
+                    )
+                }
+            } else {
+                DropdownMenuItem(
+                    text = { Text("Show dismissed") },
+                    onClick = { plans.showDismissed = !plans.showDismissed; expanded = false },
+                )
+            }
         }
     }
 }

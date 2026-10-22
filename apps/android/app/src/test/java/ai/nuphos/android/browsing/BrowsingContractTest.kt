@@ -80,7 +80,7 @@ class BrowsingContractTest {
     @Test fun invalidSelectorRejectsBeforeNetworkAndOrdinaryChatsKeepParameters() = runTest {
         try { NuphosApi.conversations("unused", "team", triggerId = ""); fail("Invalid network selector accepted") } catch (_: IllegalArgumentException) { }
         val ordinary = NuphosApi.conversationQuery("team", cursor = "next", scope = ConversationScope.Mine, search = "search", archivedOnly = true)
-        assertEquals(listOf("teamId" to "team", "limit" to "30", "scope" to "mine", "cursor" to "next", "search" to "search", "archived" to "only"), ordinary)
+        assertEquals(listOf("teamId" to "team", "limit" to "30", "sort" to "activity", "scope" to "mine", "cursor" to "next", "search" to "search", "archived" to "only"), ordinary)
     }
     @Test fun triggerListCapUnknownOptionalFieldsAndDeniedState() = runTest {
         val unknown = TriggerRow.decodeList(json("""[{"id":"$trigger","triggerType":"future","enabled":false,"future":"value"}]"""))

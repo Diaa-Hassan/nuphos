@@ -10,6 +10,7 @@ import ai.nuphos.android.data.ConversationReadApi
 import ai.nuphos.android.data.ConversationActions
 import ai.nuphos.android.data.NuphosApi
 import ai.nuphos.android.model.AgentConversation
+import ai.nuphos.android.model.ConversationSort
 import ai.nuphos.android.model.ConversationScope
 import ai.nuphos.android.model.CredentialCatalog
 import ai.nuphos.android.model.CredentialSelection
@@ -76,6 +77,8 @@ class AgentStore(
 
     var scope: ConversationScope by mutableStateOf(ConversationScope.Mine)
         private set
+    var sort by mutableStateOf(ConversationSort.Created)
+        private set
     var search by mutableStateOf("")
         private set
 
@@ -124,6 +127,7 @@ class AgentStore(
     }
 
     private fun resetHistory() {
+        searchJob?.cancel()
         refreshRequests.invalidate()
         isReloading = false
         loadGeneration++
@@ -325,6 +329,13 @@ class AgentStore(
         }
     }
 
+    fun updateSort(value: ConversationSort) {
+        if (disposed || !hasAiAccess() || value == sort) return
+        sort = value
+        resetHistory()
+        storeScope.launch { reload() }
+    }
+
     fun updateScope(value: ConversationScope) {
         if (value == scope) return
         scope = value
@@ -501,10 +512,11 @@ class AgentStore(
                 scope = scope,
                 search = search,
                 archivedOnly = archivedOnly,
+                sort = sort,
             )
             if (generation != loadGeneration || selectedTeam?.id != team.id || workspace != workspaceRevision || disposed || !hasAiAccess()) return
             observeHistory(page.conversations, team.id, observedAt)
-            conversations = mergeHistory(page.conversations, team.id)
+            conversations = mergeHistory(page.conversations, team.id).distinctBy { it.sessionId }
             nextCursor = page.nextCursor
             hasMore = page.hasMore
             phase = Phase.Loaded
@@ -543,10 +555,11 @@ class AgentStore(
                 scope = scope,
                 search = search,
                 archivedOnly = archivedOnly,
+                sort = sort,
             )
             if (generation != loadGeneration || selectedTeam?.id != team.id || workspace != workspaceRevision || disposed || !hasAiAccess()) return
             observeHistory(page.conversations, team.id, observedAt)
-            val merged = mergeHistory(page.conversations, team.id)
+            val merged = mergeHistory(page.conversations, team.id).distinctBy { it.sessionId }
             val seen = conversations.map { it.sessionId }.toSet()
             conversations = conversations.map { current ->
                 merged.firstOrNull { it.sessionId == current.sessionId && (it.teamId ?: team.id) == (current.teamId ?: team.id) } ?: current

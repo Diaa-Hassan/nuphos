@@ -401,3 +401,20 @@ requires an empty token store. HTTP is intercepted before a synthetic identity
 is created. `-e captureSynthetic true` writes synthetic UI captures to the
 fixture application's external files directory. Window resizing is distinct
 from a physical fold; record the device state and restore any test overrides.
+
+### Chat list ordering
+
+The chat filter menu offers Date created (the default, matching iOS) and Recent
+activity. The selected order stays in the signed-in store across workspace,
+search, scope, archive, refresh and navigation changes; a new account/store starts
+with Date created. It is not saved to preferences, matching iOS. Both first-page
+and cursor requests send the selected server order. Switching order invalidates
+old reads, clears the old cursor and cancels a pending search debounce, while
+retaining pins, tree folds and composer drafts. Duplicate rows across pages are
+merged by session ID. Trigger runs and generic API readers keep activity order.
+
+`ConversationSortTest` checks the query contract. The isolated
+`PullRefreshFixtureDeviceTest` includes synthetic created/activity ordering,
+menu selection, cursor reset, duplicate suppression, filtered refresh/navigation,
+and held first-page/cursor response races across a sort change. Use its existing
+isolated package restriction and optionally `-e refreshEvidence true` for captures.
