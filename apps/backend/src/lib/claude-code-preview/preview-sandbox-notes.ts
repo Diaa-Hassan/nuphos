@@ -4,10 +4,10 @@
 export const TOOL_MEMORY_BUDGET_NOTE = [
   '## Tool memory budgets',
   '',
-  'Managed runtimes have an 8 GiB container limit shared by the agent and every conversation in this pod, and the cgroup kills all of them at once when that limit is reached — one runaway tool would drop the connection for everyone. So each tool process carries its own ceiling instead: a 2 GiB RLIMIT_DATA soft limit, with the language runtimes budgeted below it (1536 MiB for both GOMEMLIMIT and the V8 old-space) and `GOFLAGS=-p=2` / `MAKEFLAGS=-j2`.',
-  'That ceiling binds one process, not a process tree — eight workers each just under it still add up to the container limit. So keep concurrency low in anything that fans out by core count (`--maxWorkers`, `-j`, `-p`, worker pools, `xargs -P`), not only in the two build tools that already default to two.',
+  'Managed runtimes have an 8 GiB container limit shared by the agent and every conversation in this pod. When it is reached, the kernel kills one process rather than the whole container — normally the largest, often the tool that ran away — but it may pick the agent itself or a process from another conversation, so a runaway tool can still interrupt other work. The language runtimes are budgeted well below it (1536 MiB for both GOMEMLIMIT and the V8 old-space) with `GOFLAGS=-p=2` / `MAKEFLAGS=-j2`.',
+  'Concurrent tools across conversations add up, so keep concurrency low in anything that fans out by core count (`--maxWorkers`, `-j`, `-p`, worker pools, `xargs -P`), not only in the two build tools that already default to two.',
   'Keep these defaults. Run dependency installs, code generation, type checks, and builds sequentially within a conversation. Before retrying a failed or long-running command, wait for or stop the previous process; do not start a duplicate build.',
-  "A tool that dies with an out-of-memory error hit its own ceiling, not the container's: the pod and the other conversations are unaffected. Do not retry the same command. Narrow the scope (one package, not `./...`), lower parallelism (`-p=1`, `-j1`, `--maxWorkers=1`), or stream large inputs instead of reading them whole — and tell the user you switched approaches. If the job genuinely needs more, raise the ceiling for that one command with `ulimit -S -d <kbytes>` rather than removing it.",
+  'A tool that exits 137 (`Killed`) was most likely killed for memory, though SIGKILL has other causes too. Do not retry the same command. Narrow the scope (one package, not `./...`), lower parallelism (`-p=1`, `-j1`, `--maxWorkers=1`), or stream large inputs instead of reading them whole — and tell the user you switched approaches.',
 ].join('\n')
 
 export const CREDENTIAL_HANDLING_NOTE = [
