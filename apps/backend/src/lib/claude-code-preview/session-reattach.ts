@@ -5,6 +5,7 @@ import { errorTelemetryProperties, logError, logEvent } from '@/lib/observabilit
 import { registry, sessionsByConversation } from './agent-chat-registry'
 import { observeAutonomousUpdates } from './autonomous-session-observer'
 import { markBackgroundWorkLost } from './background-work'
+import { publishLostSessionHandoff } from './runtime-handoff-store'
 import { forgetRuntimeState, holdRuntimeState } from './runtime-state-store'
 import { previewRuntimeCwd } from './team-openab-runtime'
 
@@ -123,8 +124,22 @@ export async function reattachAfterTransportLoss(
   delays: number[] = REATTACH_DELAYS_MS,
   wait: Sleep = sleep,
 ): Promise<boolean> {
-  // A draining replica hands its sessions on; winning one back would strand it.
-  if (session.reattaching || isShuttingDown()) return false
+  if (session.reattaching) return false
+  // A draining replica hands the session on; winning it back would strand it.
+  if (isShuttingDown()) {
+    if ((await owned(session, transport, 0)) === 'no') return false
+    try {
+      await publishLostSessionHandoff(session)
+    } catch (error) {
+      logError('agent.runtime_handoff.publish_failed', error, {
+        team_id: session.teamId,
+        session_id: session.conversationId,
+      })
+      await markBackgroundWorkLost(session, 'unreachable')
+    }
+
+    return false
+  }
   session.reattaching = transport
   // Set only by a failure against the runtime itself, never by a bookkeeping
   // read that happened to throw: a Mongo hiccup is no evidence about the

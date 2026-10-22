@@ -15,7 +15,12 @@ import { openConversationSession } from './open-conversation-session'
 import { resolveConversationChatRuntime } from './conversation-chat-route'
 import { previewSessionAccess } from './credentials-mcp'
 import { parseSessionExecutionState } from './runtime-execution-snapshot'
-import { RUNTIME_HANDOFFS_KEY as HANDOFFS_KEY } from './runtime-handoff-store'
+import {
+  RUNTIME_HANDOFFS_KEY as HANDOFFS_KEY,
+  advertiseRuntimeHandoffs,
+  runtimeHandoffField as field,
+  sessionHandoff,
+} from './runtime-handoff-store'
 
 import type { RuntimeHandoff } from './runtime-handoff-store'
 import type { TeamPreviewClient } from './team-openab-runtime'
@@ -38,8 +43,6 @@ const RUNTIME_OWNED_PHASES = new Set([
 ])
 
 const queued: RuntimeHandoff[] = []
-const field = (handoff: Pick<RuntimeHandoff, 'teamId' | 'conversationId'>) =>
-  `${handoff.teamId}:${handoff.conversationId}`
 
 export function queueRuntimeHandoff(handoff: Omit<RuntimeHandoff, 'at'>): void {
   queued.push({ ...handoff, at: Date.now() })
@@ -70,16 +73,8 @@ async function queueRuntimeOwnedWork(): Promise<void> {
           Bun.sleep(RUNTIME_STATE_PROBE_MS).then(() => null),
         ])
 
-        if (!RUNTIME_OWNED_PHASES.has(state?.phase ?? '')) return
-        queueRuntimeHandoff({
-          teamId: session.teamId,
-          conversationId: session.conversationId,
-          ownerUserId: session.conversationOwnerUserId ?? session.userId,
-          actorUserId: session.userId,
-          locale: session.locale,
-          // Only a teammate's own turn acts as someone other than the owner.
-          humanTurn: Boolean(session.runtime?.env?.NUPHOS_SESSION_ACTOR),
-        })
+        if (RUNTIME_OWNED_PHASES.has(state?.phase ?? ''))
+          queueRuntimeHandoff(sessionHandoff(session))
       }),
   )
 }
@@ -103,13 +98,7 @@ export async function publishRuntimeHandoffs(): Promise<number> {
   }
   for (const client of clients) client.close()
   if (handoffs.length === 0) return 0
-  await withRedis((redis) =>
-    redis.hset(
-      HANDOFFS_KEY,
-      Object.fromEntries(handoffs.map((handoff) => [field(handoff), JSON.stringify(handoff)])),
-    ),
-  )
-  logEvent('info', 'agent.runtime_handoff.published', { count: handoffs.length })
+  await advertiseRuntimeHandoffs(handoffs)
 
   return handoffs.length
 }
