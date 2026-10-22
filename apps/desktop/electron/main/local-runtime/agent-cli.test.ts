@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync } from 'node:child_process'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { test } from 'node:test'
@@ -10,7 +11,7 @@ import { probeAgentCli } from './agent-cli.ts'
 // Real child processes make sure the status command sees the runtime environment,
 // rather than merely checking the object we intended to pass to execFile.
 test(
-  'auth probes use the isolated home and exclude shell API credentials',
+  'Codex auth probes use the isolated home and exclude shell API credentials',
   {
     skip: process.platform === 'win32',
   },
@@ -26,12 +27,7 @@ if (process.argv.includes('--version')) console.log('2.1.0');
 else {
   const e = process.env;
   if (e.ANTHROPIC_API_KEY || e.OPENAI_API_KEY) throw new Error('shell credential leaked');
-  if (process.argv.includes('auth')) console.log(JSON.stringify({
-    loggedIn: e.CLAUDE_CONFIG_DIR === ${JSON.stringify(path.join(dir, 'isolated'))}
-      && e.HOME === ${JSON.stringify(dir)},
-    email: e.CLAUDE_SECURESTORAGE_CONFIG_DIR,
-  }));
-  else console.log(e.CODEX_HOME === ${JSON.stringify(path.join(dir, 'isolated'))}
+  console.log(e.CODEX_HOME === ${JSON.stringify(path.join(dir, 'isolated'))}
     ? 'Logged in using ChatGPT' : 'Not logged in');
 }
 NUPHOS_TEST_JS
@@ -47,15 +43,7 @@ NUPHOS_TEST_JS
       OPENAI_API_KEY: 'shell-only',
     }
     const isolated = path.join(dir, 'isolated')
-    const claude = await probeAgentCli('claude-code', env, isolated)
 
-    assert.deepEqual(claude, {
-      installed: true,
-      path: path.join(dir, 'claude'),
-      version: '2.1.0',
-      loggedIn: true,
-      account: process.platform === 'darwin' ? env.CLAUDE_CONFIG_DIR : isolated,
-    })
     assert.deepEqual(await probeAgentCli('codex', env, isolated), {
       installed: true,
       path: path.join(dir, 'codex'),
@@ -63,19 +51,6 @@ NUPHOS_TEST_JS
       loggedIn: true,
       account: 'ChatGPT',
     })
-    const override = await probeAgentCli(
-      'claude-code',
-      {
-        ...env,
-        CLAUDE_SECURESTORAGE_CONFIG_DIR: '',
-      },
-      isolated,
-    )
-
-    assert.equal(
-      override.installed && override.account,
-      process.platform === 'darwin' ? '' : isolated,
-    )
     const unavailable = await probeAgentCli('claude-code', env, undefined)
 
     assert.equal(unavailable.installed && unavailable.loggedIn, null)
@@ -107,8 +82,8 @@ test(
 )
 
 test(
-  'a Claude login whose tokens are gone is signed out, whatever Claude Code reports',
-  { skip: process.platform === 'win32' || process.platform === 'darwin' },
+  'a Claude login is read from its credential, never by running claude auth status',
+  { skip: process.platform === 'win32' },
   async (t) => {
     const dir = mkdtempSync(path.join(os.tmpdir(), 'nuphos-cli-tokens-'))
 
@@ -117,9 +92,16 @@ test(
 
     writeFileSync(
       path.join(dir, 'claude'),
-      `#!/bin/sh\nexec ${node} -e 'console.log(process.argv.includes("--version") ? "2.1.0" : JSON.stringify({ loggedIn: true, subscriptionType: "team" }))' -- "$@"\n`,
+      // `claude auth status` refreshes an expired token and can lose the rotated one.
+      `#!/bin/sh\ncase "$*" in *auth*) : > ${JSON.stringify(path.join(dir, 'auth-ran'))};; esac\nexec ${node} -e 'console.log("2.1.0")'\n`,
       { mode: 0o700 },
     )
+    const authRan = path.join(dir, 'auth-ran')
+
+    // The sentinel must work with PATH limited to the fake CLI.
+    execFileSync(path.join(dir, 'claude'), ['auth', 'status'], { env: { PATH: dir } })
+    assert.equal(existsSync(authRan), true)
+    rmSync(authRan)
     const home = path.join(dir, 'claude-home')
     const credential = path.join(home, '.credentials.json')
     const env = { PATH: dir, HOME: dir }
@@ -136,6 +118,19 @@ test(
     const kept = await probeAgentCli('claude-code', env, home)
 
     assert.equal(kept.installed && kept.loggedIn, true)
+    writeFileSync(
+      path.join(home, '.claude.json'),
+      JSON.stringify({ oauthAccount: { emailAddress: 'a@example.com' } }),
+    )
+    assert.deepEqual(await probeAgentCli('claude-code', env, home), {
+      installed: true,
+      path: path.join(dir, 'claude'),
+      version: '2.1.0',
+      loggedIn: true,
+      account: 'a@example.com',
+      plan: 'team',
+    })
+    assert.equal(existsSync(authRan), false)
   },
 )
 
