@@ -3,9 +3,10 @@ import { createCodePlugin } from '@streamdown/code'
 import clsx from 'clsx'
 import { ExternalLink, Link2, PanelRight } from 'lucide-react'
 import { isValidElement, memo, useContext, useMemo, useState } from 'react'
-import { Streamdown } from 'streamdown'
+import { Streamdown, defaultRemarkPlugins } from 'streamdown'
 import 'streamdown/styles.css'
 
+import { remarkCodexDirectives } from '../../lib/codexDirectives'
 import { linkClickMode } from '../../lib/linkClickMode'
 import { isSynthesizedAutolink } from '../../lib/markdownAutolink'
 import { messageRehypePlugins } from '../../lib/messageRehypePlugins'
@@ -22,6 +23,9 @@ import type { ComponentProps, MouseEvent, ReactNode } from 'react'
 
 type StreamdownComponents = ComponentProps<typeof Streamdown>['components']
 type StreamdownAnimated = ComponentProps<typeof Streamdown>['animated']
+
+// Streamdown's defaults (GFM), then Codex directives, which need GFM's nodes.
+const messageRemarkPlugins = [...Object.values(defaultRemarkPlugins), remarkCodexDirectives]
 
 const STREAMING_TEXT_ANIMATION: StreamdownAnimated = {
   animation: 'atlas-stream-in',
@@ -264,6 +268,7 @@ export const MessageResponse = memo(
           // cjk: ends an autolink at CJK punctuation. Without it `https://…/ec2，然後`
           // swallows the rest of the sentence into the href.
           plugins={{ code: codePlugin, cjk: cjkPlugin }}
+          remarkPlugins={messageRemarkPlugins}
           rehypePlugins={messageRehypePlugins}
           components={components}
         >
