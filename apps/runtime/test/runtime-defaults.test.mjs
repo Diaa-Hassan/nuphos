@@ -113,13 +113,22 @@ test('invalid, unavailable, rejected, and unacknowledged defaults fail before an
   )
 })
 
-test('patch wraps only native session creation and leaves loads and session isolation intact', async () => {
+test("a loaded or resumed session takes the conversation's stored settings, not only a new one", async () => {
+  // The agent restores whatever its own record says: a switch to b that no turn
+  // followed is not on record, so the restored session comes back on a.
   const source = `#!/usr/bin/env node
 class Agent {
-    async newSession(params) { return { sessionId: params.id, configOptions: [{ id: 'model', currentValue: 'a', options: [{ value: 'a' }, { value: 'b' }] }] }; }
-    async setSessionConfigOption(params) { return { configOptions: [{ id: 'model', currentValue: params.value, options: [{ value: 'a' }, { value: 'b' }] }] }; }
-    async loadSession(params) { return 'loaded without applying defaults'; }
-    async resumeSession(params) { return 'resumed without applying defaults'; }
+    model = {}
+    config(id) { return [{ id: 'model', currentValue: this.model[id] ?? 'a', options: [{ value: 'a' }, { value: 'b' }] }]; }
+    async newSession(params) { return { sessionId: params.id, configOptions: this.config(params.id) }; }
+    setter = 'acknowledges'
+    async setSessionConfigOption(params) {
+      if (this.setter === 'rejects') throw new Error('set_config_option rejected');
+      if (this.setter === 'acknowledges') this.model[params.sessionId] = params.value;
+      return { configOptions: this.config(params.sessionId) };
+    }
+    async loadSession(params) { return { configOptions: this.config(params.sessionId) }; }
+    async resumeSession(params) { return { configOptions: this.config(params.sessionId) }; }
   }`
   const patched = `${patchRuntimeDefaults(source)}\nexport { Agent }`
   const module = await import(`data:text/javascript,${encodeURIComponent(patched)}`)
@@ -129,13 +138,24 @@ class Agent {
 
   assert.equal(a.configOptions[0].currentValue, 'b')
   assert.equal(b.configOptions[0].currentValue, 'a')
-  assert.equal(
-    await agent.loadSession(params({ model: 'invalid' })),
-    'loaded without applying defaults',
-  )
-  assert.equal(
-    await agent.resumeSession(params({ model: 'invalid' })),
-    'resumed without applying defaults',
+
+  const loaded = await agent.loadSession({ sessionId: 'c', ...params({ model: 'b' }) })
+  const resumed = await agent.resumeSession({ sessionId: 'd', ...params({ model: 'b' }) })
+
+  assert.equal(loaded.configOptions[0].currentValue, 'b')
+  assert.equal(agent.model.c, 'b')
+  assert.equal(resumed.configOptions[0].currentValue, 'b')
+  // A stored setting the runtime no longer offers leaves the restored session as it is.
+  const kept = await agent.loadSession({ sessionId: 'e', ...params({ model: 'retired' }) })
+
+  assert.equal(kept.configOptions[0].currentValue, 'a')
+  // Any other failure stops the reopen before a prompt runs on the wrong model.
+  agent.setter = 'rejects'
+  await assert.rejects(agent.loadSession({ sessionId: 'f', ...params({ model: 'b' }) }), /rejected/)
+  agent.setter = 'keeps the old value'
+  await assert.rejects(
+    agent.resumeSession({ sessionId: 'g', ...params({ model: 'b' }) }),
+    /did not accept/,
   )
   assert.throws(() => patchRuntimeDefaults('unexpected adapter'), /exactly one/)
 })

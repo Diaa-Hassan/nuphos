@@ -20,8 +20,8 @@ export type ConversationPreviewAttachment = {
    *  getConversationPreviewAttachment reads it, and it answers "no session". */
   forceNew?: boolean
   runtimeDefaults?: RuntimeDefaults
-  /** Last model settings the runtime confirmed for this session; shown while
-   *  the live session cannot answer (busy, dormant, offline). */
+  /** Last model settings this session confirmed; they override runtimeDefaults
+   *  on the chip and when the session is recreated (see storedPick). */
   sessionConfig?: SessionConfigOption[]
   openabSessionId: string
   runtimeUrl: string
