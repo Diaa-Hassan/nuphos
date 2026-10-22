@@ -77,6 +77,19 @@ test('Box cards and usage share signed-in local agents, retaining every team run
   assert.equal(catalog.length, 10, 'presentation never removes catalog / history data')
 })
 
+test('an agent signed in before stays when it signs out; one never signed in stays hidden', () => {
+  const box = (signedIn: boolean | null, everSignedIn?: true) =>
+    ({
+      ...local('a', '2', signedIn),
+      local: { ...local('a', '2', signedIn).local!, ...(everSignedIn ? { everSignedIn } : {}) },
+    }) as RuntimeInstance
+
+  assert.equal(visibleAgent(box(false, true)), true)
+  assert.equal(visibleAgent(box(null, true)), true)
+  assert.equal(visibleAgent(box(false)), false)
+  assert.equal(visibleAgent(box(null)), false)
+})
+
 test('Runs on uses the actual current device, labels remote Boxes, and handles missing identity', () => {
   const box = local('codex', '2', true)
   const mac = local('claude', 'mac', true)

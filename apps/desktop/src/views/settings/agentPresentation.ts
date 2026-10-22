@@ -15,9 +15,16 @@ export function localRemovalId(instance: RuntimeInstance): string | undefined {
   return local.instanceId ?? (local.box ? instance.provider : undefined)
 }
 
-/** The overview shows local providers only after sign-in; team runtimes remain visible. */
+/**
+ * A computer's agent shows once it has signed in, and stays when it signs out so it can sign
+ * in again. A default agent no one used, or a sign-in that failed, never shows.
+ */
 export function visibleAgent(instance: RuntimeInstance): boolean {
-  return instance.kind !== 'local' || instance.local?.signedIn === true
+  return (
+    instance.kind !== 'local' ||
+    instance.local?.signedIn === true ||
+    instance.local?.everSignedIn === true
+  )
 }
 
 const RUNS_ON: Record<RuntimeInstance['kind'], string> = {
