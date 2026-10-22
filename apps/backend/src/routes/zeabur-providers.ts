@@ -6,6 +6,7 @@ import { listZeaburProviderBindings, syncZeaburProviderBindings } from '@/lib/by
 import { appendEnvironmentBinding } from '@/lib/byos/environment-bindings'
 import { decryptZeaburToken, encryptZeaburToken } from '@/lib/byos/secrets'
 import { discoverZeaburIdentities, listZeaburProjects, listZeaburServers } from '@/lib/byos/zeabur'
+import { publicZeaburProviders } from '@/lib/byos/zeabur-provider-view'
 import { AppError } from '@/lib/errors'
 import { parseObjectId } from '@/lib/objectid'
 import { zv } from '@/lib/validate'
@@ -26,13 +27,7 @@ const bindSchema = z
   .strict()
 
 export function publicView(binding: ZeaburProviderBinding) {
-  return (binding.identities ?? []).map((identity) => ({
-    providerId: binding.id.toHexString(),
-    zeaburId: identity.zeaburId,
-    kind: identity.kind,
-    name: identity.name,
-    createdAt: binding.createdAt,
-  }))
+  return publicZeaburProviders([binding])
 }
 
 zeaburProvidersRoutes.get('/', async (c) => {
@@ -42,7 +37,7 @@ zeaburProvidersRoutes.get('/', async (c) => {
     fallbackOnError: true,
   })
 
-  return c.json({ providers: bindings.flatMap(publicView) })
+  return c.json({ providers: publicZeaburProviders(bindings) })
 })
 
 zeaburProvidersRoutes.post(

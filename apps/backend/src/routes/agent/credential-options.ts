@@ -4,6 +4,7 @@ import { isActiveTeamMember } from '@/lib/agent/devices/store'
 import { canUseAllowList } from '@/lib/byos/access'
 import { extractAwsAccountId } from '@/lib/byos/account'
 import { cachedAwsAccountAlias } from '@/lib/byos/aws'
+import { publicZeaburProviders } from '@/lib/byos/zeabur-provider-view'
 import { parseObjectId } from '@/lib/objectid'
 import { teamByosBindings } from '@/models'
 
@@ -124,12 +125,8 @@ export async function getAgentCredentialOptions(
       projectId: binding.projectId,
       serviceAccountEmail: binding.serviceAccountEmail,
     }))
-  const zeaburProviders = (doc?.zeaburProviders ?? []).flatMap((binding) =>
-    (binding.identities ?? []).map((identity) => ({
-      zeaburId: identity.zeaburId,
-      kind: identity.kind,
-      name: identity.name,
-    })),
+  const zeaburProviders = publicZeaburProviders(doc?.zeaburProviders ?? []).map(
+    ({ zeaburId, kind, name }) => ({ zeaburId, kind, name }),
   )
   const linodeAccounts = (doc?.linodeAccounts ?? [])
     .filter((binding) => canUseAllowList(binding.access?.memberAllowList, userId))
