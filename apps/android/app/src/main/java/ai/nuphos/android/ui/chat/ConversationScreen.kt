@@ -444,13 +444,12 @@ private fun ChatRowView(
             color = MaterialTheme.colorScheme.outline,
             modifier = Modifier.fillMaxWidth(),
         )
+        is ChatRow.Event -> AgentEventRow(row, onLink) {
+            UserAttachments(row.content, session)
+        }
         is ChatRow.User -> Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.End) {
-            MessageImages(row.images, row.messageId)
-            row.uploads.forEach { attachment ->
-                key(attachment.groupId, session) {
-                    TransferCard(attachment, { session.transferGroup(attachment.groupId) }, session.canReadAttachments, { session.canReadAttachments })
-                }
-            }
+            row.sender?.let { MessageSenderLabel(it) }
+            UserAttachments(row, session)
             if (row.text.isNotEmpty()) {
                 Surface(
                     shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 6.dp),
@@ -486,6 +485,16 @@ private fun ChatRowView(
         }
         is ChatRow.Hint -> Text(row.text, color = if (row.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodySmall)
         ChatRow.Bottom -> Spacer(Modifier.height(1.dp))
+    }
+}
+
+@Composable
+private fun UserAttachments(row: ChatRow.User, session: ChatSession) {
+    MessageImages(row.images, row.messageId)
+    row.uploads.forEach { attachment ->
+        key(attachment.groupId, session) {
+            TransferCard(attachment, { session.transferGroup(attachment.groupId) }, session.canReadAttachments, { session.canReadAttachments })
+        }
     }
 }
 

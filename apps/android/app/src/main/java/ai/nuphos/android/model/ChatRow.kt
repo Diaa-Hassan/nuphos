@@ -7,7 +7,8 @@ sealed class ChatRow {
     abstract val id: String
 
     data class Timestamp(override val id: String, val date: Instant) : ChatRow()
-    data class User(override val id: String, val messageId: String, val text: String, val images: List<String>, val uploads: List<TransferUpload> = emptyList()) : ChatRow()
+    data class User(override val id: String, val messageId: String, val text: String, val images: List<String>, val uploads: List<TransferUpload> = emptyList(), val sender: MessageAttribution? = null) : ChatRow()
+    data class Event(override val id: String, val content: User) : ChatRow()
     data class AssistantText(override val id: String, val messageId: String, val text: String, val streaming: Boolean) : ChatRow()
     data class Reasoning(override val id: String, val part: ChatPart.Reasoning) : ChatRow()
     data class Tool(override val id: String, val messageId: String, val part: ChatPart.Tool, val canDecide: Boolean) : ChatRow()
@@ -48,7 +49,8 @@ sealed class ChatRow {
                 val previous = messages.getOrNull(index - 1)?.createdAt
                 when (message.role) {
                     ChatMessage.Role.User -> {
-                        if (ChatTime.showsTimestamp(message.createdAt, previous) && message.createdAt != null) {
+                        val sender = MessageAttribution.parse(message.metadata)
+                        if (sender?.isEvent != true && ChatTime.showsTimestamp(message.createdAt, previous) && message.createdAt != null) {
                             rows += Timestamp("time.${message.id}", message.createdAt)
                         }
                         val display = TransferUpload.display(message.parts)
@@ -57,7 +59,8 @@ sealed class ChatRow {
                             (part as? ChatPart.File)?.takeIf { it.mediaType.startsWith("image/") }?.url
                         }
                         if (text.isNotEmpty() || images.isNotEmpty() || display.uploads.isNotEmpty()) {
-                            rows += User("user.${message.id}", message.id, text, images, display.uploads)
+                            val user = User("user.${message.id}", message.id, text, images, display.uploads, sender)
+                            rows += if (sender?.isEvent == true) Event("event.${message.id}", user) else user
                         }
                     }
                     ChatMessage.Role.Assistant -> {

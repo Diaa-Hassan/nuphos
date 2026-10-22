@@ -367,3 +367,18 @@ package. Never replace, uninstall or clear a Play installation to run it.
 Its API/UI/cascade checks and screenshots do not establish real subscription
 changes or FCM delivery. JVM tests cover optional model decoding, scoped
 PUT/DELETE confirmation, retry, shared-reader access and stale detail reads.
+
+### Verified message attribution
+
+Transcript sender labels come from versioned server metadata, never metadata-like
+text in a message. Agent-token messages show the bot and its `via` identity.
+Session/resource notifications use a compact, expandable event row; attachments
+remain accessible inside the expansion through the same scoped attachment reader.
+Unknown sources or inconsistent sender types remain ordinary messages. This only
+changes presentation; original metadata and attachment instructions stay on the wire.
+
+`MessageAttributionTest` covers source/type validation, token labels, quoted text,
+and attachment/metadata round trips. `MessageAttributionFixtureDeviceTest` renders
+synthetic light-theme event rows without signing in or making network requests.
+Run that fixture in a separately suffixed debug package when a Play installation
+is present; never replace or clear the signed store app for a fixture test.
