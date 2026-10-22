@@ -74,3 +74,31 @@ test('the menu only applies to web pages and in-app paths', () => {
   assert.equal(isChatMenuLink('/workspace/src/app.ts'), false)
   assert.equal(isChatMenuLink('mailto:a@example.com'), false)
 })
+
+test('provider resolution leaves in-app routing unchanged', async () => {
+  const calls: string[] = []
+  const actions = buildChatLinkMenuActions({
+    teamId: 'team1',
+    resolveExternalLink: async () => 'https://github.com/acme/repo/pull/7',
+    copyLink: async (url) => {
+      calls.push(`copy:${url}`)
+    },
+    openExternalLink: (url) => calls.push(`external:${url}`),
+    openNuphosLinkFromChat: (href) => {
+      calls.push(`app:${href}`)
+
+      return true
+    },
+    openNuphosLinkInNewTab: () => false,
+  })
+
+  actions.openInApp('/teams/team1/repository')
+  actions.openExternal('/teams/team1/repository')
+  actions.copyLink('/teams/team1/repository')
+  await Promise.resolve()
+  assert.deepEqual(calls, [
+    'app:/teams/team1/repository',
+    'external:https://github.com/acme/repo/pull/7',
+    'copy:https://github.com/acme/repo/pull/7',
+  ])
+})

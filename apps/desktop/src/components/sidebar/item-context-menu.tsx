@@ -1,7 +1,9 @@
-import { Archive, Bell, BellOff, Pencil, Star, StarOff, Unlink } from 'lucide-react'
+import { Archive, Bell, BellOff, Hash, Link2, Pencil, Star, StarOff, Unlink } from 'lucide-react'
 
 import { api } from '../../api'
+import { copyLinkWithFeedback } from '../../lib/copyLink'
 import { favoriteSessionId, favoriteToggleTitle } from '../../lib/sidebarPinnedChats'
+import { agentSessionUrl } from '../agent/sessionUrl'
 import { ContextMenu } from '../ContextMenu'
 import { toast } from '../ui/toast'
 
@@ -55,6 +57,22 @@ export function SidebarItemContextMenu({
         ...(menu.item.key.startsWith('agent-session:')
           ? [
               {
+                key: 'copy-link',
+                label: 'Copy link',
+                icon: Link2,
+                onSelect: () =>
+                  copy(
+                    agentSessionUrl(teamId, menu.item.key.slice('agent-session:'.length)),
+                    'Link',
+                  ),
+              },
+              {
+                key: 'copy-session-id',
+                label: 'Copy session ID',
+                icon: Hash,
+                onSelect: () => copy(menu.item.key.slice('agent-session:'.length), 'Session ID'),
+              },
+              {
                 key: 'rename',
                 label: 'Rename chat',
                 icon: Pencil,
@@ -107,4 +125,11 @@ function watchChat(item: Item, teamId: string) {
     .catch((err: unknown) => {
       toast.apiError(watching ? 'Could not watch chat' : 'Could not unwatch chat', err)
     })
+}
+
+function copy(value: string, what: 'Link' | 'Session ID') {
+  void copyLinkWithFeedback(value, (text) => navigator.clipboard.writeText(text), {
+    onSuccess: () => toast.success(`${what} copied`, undefined, { timeoutMs: 1200, dedupe: false }),
+    onError: () => toast.error(`Could not copy ${what.toLowerCase()}`, 'Clipboard was blocked.'),
+  })
 }

@@ -5,6 +5,7 @@ import type { ChatLinkMenuActions } from '../../components/agent/chatLinkMenuCon
 
 export type ChatLinkMenuDeps = {
   teamId: string | null | undefined
+  resolveExternalLink?: (href: string) => Promise<string>
   copyLink: (href: string) => Promise<void>
   openExternalLink: (url: string) => void
   openNuphosLinkFromChat: (href: string) => boolean
@@ -19,14 +20,24 @@ function absolute(href: string): string {
 
 // Right-click menu on a chat link. "Open in Nuphos" is the left-click routing,
 // except that a plain web page lands in the built-in browser tab instead of the
-// system browser; the other entries always act on the absolute URL.
+// system browser; external/copy actions resolve the provider URL when available.
 export function buildChatLinkMenuActions({
   teamId,
+  resolveExternalLink,
   copyLink,
   openExternalLink,
   openNuphosLinkFromChat,
   openNuphosLinkInNewTab,
 }: ChatLinkMenuDeps): ChatLinkMenuActions {
+  function external(href: string, act: (url: string) => void) {
+    if (!resolveExternalLink) {
+      act(absolute(href))
+
+      return
+    }
+    void resolveExternalLink(href).then(act, () => act(absolute(href)))
+  }
+
   return {
     openInApp: (href) => {
       if (openNuphosLinkFromChat(href)) return
@@ -43,7 +54,7 @@ export function buildChatLinkMenuActions({
         ).href,
       )
     },
-    openExternal: (href) => openExternalLink(absolute(href)),
-    copyLink: (href) => void copyLink(absolute(href)),
+    openExternal: (href) => external(href, openExternalLink),
+    copyLink: (href) => external(href, (url) => void copyLink(url)),
   }
 }
