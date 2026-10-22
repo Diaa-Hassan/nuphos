@@ -51,9 +51,14 @@ useModels({
 })
 
 useAuthMiddleware({
-  requireTeamRole: () => async (_c: unknown, next: () => Promise<void>) => {
-    await next()
-  },
+  // Admits everyone but keeps the roles on the gate, which the route table reads.
+  requireTeamRole: (...teamRoles) =>
+    Object.assign(
+      async (_c: unknown, next: () => Promise<void>) => {
+        await next()
+      },
+      { teamRoles },
+    ),
 })
 
 useByosHuawei({
