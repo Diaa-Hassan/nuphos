@@ -5,7 +5,9 @@ import { observeSession, reattachAfterTransportLoss } from './session-reattach'
 
 import type { TeamPreviewClient, TeamSession } from './team-openab-runtime'
 
+import * as lifecycle from '@/lib/lifecycle'
 import { useAgentDb } from '@/lib/test/doubles/agent-db'
+import { useRedis } from '@/lib/test/doubles/redis'
 
 const endpoint = {
   url: 'wss://runtime.invalid/acp',
@@ -17,6 +19,19 @@ let attachment: { openabSessionId: string; runtimeUrl: string; forceNew?: boolea
 let attachmentError: Error | null = null
 let attachmentErrorOnce = false
 let workLost: string | null = null
+const handoffs = new Map<string, string>()
+
+useRedis({
+  withRedis: (op) =>
+    op({
+      hset: async (_key: string, fields: Record<string, string>) => {
+        for (const [field, value] of Object.entries(fields)) handoffs.set(field, value)
+
+        return Object.keys(fields).length
+      },
+      del: async () => 0,
+    } as never),
+})
 
 useAgentDb({
   getConversationPreviewAttachment: async () => {
@@ -67,6 +82,7 @@ const instant = async () => undefined
 
 beforeEach(() => {
   workLost = null
+  handoffs.clear()
   attachmentError = null
   attachmentErrorOnce = false
   attachment = { openabSessionId: 'sess-1', runtimeUrl: endpoint.url }
@@ -269,4 +285,44 @@ test('a replacement closing during resume does not start a second reattach loop'
   expect(await reattachAfterTransportLoss(session, session.client, [0, 0], instant)).toBe(true)
   expect(acquire).toHaveBeenCalledTimes(2)
   expect(session.client).toBe(healthy)
+})
+
+// A rollout drains the replica that runs a turn while the device tunnel drops.
+// The runtime keeps the turn going and waits 30 s for an output connection
+// before cancelling its tool permission requests, so the session must reach a
+// live replica now, not when the drain ends minutes later.
+test('a draining replica hands a lost session on at once instead of dropping it', async () => {
+  const draining = spyOn(lifecycle, 'isShuttingDown').mockReturnValue(true)
+
+  acquire = spyOn(registry, 'acquire').mockResolvedValue(fakeClient('replacement'))
+  try {
+    observeSession(session)
+    ;(session.client as ReturnType<typeof fakeClient>).close()
+    expect(await session.reattached).toBe(false)
+  } finally {
+    draining.mockRestore()
+  }
+
+  expect(acquire).not.toHaveBeenCalled()
+  expect(JSON.parse(handoffs.get('team:conv') ?? 'null')).toMatchObject({
+    teamId: 'team',
+    conversationId: 'conv',
+    ownerUserId: 'user',
+    actorUserId: 'user',
+  })
+  expect(workLost).toBeNull()
+})
+
+test('a draining replica does not hand on a session that moved elsewhere', async () => {
+  const draining = spyOn(lifecycle, 'isShuttingDown').mockReturnValue(true)
+
+  attachment = { openabSessionId: 'sess-1', runtimeUrl: 'wss://elsewhere.invalid/acp' }
+  acquire = spyOn(registry, 'acquire')
+  try {
+    expect(await reattachAfterTransportLoss(session, session.client, [0], instant)).toBe(false)
+  } finally {
+    draining.mockRestore()
+  }
+
+  expect(handoffs.size).toBe(0)
 })
