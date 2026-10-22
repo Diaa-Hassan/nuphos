@@ -139,7 +139,8 @@ class ChatSession(
         private set
     var turnStartedAt by mutableStateOf<Instant?>(null)
         private set
-    var followsBottom by mutableStateOf(true)
+    var scrollToLatestRevision by mutableStateOf(0)
+        private set
     var permissionMode by mutableStateOf(PermissionMode.Auto)
         private set
     var credentialAccess by mutableStateOf<CredentialSelection?>(null)
@@ -476,7 +477,7 @@ class ChatSession(
         }
         error = null
         stoppedByUser = false
-        followsBottom = true
+        scrollToLatestRevision += 1
         syncTranscriptNow()
         if (!hasAiAccess) return
         startTurn(TurnOptions(streamId = newId(), resumeReason = if (reply) "runtime-reply" else null, permissionMode = if (wasEmpty) permissionMode.raw else null, initialSessionConfig = if (wasEmpty) initialModelPick else null))

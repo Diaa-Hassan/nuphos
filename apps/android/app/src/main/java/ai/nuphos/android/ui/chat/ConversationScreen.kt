@@ -19,9 +19,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
@@ -194,14 +191,7 @@ fun ConversationScreen(
         if (browsingOnly && refreshBrowse > 0 && store.selectedTeam?.id == browsingTeamId) session.reloadFromServer()
     }
     val rows = ChatRow.rows(session)
-    val listState = rememberLazyListState()
     val uriHandler = LocalUriHandler.current
-    LaunchedEffect(rows.size, session.isStreaming) {
-        if (session.followsBottom && rows.isNotEmpty()) {
-            delay(30)
-            listState.animateScrollToItem(rows.lastIndex)
-        }
-    }
 
     var showTitle by remember(session.title) { mutableStateOf(false) }
     if (showTitle) androidx.compose.material3.AlertDialog(
@@ -259,13 +249,12 @@ fun ConversationScreen(
                 session.loadError != null -> Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text(session.loadError ?: "", color = MaterialTheme.colorScheme.error)
                 }
-                else -> LazyColumn(
-                    state = listState,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    items(rows, key = { it.id }) { row ->
+                else -> key(session) {
+                    TranscriptList(
+                        rows = rows,
+                        latestRequest = session.scrollToLatestRevision,
+                        modifier = Modifier.weight(1f).fillMaxWidth(),
+                    ) { row ->
                         ChatRowView(
                             row = row,
                             session = session,
@@ -493,7 +482,7 @@ private fun ChatRowView(
         is ChatRow.Activity -> Row(verticalAlignment = Alignment.CenterVertically) {
             if (!row.text.isNullOrEmpty()) Text(row.text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.size(8.dp))
-            LoadingIndicator(Modifier.size(20.dp))
+            if (row.live) LoadingIndicator(Modifier.size(20.dp))
         }
         is ChatRow.Hint -> Text(row.text, color = if (row.isError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodySmall)
         ChatRow.Bottom -> Spacer(Modifier.height(1.dp))

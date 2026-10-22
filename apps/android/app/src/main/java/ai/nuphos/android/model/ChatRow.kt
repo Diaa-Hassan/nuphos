@@ -14,7 +14,7 @@ sealed class ChatRow {
     data class Work(override val id: String, val rows: List<ChatRow>, val duration: Double?) : ChatRow()
     data class Memory(override val id: String, val created: Int, val updated: Int) : ChatRow()
     data class MemoryRecall(override val id: String, val entries: List<MemoryEntry>, val fetched: Int) : ChatRow()
-    data class Activity(val text: String?) : ChatRow() {
+    data class Activity(val text: String?, val live: Boolean = true) : ChatRow() {
         override val id = "activity"
     }
     data class Hint(override val id: String, val text: String, val isError: Boolean) : ChatRow()
@@ -63,14 +63,16 @@ sealed class ChatRow {
                     ChatMessage.Role.Assistant -> {
                         val isLive = isStreaming && index == messages.lastIndex
                         rows += assistantRows(message, isLive, lastApprovalCallId)
-                        if (message.stoppedByUser == true && index == messages.lastIndex && !isStreaming) {
-                            rows += Hint("stopped.${message.id}", "Stopped.", false)
+                        if (message.stoppedByUser == true && !isLive) {
+                            val calls = message.parts.count { it is ChatPart.Tool }
+                            val suffix = when (calls) { 0 -> ""; 1 -> " · 1 call"; else -> " · $calls calls" }
+                            rows += Hint("stopped.${message.id}", "Stopped by you$suffix", false)
                         }
                     }
                     ChatMessage.Role.System -> Unit
                 }
             }
-            if (isStreaming) rows += Activity(phaseLabel)
+            if (isStreaming || !phaseLabel.isNullOrBlank()) rows += Activity(phaseLabel, live = isStreaming)
             error?.takeIf { !stoppedByUser }?.let { rows += Hint("error", it, true) }
             rows += Bottom
             return rows
@@ -111,16 +113,19 @@ sealed class ChatRow {
                     }
                     is ChatPart.Other if part.value["type"]?.stringValue == "memory-ingest" -> {
                         val v = part.value
-                        body += Memory(
-                            "memory.${v["eventId"]?.stringValue ?: pi}",
-                            v["memoriesCreated"]?.numberValue?.toInt() ?: 0,
-                            v["memoriesUpdated"]?.numberValue?.toInt() ?: 0,
-                        )
+                        val created = v["memoriesCreated"]?.numberValue?.toInt() ?: 0
+                        val updated = v["memoriesUpdated"]?.numberValue?.toInt() ?: 0
+                        if (created > 0 || updated > 0) {
+                            body += Memory("memory.${message.id}.${v["eventId"]?.stringValue ?: pi}", created, updated)
+                        }
                     }
                     else -> Unit
                 }
             }
-            if (live) return body
+            if (live) {
+                while (body.lastOrNull() is Reasoning) body.removeAt(body.lastIndex)
+                return body
+            }
             val lastText = body.indexOfLast { it is AssistantText }
             if (lastText < 0) return body
             fun foldable(row: ChatRow) = when (row) {
