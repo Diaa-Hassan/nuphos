@@ -5,7 +5,7 @@ import { errorTelemetryProperties, logError, logEvent } from '@/lib/observabilit
 import { registry, sessionsByConversation } from './agent-chat-registry'
 import { observeAutonomousUpdates } from './autonomous-session-observer'
 import { markBackgroundWorkLost } from './background-work'
-import { publishLostSessionHandoff } from './runtime-handoff'
+import { publishLostSessionHandoff } from './runtime-handoff-store'
 import { forgetRuntimeState, holdRuntimeState } from './runtime-state-store'
 import { previewRuntimeCwd } from './team-openab-runtime'
 

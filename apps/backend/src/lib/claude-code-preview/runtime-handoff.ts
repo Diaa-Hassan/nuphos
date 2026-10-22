@@ -15,10 +15,15 @@ import { openConversationSession } from './open-conversation-session'
 import { resolveConversationChatRuntime } from './conversation-chat-route'
 import { previewSessionAccess } from './credentials-mcp'
 import { parseSessionExecutionState } from './runtime-execution-snapshot'
-import { RUNTIME_HANDOFFS_KEY as HANDOFFS_KEY } from './runtime-handoff-store'
+import {
+  RUNTIME_HANDOFFS_KEY as HANDOFFS_KEY,
+  advertiseRuntimeHandoffs,
+  runtimeHandoffField as field,
+  sessionHandoff,
+} from './runtime-handoff-store'
 
 import type { RuntimeHandoff } from './runtime-handoff-store'
-import type { TeamPreviewClient, TeamSession } from './team-openab-runtime'
+import type { TeamPreviewClient } from './team-openab-runtime'
 
 export type { RuntimeHandoff } from './runtime-handoff-store'
 
@@ -38,8 +43,6 @@ const RUNTIME_OWNED_PHASES = new Set([
 ])
 
 const queued: RuntimeHandoff[] = []
-const field = (handoff: Pick<RuntimeHandoff, 'teamId' | 'conversationId'>) =>
-  `${handoff.teamId}:${handoff.conversationId}`
 
 export function queueRuntimeHandoff(handoff: Omit<RuntimeHandoff, 'at'>): void {
   queued.push({ ...handoff, at: Date.now() })
@@ -76,41 +79,6 @@ async function queueRuntimeOwnedWork(): Promise<void> {
   )
 }
 
-function sessionHandoff(session: TeamSession): Omit<RuntimeHandoff, 'at'> {
-  return {
-    teamId: session.teamId,
-    conversationId: session.conversationId,
-    ownerUserId: session.conversationOwnerUserId ?? session.userId,
-    actorUserId: session.userId,
-    locale: session.locale,
-    // Only a teammate's own turn acts as someone other than the owner.
-    humanTurn: Boolean(session.runtime?.env?.NUPHOS_SESSION_ACTOR),
-  }
-}
-
-async function advertise(handoffs: RuntimeHandoff[]): Promise<void> {
-  await withRedis((redis) =>
-    redis.hset(
-      HANDOFFS_KEY,
-      Object.fromEntries(handoffs.map((handoff) => [field(handoff), JSON.stringify(handoff)])),
-    ),
-  )
-  logEvent('info', 'agent.runtime_handoff.published', {
-    count: handoffs.length,
-    session_ids: handoffs.map((handoff) => handoff.conversationId).join(','),
-  })
-}
-
-/**
- * A session whose transport dropped while this replica drains has no
- * connection left to close, so it is advertised now instead of at the end of
- * the drain. The drain can take minutes; the runtime waits only 30 s for an
- * output connection before it cancels the turn's tool permission requests.
- */
-export async function publishLostSessionHandoff(session: TeamSession): Promise<void> {
-  await advertise([{ ...sessionHandoff(session), at: Date.now() }])
-}
-
 /**
  * Close this replica's transports to the handed-off sessions, then advertise
  * them. Closing first matters: the gateway routes a running turn's output to
@@ -130,7 +98,7 @@ export async function publishRuntimeHandoffs(): Promise<number> {
   }
   for (const client of clients) client.close()
   if (handoffs.length === 0) return 0
-  await advertise(handoffs)
+  await advertiseRuntimeHandoffs(handoffs)
 
   return handoffs.length
 }
