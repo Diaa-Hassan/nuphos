@@ -57,6 +57,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.navigation.NavHostController
 import ai.nuphos.android.model.AgentConversation
 import ai.nuphos.android.model.HistoryTime
@@ -83,6 +86,13 @@ fun AgentPage(
     val store = LocalAgentStore.current
     val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    LaunchedEffect(store, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            // Initial membership loading selects and loads the team itself.
+            store.refreshOnResume()
+        }
+    }
     val auth = ai.nuphos.android.ui.LocalAuthSession.current
     val account = auth.user?.id
     val team = store.selectedTeam

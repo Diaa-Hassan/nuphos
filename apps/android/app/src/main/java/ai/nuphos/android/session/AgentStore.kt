@@ -116,6 +116,13 @@ class AgentStore(
         }
     }
 
+    fun refreshOnResume() {
+        if (disposed || !hasAiAccess() || selectedTeam == null) return
+        // A read started before leaving may predate changes made on another client.
+        refreshRequests.invalidate()
+        refresh()
+    }
+
     private fun resetHistory() {
         refreshRequests.invalidate()
         isReloading = false

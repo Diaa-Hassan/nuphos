@@ -40,6 +40,7 @@ class PullRefreshFixtureDeviceTest {
     private val requests = CopyOnWriteArrayList<Request>()
     private val originals = mutableMapOf<String, OkHttpClient>()
     private val token = "refresh-fixture-no-credentials"
+    private lateinit var navController: androidx.navigation.NavHostController
     private lateinit var store: AgentStore
     private lateinit var app: NuphosApplication
     private lateinit var fixtureAuth: AuthSession
@@ -63,7 +64,7 @@ class PullRefreshFixtureDeviceTest {
 
     private val network = object : ExternalResource() {
         override fun before() {
-            check(InstrumentationRegistry.getInstrumentation().targetContext.packageName.endsWith(".refreshfixture")) { "Run only in the isolated refresh fixture package" }
+            check(InstrumentationRegistry.getInstrumentation().targetContext.packageName.let { it.endsWith(".refreshfixture") || it.endsWith(".listrefresh1319") }) { "Run only in the isolated refresh fixture package" }
             app = InstrumentationRegistry.getInstrumentation().targetContext.applicationContext as NuphosApplication
             preferences = app.getSharedPreferences("nuphos.prefs", Context.MODE_PRIVATE).all.toMap()
             InstrumentationRegistry.getInstrumentation().runOnMainSync {
@@ -80,6 +81,7 @@ class PullRefreshFixtureDeviceTest {
                 val path = req.url.encodedPath
                 var code = 200
                 val text = when {
+                    path == "/auth/ai-consent" -> """{"version":"${AccountApi.AI_CONSENT_VERSION}","accepted":true}"""
                     path == "/teams/aaaaaaaaaaaaaaaaaaaaaaaa/favorites" -> {
                         if (failFavorites) { code = 503; "{}" }
                         else """{"revision":1,"entries":$entries}"""
@@ -145,6 +147,7 @@ class PullRefreshFixtureDeviceTest {
             compose.activity.setContent {
                 NuphosTheme(darkTheme = false) { CompositionLocalProvider(LocalAgentStore provides store, LocalAuthSession provides auth) {
                     val nav = rememberNavController()
+                    navController = nav
                     androidx.compose.runtime.SideEffect {
                         androidx.core.view.WindowCompat.getInsetsController(compose.activity.window, compose.activity.window.decorView).apply {
                             isAppearanceLightStatusBars = true
@@ -155,13 +158,14 @@ class PullRefreshFixtureDeviceTest {
                         androidx.compose.foundation.layout.Box(Modifier.systemBarsPadding()) {
                             NavHost(nav, startDestination = "history") {
                                 composable("history") { AgentPage(searching.value, { searching.value = it }, nav) }
+                                composable("fixture-detail") { androidx.compose.material3.Text("Synthetic detail") }
                             }
                         }
                     }
                 } }
             }
         }
-        compose.waitUntil(5_000) { !store.favoritesLoading }
+        compose.waitUntil(5_000) { !store.favoritesLoading && !store.isRefreshing }
     }
     private fun waitText(text: String) { compose.waitUntil(5_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() } }
 
@@ -196,6 +200,52 @@ class PullRefreshFixtureDeviceTest {
         }
     }
     private fun settled() { compose.waitUntil(10_000) { !store.isRefreshing && store.phase != AgentStore.Phase.Loading } }
+
+    @Test fun resumeReadsNewRemoteHistoryAndPinsWithoutRelaunch() {
+        render()
+        val reads = historyReads()
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED)
+        historyTitle = "Created on another client"
+        entries = entries.replace("Beyond first page", "Remote pinned chat")
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        waitText("Created on another client"); waitText("Remote pinned chat"); settled()
+        assertEquals(reads + 1, historyReads())
+        shot("resume-remote-light")
+    }
+
+    @Test fun resumeSupersedesReadStartedBeforeBackgrounding() {
+        render()
+        holdHistory = true; historyTitle = "Pre-background snapshot"
+        compose.runOnIdle { store.refresh() }
+        assertTrue(historyHeld.await(5, TimeUnit.SECONDS))
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.STARTED)
+        historyTitle = "Latest remote snapshot"
+        compose.activityRule.scenario.moveToState(androidx.lifecycle.Lifecycle.State.RESUMED)
+        waitText("Latest remote snapshot"); settled()
+        historyRelease.countDown()
+        Thread.sleep(200); compose.waitForIdle()
+        compose.onNodeWithText("Pre-background snapshot").assertDoesNotExist()
+        compose.onNodeWithText("Latest remote snapshot").assertExists()
+        shot("resume-inflight-light")
+    }
+
+    @Test fun returningFromDetailRefreshesCurrentSearchAndArchiveScope() {
+        render()
+        compose.runOnIdle { store.updateScope(ConversationScope.Team); store.updateSearch("needle"); store.updateArchivedOnly(true) }
+        Thread.sleep(350); settled()
+        compose.runOnIdle { navController.navigate("fixture-detail") }
+        waitText("Synthetic detail")
+        val reads = historyReads()
+        historyTitle = "Remote archived result"
+        compose.runOnIdle { navController.popBackStack() }
+        waitText("Remote archived result"); settled()
+        assertEquals(reads + 1, historyReads())
+        val last = requests.last { it.url.encodedPath == "/agent/conversations" }
+        assertEquals("needle", last.url.queryParameter("search"))
+        assertEquals("team", last.url.queryParameter("scope"))
+        assertEquals("only", last.url.queryParameter("archived"))
+        shot("return-filtered-light")
+    }
 
     @Test fun actualGestureRefreshesHistoryAndPinsAndFailureCanRetry() {
         render()

@@ -338,12 +338,16 @@ Chat history supports the Material pull-to-refresh gesture on populated, empty,
 search and failed states. A gesture refreshes the current history filters and
 pinned shortcuts, keeps existing successful data on failure, and prevents
 pagination until refresh finishes. It does not reset the composer or tree folds.
+Returning to the list or resuming the app reloads history and pins with the current
+filters. A pre-background read cannot replace this newer snapshot. Reads are
+scoped to the resumed list; there is no background polling.
 
 `HistoryRefreshTest` covers the refresh lifecycle on the JVM.
 `PullRefreshFixtureDeviceTest` intercepts all network requests and exercises real
 Compose swipe gestures, retries, filter retention, duplicate suppression and
-late workspace responses. It refuses any application ID that does not end in
-`.refreshfixture`. Build a separate local fixture variant with that application
+late workspace responses, app resume, navigation return and pre-background
+in-flight reads. It refuses any application ID that does not end in
+`.refreshfixture` or `.listrefresh1319`. Build a separate local fixture variant with that application
 ID suffix and run only this test class; do not install a debug build over the
 Play application or clear its data. Keep `FLAG_SECURE` enabled.
 
