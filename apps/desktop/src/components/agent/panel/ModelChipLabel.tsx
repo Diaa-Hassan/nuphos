@@ -4,12 +4,14 @@ import { Sparkles, Zap } from 'lucide-react'
 /** The chip's text: ⚡ when fast mode is on, the model, then the effort muted. */
 export function ModelChipLabel({
   name,
+  loading,
   level,
   levels,
   choosingEffort,
   fast,
 }: {
   name: string
+  loading: boolean
   level: string
   /** Every effort label, so the chip can size itself to the widest. */
   levels: string[]
@@ -28,7 +30,12 @@ export function ModelChipLabel({
     />
   )
 
-  return name ? (
+  return loading ? (
+    <span
+      aria-label="Loading model"
+      className="h-3 w-24 animate-pulse rounded bg-zGray-700/60 motion-reduce:animate-none"
+    />
+  ) : (
     // The label, "Select effort" and an invisible copy of the label at
     // every level share one cell, so the chip keeps the width of the
     // widest and centers its text, as Codex does.
@@ -75,10 +82,5 @@ export function ModelChipLabel({
         )}
       </span>
     </>
-  ) : (
-    <span
-      aria-label="Loading model"
-      className="h-3 w-24 animate-pulse rounded bg-zGray-700/60 motion-reduce:animate-none"
-    />
   )
 }

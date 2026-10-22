@@ -1,6 +1,6 @@
-import { effortLabel, modelChoiceLabel } from '../../../lib/configLabels'
-import { resolvedEffort } from '../../../lib/effortStops'
-import { concreteModelChoices } from '../../../lib/modelChoices'
+import { effortLabel, modelChoiceLabel } from '../../../lib/configLabels.ts'
+import { resolvedEffort } from '../../../lib/effortStops.ts'
+import { concreteModelChoices } from '../../../lib/modelChoices.ts'
 
 import type { SessionConfigOption, SessionConfigState } from '../../../api/session-config-types'
 
@@ -16,7 +16,11 @@ export function modelName(option: SessionConfigOption) {
     option.currentValue,
   )
 
-  return label ?? current ?? ''
+  // A runtime's Default is a confirmed selection even when its description
+  // does not identify a concrete model. Do not turn it into a loading state.
+  const selected = option.options.find((choice) => choice.value === option.currentValue)
+
+  return label ?? current ?? (selected ? modelChoiceLabel(selected) : option.currentValue)
 }
 
 export function effortName(option: SessionConfigOption | undefined) {
