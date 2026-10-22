@@ -54,7 +54,10 @@ export function ModelSelector({
   const fast = options?.find((option) => option.kind === 'fast')
   const status = data?.status
   const busy = status === 'busy'
-  const name = model ? modelName(model) : status === 'offline' ? 'Model unavailable' : ''
+  let name = slow ? 'Connecting…' : 'Model settings'
+
+  if (error || status === 'offline' || stalled) name = 'Model unavailable'
+  if (model) name = modelName(model) || name
   const level = effortName(effort)
   const effortLevels = [
     ...new Set([level, ...effortStops(effort?.options ?? []).map((choice) => effortLabel(choice))]),
@@ -128,7 +131,7 @@ export function ModelSelector({
         'Available when this conversation is ready for your next message.',
     ].filter((line): line is string => Boolean(line)),
     error: error ?? undefined,
-    onRetry: error || stalled ? control.refresh : undefined,
+    onRetry: error || stalled || status === 'offline' ? control.refresh : undefined,
     retrying: loading || saving,
   }
   // Closing returns to the message box, so typing carries on; switching views
@@ -172,6 +175,7 @@ export function ModelSelector({
             {saving && <Loader2 className="h-3 w-3 shrink-0 animate-spin" />}
             <ModelChipLabel
               name={name}
+              loading={loading && !slow && !error && !data}
               level={level}
               levels={effortLevels}
               choosingEffort={effortOpen && Boolean(effort)}
