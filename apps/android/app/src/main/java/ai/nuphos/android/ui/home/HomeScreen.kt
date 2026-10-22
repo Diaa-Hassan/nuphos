@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Assignment
 import androidx.compose.material.icons.outlined.AutoAwesome
@@ -58,6 +60,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -72,6 +75,15 @@ import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.material3.adaptive.currentWindowAdaptiveInfoV2
+import androidx.compose.material3.adaptive.layout.ListDetailPaneScaffold
+import androidx.compose.material3.adaptive.layout.PaneAdaptedValue
+import androidx.compose.material3.adaptive.layout.ThreePaneScaffoldValue
+import androidx.compose.material3.adaptive.layout.calculatePaneScaffoldDirective
+import ai.nuphos.android.ui.agent.NewChatComposer
 import androidx.navigation.navArgument
 import ai.nuphos.android.model.ConversationScope
 import ai.nuphos.android.model.HomePage
@@ -105,6 +117,7 @@ import ai.nuphos.android.ui.plans.PlansPage
 import ai.nuphos.android.ui.profile.ProfileSheet
 import ai.nuphos.android.ui.login.SplashScreen
 
+@OptIn(androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi::class)
 @Composable
 fun HomeRoute(
     user: NuphosUser,
@@ -115,6 +128,7 @@ fun HomeRoute(
     val membershipAuth = LocalAuthSession.current
     // Keep the controller registered for Activity state restoration while memberships load.
     val nav = rememberNavController()
+    val newChatComposer = remember(nav) { movableContentOf { NewChatComposer(nav) } }
     LaunchedEffect(agentStore) {
         val generation = membershipAuth.generation
         val token = membershipAuth.token
@@ -219,45 +233,72 @@ fun HomeRoute(
             val target = notifications.pending.take(notificationAuth.user?.id, agentStore.selectedTeam?.id, notificationAuth.aiAllowed)
             if (target != null) nav.navigate("conversation/${android.net.Uri.encode(target.sessionId)}") { launchSingleTop = true }
         }
-        NavHost(nav, startDestination = "home") {
-            composable("home") {
-                if (membershipsLoading) SplashScreen() else HomeScreen(user, nav, monitoring, triggers, triggerRuns)
-            }
-            composable(
-                "conversation/{id}?fresh={fresh}",
-                arguments = listOf(
-                    navArgument("id") { type = NavType.StringType },
-                    navArgument("fresh") { type = NavType.BoolType; defaultValue = false },
-                ),
-            ) { entry ->
-                val id = entry.arguments?.getString("id").orEmpty()
-                val fresh = entry.arguments?.getBoolean("fresh") == true
-                if (membershipsLoading) SplashScreen()
-                else ConversationScreen(sessionId = id, fresh = fresh, onBack = { nav.popBackStack() }, nav = nav)
-            }
-            composable("plan/{id}") { entry ->
-                val id = entry.arguments?.getString("id").orEmpty()
-                if (membershipsLoading) SplashScreen()
-                else PlanDetailScreen(planId = id, nav = nav, teamId = agentStore.selectedTeam?.id)
-            }
-            composable(
-                "trigger-run/{id}?teamId={teamId}",
-                arguments = listOf(
-                    navArgument("id") { type = NavType.StringType },
-                    navArgument("teamId") { type = NavType.StringType },
-                ),
-            ) { entry ->
-                if (membershipsLoading) SplashScreen()
-                else ConversationScreen(
-                    sessionId = entry.arguments?.getString("id").orEmpty(),
-                    fresh = false,
-                    onBack = { nav.popBackStack() },
-                    nav = nav,
-                    browsingOnly = true,
-                    browsingTeamId = entry.arguments?.getString("teamId"),
-                )
-            }
+        val entry by nav.currentBackStackEntryAsState()
+        val showingDetail = entry?.destination?.route?.let { it != "home" } == true
+        val info = currentWindowAdaptiveInfoV2()
+        val wide = info.windowSizeClass.isWidthAtLeastBreakpoint(600)
+        LaunchedEffect(showingDetail) {
+            if (!showingDetail && !membershipsLoading) agentStore.refreshOnResume()
         }
+        AdaptiveHomePanes(
+            wide = wide,
+            showingDetail = showingDetail,
+            listPane = {
+                Box(Modifier.fillMaxSize()) {
+                    if (membershipsLoading) SplashScreen()
+                    else HomeScreen(user, nav, monitoring, triggers, triggerRuns,
+                        showComposer = !wide,
+                        selectedSessionId = entry?.arguments?.getString("id"), newChatComposer = newChatComposer)
+                }
+            },
+            detailPane = {
+                NavHost(nav, startDestination = "home") {
+                    composable("home") {
+                        if (wide && !membershipsLoading) Column(Modifier.fillMaxSize().safeDrawingPadding().wrapContentWidth(Alignment.CenterHorizontally).widthIn(max = 720.dp)) {
+                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Text("Start a new chat", style = MaterialTheme.typography.headlineSmall)
+                            }
+                            newChatComposer()
+                        }
+                    }
+                    composable(
+                        "conversation/{id}?fresh={fresh}",
+                        arguments = listOf(
+                            navArgument("id") { type = NavType.StringType },
+                            navArgument("fresh") { type = NavType.BoolType; defaultValue = false },
+                        ),
+                    ) { entry ->
+                        val id = entry.arguments?.getString("id").orEmpty()
+                        val fresh = entry.arguments?.getBoolean("fresh") == true
+                        if (membershipsLoading) SplashScreen()
+                        else ConversationScreen(sessionId = id, fresh = fresh, onBack = { nav.popBackStack("home", false) }, nav = nav,
+                            newChat = wide)
+                    }
+                    composable("plan/{id}") { entry ->
+                        val id = entry.arguments?.getString("id").orEmpty()
+                        if (membershipsLoading) SplashScreen()
+                        else PlanDetailScreen(planId = id, nav = nav, teamId = agentStore.selectedTeam?.id)
+                    }
+                    composable(
+                        "trigger-run/{id}?teamId={teamId}",
+                        arguments = listOf(
+                            navArgument("id") { type = NavType.StringType },
+                            navArgument("teamId") { type = NavType.StringType },
+                        ),
+                    ) { entry ->
+                        if (membershipsLoading) SplashScreen()
+                        else ConversationScreen(
+                            sessionId = entry.arguments?.getString("id").orEmpty(),
+                            fresh = false,
+                            onBack = { nav.popBackStack() },
+                            nav = nav,
+                            browsingOnly = true,
+                            browsingTeamId = entry.arguments?.getString("teamId"),
+                        )
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -269,6 +310,9 @@ fun HomeScreen(
     monitoring: MonitoringStore,
     triggers: TriggersStore,
     triggerRuns: TriggerRunsStore,
+    showComposer: Boolean = true,
+    selectedSessionId: String? = null,
+    newChatComposer: @Composable () -> Unit = { NewChatComposer(nav) },
 ) {
     val store = LocalAgentStore.current
     val plans = LocalPlansStore.current
@@ -340,7 +384,9 @@ fun HomeScreen(
                     DropdownMenu(showWorkspaces, onDismissRequest = { showWorkspaces = false }) {
                         store.teams.forEach { team ->
                             DropdownMenuItem(text = { Text(team.name) }, onClick = {
-                                setup.close(); showSetup = false; store.select(team); showWorkspaces = false
+                                setup.close(); showSetup = false
+                                if (store.selectedTeam?.id != team.id) nav.popBackStack("home", false)
+                                store.select(team); showWorkspaces = false
                             })
                         }
                         DropdownMenuItem(text = { Text("Set up a workspace") }, onClick = { showWorkspaces = false; showSetup = true })
@@ -396,7 +442,7 @@ fun HomeScreen(
                 }
             } else AnimatedContent(current, modifier = Modifier.weight(1f), label = "page") { dest ->
                 when (dest) {
-                    HomePage.Agent -> AgentPage(searching = searching, onSearchingChange = { searching = it }, nav = nav)
+                    HomePage.Agent -> AgentPage(searching = searching, onSearchingChange = { searching = it }, nav = nav, showComposer = showComposer, selectedSessionId = selectedSessionId, newChatComposer = newChatComposer)
                     HomePage.Plans -> PlansPage(searching = searching, onSearchingChange = { searching = it }, nav = nav)
                     HomePage.Connectors -> ConnectorsPage()
                     HomePage.Monitoring -> MonitoringPage(monitoring, store.selectedTeam?.id, onOpenConnectors = { page = HomePage.Connectors.route })
@@ -498,4 +544,27 @@ fun PlaceholderPage(page: HomePage) {
             modifier = Modifier.padding(top = 8.dp),
         )
     }
+}
+
+@OptIn(androidx.compose.material3.adaptive.ExperimentalMaterial3AdaptiveApi::class)
+@Composable
+internal fun AdaptiveHomePanes(
+    wide: Boolean,
+    showingDetail: Boolean,
+    listPane: @Composable () -> Unit,
+    detailPane: @Composable () -> Unit,
+) {
+    val directive = calculatePaneScaffoldDirective(currentWindowAdaptiveInfoV2()).copy(
+        maxHorizontalPartitions = if (wide) 2 else 1,
+        horizontalPartitionSpacerSize = 1.dp,
+        defaultPanePreferredWidth = 320.dp,
+    )
+    val panes = ThreePaneScaffoldValue(
+        primary = if (wide || showingDetail) PaneAdaptedValue.Expanded else PaneAdaptedValue.Hidden,
+        secondary = if (wide || !showingDetail) PaneAdaptedValue.Expanded else PaneAdaptedValue.Hidden,
+        tertiary = PaneAdaptedValue.Hidden,
+    )
+    // Keep the single NavHost composed even when its pane is hidden.
+    ListDetailPaneScaffold(directive = directive, value = panes,
+        listPane = { listPane() }, detailPane = { detailPane() })
 }

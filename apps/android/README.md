@@ -382,3 +382,22 @@ and attachment/metadata round trips. `MessageAttributionFixtureDeviceTest` rende
 synthetic light-theme event rows without signing in or making network requests.
 Run that fixture in a separately suffixed debug package when a Play installation
 is present; never replace or clear the signed store app for a fixture test.
+
+## Adaptive layout fixtures
+
+The home screen uses Material adaptive panes and the window size class, including
+folding-feature exclusions. At medium width and above, history and detail share
+the window; compact width shows the selected pane. Resizing retains one NavHost
+and moves the existing new-chat composer without replacing its local state.
+
+For physical-device synthetic tests, build with
+`-PnuphosIsolatedAdaptiveFixture=true`. This debug-only option changes the
+application ID to `ai.nuphos.android.adaptivefixture`; it never updates the store
+app. Run `AdaptivePanesFixtureDeviceTest` for an in-flight load and draft across
+pane collapse, and `ConversationLinksFixtureDeviceTest` with
+`-e isolatedConversationLinks true` for the real HomeRoute lifecycle. The latter
+refuses physical devices unless this isolated application ID is installed and
+requires an empty token store. HTTP is intercepted before a synthetic identity
+is created. `-e captureSynthetic true` writes synthetic UI captures to the
+fixture application's external files directory. Window resizing is distinct
+from a physical fold; record the device state and restore any test overrides.

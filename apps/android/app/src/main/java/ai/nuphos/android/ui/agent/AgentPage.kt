@@ -14,6 +14,7 @@ import ai.nuphos.android.session.ConversationNesting
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -82,6 +83,9 @@ fun AgentPage(
     searching: Boolean,
     onSearchingChange: (Boolean) -> Unit,
     nav: NavHostController,
+    showComposer: Boolean = true,
+    selectedSessionId: String? = null,
+    newChatComposer: @Composable () -> Unit = { NewChatComposer(nav) },
 ) {
     val store = LocalAgentStore.current
     val scope = rememberCoroutineScope()
@@ -100,21 +104,6 @@ fun AgentPage(
     val consentRevision = ai.nuphos.android.session.AiAccess.revision
     LaunchedEffect(store, team, revision) { store.loadCredentialOptions() }
     val authGeneration = auth.generation
-    val selection = remember(account, team?.id, authGeneration, consentRevision) {
-        if (account != null && team != null && auth.aiAllowed) auth.runtimeSelections.bind(account, team.id) else null
-    }
-    val quotas = rememberRuntimeQuotas(auth.token, team?.id)
-    var setupVisible by remember { mutableStateOf(false) }
-    val setup = remember(account, team, revision, consentRevision, authGeneration, selection) {
-        if (team != null && selection != null && auth.token != null) ai.nuphos.android.session.RuntimeSetupStore(
-            ai.nuphos.android.data.AgentRuntimeApi(auth.token!!, team.id), scope,
-            { auth.generation == authGeneration && auth.user?.id == account && auth.aiAllowed &&
-                ai.nuphos.android.session.AiAccess.revision == consentRevision && store.workspaceRevision == revision && store.selectedTeam == team },
-            { store.selectedTeam == team && store.selectedTeam?.isAdministrator == true }, selection,
-            { if (auth.generation == authGeneration && auth.user?.id == account) auth.signOut(ai.nuphos.android.data.NuphosApi.Failure.Unauthorized.message) }) else null
-    }
-    LaunchedEffect(setup) { setupVisible = false }
-    if (setupVisible && setup != null && setup.isSourceCurrent()) RuntimeSetupSheet(setup, { setupVisible = false }, quotas = quotas)
 
     var unlinkTarget by remember(store, revision, consentRevision, authGeneration) { mutableStateOf<AgentConversation?>(null) }
     if (store.watchError != null) AlertDialog(onDismissRequest = { store.clearWatchError() },
@@ -155,11 +144,6 @@ fun AgentPage(
     }
 
     Column(Modifier.fillMaxSize()) {
-        // The notice opens the picker itself, since the chip it refers to
-        // sits in the composer at the bottom of the page.
-        if (selection?.reselectionRequired == true) TextButton(onClick = { setupVisible = true }, enabled = setup != null && auth.aiAllowed, modifier = Modifier.padding(horizontal = 4.dp)) {
-            Text("Select an available Agent before starting a new chat.")
-        }
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             FilterChip(selected = !store.archivedOnly, onClick = { store.updateArchivedOnly(false) }, label = { Text("Active") })
             FilterChip(selected = store.archivedOnly, onClick = { store.updateArchivedOnly(true) }, label = { Text("Archived") })
@@ -217,7 +201,9 @@ fun AgentPage(
                     RefreshableHistoryState { EmptyState(
                         icon = Icons.Outlined.ChatBubbleOutline,
                         title = if (store.search.isEmpty()) "No chats yet" else "No matches",
-                        body = if (store.search.isEmpty()) "Start a conversation from the bar below." else "No conversations match your search.",
+                        body = if (store.search.isNotEmpty()) "No conversations match your search."
+                            else if (showComposer) "Start a conversation from the bar below."
+                            else "Start a conversation in the pane beside this list.",
                     ) }
                 }
                 else -> {
@@ -235,7 +221,7 @@ fun AgentPage(
                             if (section == ConversationNesting.Section.Pinned) {
                                 items(shortcuts, key = { it.listKey }) { pin ->
                                     Card(Modifier.fillMaxWidth().clickable {
-                                        nav.navigate("conversation/${android.net.Uri.encode(pin.sessionId)}")
+                                        nav.navigate("conversation/${android.net.Uri.encode(pin.sessionId)}") { popUpTo("home"); launchSingleTop = true }
                                     }) {
                                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
                                             Icon(Icons.Outlined.PushPin, contentDescription = "Pinned chat")
@@ -254,7 +240,8 @@ fun AgentPage(
                                     onToggle = {
                                         foldedIds = if (row.conversation.sessionId in foldedIds) foldedIds - row.conversation.sessionId else foldedIds + row.conversation.sessionId
                                     },
-                                    onClick = { nav.navigate("conversation/${android.net.Uri.encode(row.conversation.sessionId)}") })
+                                    onClick = { nav.navigate("conversation/${android.net.Uri.encode(row.conversation.sessionId)}") { popUpTo("home"); launchSingleTop = true } },
+                                    selected = row.conversation.sessionId == selectedSessionId)
                             }
                         }
                         if (store.hasMore) {
@@ -268,53 +255,7 @@ fun AgentPage(
                 }
             }
         }
-        val draftAuth = ai.nuphos.android.ui.LocalAuthSession.current
-        val draftAccount = draftAuth.user?.id
-        val draftTeam = store.selectedTeam?.id
-        val draft = remember(draftAccount, draftTeam, draftAuth.generation, ai.nuphos.android.session.AiAccess.revision) {
-            draftAccount?.let { draftAuth.composerDrafts.bind(it, draftTeam, ai.nuphos.android.session.ComposerDrafts.Destination.NewChat, ai.nuphos.android.session.AiAccess.bind(draftAuth.token.orEmpty())) }
-        }
-        val modelSettings = remember(store, selection, selection?.selected, store.workspaceRevision) { store.bindNewModelSettings(selection) }
-        LaunchedEffect(modelSettings) { modelSettings?.refresh() }
-        ChatComposer(
-            modelSettings = modelSettings,
-            mentions = draftTeam?.let { team ->
-                remember(store, team) {
-                    ai.nuphos.android.ui.chat.SessionMentionSource(team) { query ->
-                        store.mentionableSessions(team, query)
-                    }
-                }
-            },
-            devices = draftTeam?.let { team ->
-                remember(store, team, store.workspaceRevision) {
-                    ai.nuphos.android.ui.chat.DeviceMentionSource(team,
-                        load = { store.mentionableComputers(team) },
-                        pick = { device ->
-                            if (store.selectedTeam?.id != team || !draftAuth.aiAllowed) false
-                            else ai.nuphos.android.ui.chat.DeviceMention.select(store.credentialSelection, device)?.let {
-                                store.updateCredentialSelection(it)
-                                true
-                            } ?: false
-                        },
-                    )
-                }
-            },
-            draft = draft,
-            draftingEnabled = draft != null && draftAuth.aiAllowed && store.selectedTeam != null,
-            canSubmit = store.credentialsReady && modelSettings?.canStart != false,
-            isStreaming = false,
-            onSend = { submission ->
-                val session = store.newSession(selection) ?: return@ChatComposer false
-                store.pendingPrompt = submission
-                nav.navigate("conversation/${session.sessionId}?fresh=true")
-                true
-            },
-            showControls = true,
-            agentQuota = selection?.selectedId?.let { quotas[it] },
-            agent = selection,
-            agentEnabled = setup != null && auth.aiAllowed,
-            onChooseAgent = { setupVisible = true },
-        )
+        if (showComposer) newChatComposer()
     }
 }
 
@@ -330,7 +271,7 @@ private fun RefreshableHistoryState(content: @Composable () -> Unit) {
 
 /** Cap visual indentation so malformed/deep trees cannot squeeze the title off-screen. */
 @Composable
-internal fun ConversationTreeRow(row: ConversationNesting.Row, pinned: Boolean, status: String?, onToggle: () -> Unit, onClick: () -> Unit, onUnlink: (() -> Unit)? = null, unlinking: Boolean = false, onWatch: (() -> Unit)? = null, watchBusy: Boolean = false) {
+internal fun ConversationTreeRow(row: ConversationNesting.Row, pinned: Boolean, status: String?, onToggle: () -> Unit, onClick: () -> Unit, onUnlink: (() -> Unit)? = null, unlinking: Boolean = false, onWatch: (() -> Unit)? = null, watchBusy: Boolean = false, selected: Boolean = false) {
     val depth = row.depth.coerceAtMost(4)
     val line = MaterialTheme.colorScheme.outlineVariant
     Row(Modifier.fillMaxWidth().height(IntrinsicSize.Min), verticalAlignment = Alignment.CenterVertically) {
@@ -339,17 +280,17 @@ internal fun ConversationTreeRow(row: ConversationNesting.Row, pinned: Boolean, 
             drawLine(line, Offset(x, 0f), Offset(x, size.height / 2), 1.dp.toPx())
             drawLine(line, Offset(x, size.height / 2), Offset(size.width, size.height / 2), 1.dp.toPx())
         }
-        Box(Modifier.weight(1f).semantics { stateDescription = "Thread level ${row.depth}" }) {
-            ConversationRow(row.conversation, pinned, status, row.threads, row.folded, onToggle, onClick, onUnlink, unlinking, onWatch, watchBusy)
+        Box(Modifier.weight(1f).semantics { stateDescription = "Thread level ${row.depth}"; this.selected = selected }) {
+            ConversationRow(row.conversation, pinned, status, row.threads, row.folded, onToggle, onClick, onUnlink, unlinking, onWatch, watchBusy, selected)
         }
     }
 }
 
 @Composable
-private fun ConversationRow(conversation: AgentConversation, pinned: Boolean, status: String?, threads: Int = 0, folded: Boolean = false, onToggle: () -> Unit = {}, onClick: () -> Unit, onUnlink: (() -> Unit)? = null, unlinking: Boolean = false, onWatch: (() -> Unit)? = null, watchBusy: Boolean = false) {
+private fun ConversationRow(conversation: AgentConversation, pinned: Boolean, status: String?, threads: Int = 0, folded: Boolean = false, onToggle: () -> Unit = {}, onClick: () -> Unit, onUnlink: (() -> Unit)? = null, unlinking: Boolean = false, onWatch: (() -> Unit)? = null, watchBusy: Boolean = false, selected: Boolean = false) {
     Card(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+        colors = CardDefaults.cardColors(containerColor = if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow),
         shape = MaterialTheme.shapes.large,
         elevation = CardDefaults.cardElevation(0.dp),
     ) {
@@ -447,4 +388,85 @@ fun EmptyState(
             Button(onClick = onAction, modifier = Modifier.padding(top = 16.dp)) { Text(action) }
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3ExpressiveApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun NewChatComposer(nav: NavHostController) {
+    val store = LocalAgentStore.current
+    val scope = rememberCoroutineScope()
+    val auth = ai.nuphos.android.ui.LocalAuthSession.current
+    val account = auth.user?.id
+    val team = store.selectedTeam
+    val revision = store.workspaceRevision
+    val consentRevision = ai.nuphos.android.session.AiAccess.revision
+    val authGeneration = auth.generation
+    val selection = remember(account, team?.id, authGeneration, consentRevision) {
+        if (account != null && team != null && auth.aiAllowed) auth.runtimeSelections.bind(account, team.id) else null
+    }
+    val quotas = rememberRuntimeQuotas(auth.token, team?.id)
+    var setupVisible by remember { mutableStateOf(false) }
+    val setup = remember(account, team, revision, consentRevision, authGeneration, selection) {
+        if (team != null && selection != null && auth.token != null) ai.nuphos.android.session.RuntimeSetupStore(
+            ai.nuphos.android.data.AgentRuntimeApi(auth.token!!, team.id), scope,
+            { auth.generation == authGeneration && auth.user?.id == account && auth.aiAllowed &&
+                ai.nuphos.android.session.AiAccess.revision == consentRevision && store.workspaceRevision == revision && store.selectedTeam == team },
+            { store.selectedTeam == team && store.selectedTeam?.isAdministrator == true }, selection,
+            { if (auth.generation == authGeneration && auth.user?.id == account) auth.signOut(ai.nuphos.android.data.NuphosApi.Failure.Unauthorized.message) }) else null
+    }
+    LaunchedEffect(setup) { setupVisible = false }
+    if (setupVisible && setup != null && setup.isSourceCurrent()) RuntimeSetupSheet(setup, { setupVisible = false }, quotas = quotas)
+
+    // The notice opens the picker itself, since the chip it refers to
+    // sits in the composer at the bottom of the page.
+    if (selection?.reselectionRequired == true) TextButton(onClick = { setupVisible = true }, enabled = setup != null && auth.aiAllowed, modifier = Modifier.padding(horizontal = 4.dp)) {
+        Text("Select an available Agent before starting a new chat.")
+    }
+    val draftAuth = ai.nuphos.android.ui.LocalAuthSession.current
+    val draftAccount = draftAuth.user?.id
+    val draftTeam = store.selectedTeam?.id
+    val draft = remember(draftAccount, draftTeam, draftAuth.generation, ai.nuphos.android.session.AiAccess.revision) {
+        draftAccount?.let { draftAuth.composerDrafts.bind(it, draftTeam, ai.nuphos.android.session.ComposerDrafts.Destination.NewChat, ai.nuphos.android.session.AiAccess.bind(draftAuth.token.orEmpty())) }
+    }
+    val modelSettings = remember(store, selection, selection?.selected, store.workspaceRevision) { store.bindNewModelSettings(selection) }
+    LaunchedEffect(modelSettings) { modelSettings?.refresh() }
+    ChatComposer(
+        modelSettings = modelSettings,
+        mentions = draftTeam?.let { team ->
+            remember(store, team) {
+                ai.nuphos.android.ui.chat.SessionMentionSource(team) { query ->
+                    store.mentionableSessions(team, query)
+                }
+            }
+        },
+        devices = draftTeam?.let { team ->
+            remember(store, team, store.workspaceRevision) {
+                ai.nuphos.android.ui.chat.DeviceMentionSource(team,
+                    load = { store.mentionableComputers(team) },
+                    pick = { device ->
+                        if (store.selectedTeam?.id != team || !draftAuth.aiAllowed) false
+                        else ai.nuphos.android.ui.chat.DeviceMention.select(store.credentialSelection, device)?.let {
+                            store.updateCredentialSelection(it)
+                            true
+                        } ?: false
+                    },
+                )
+            }
+        },
+        draft = draft,
+        draftingEnabled = draft != null && draftAuth.aiAllowed && store.selectedTeam != null,
+        canSubmit = store.credentialsReady && modelSettings?.canStart != false,
+        isStreaming = false,
+        onSend = { submission ->
+            val session = store.newSession(selection) ?: return@ChatComposer false
+            store.pendingPrompt = submission
+            nav.navigate("conversation/${session.sessionId}?fresh=true")
+            true
+        },
+        showControls = true,
+        agentQuota = selection?.selectedId?.let { quotas[it] },
+        agent = selection,
+        agentEnabled = setup != null && auth.aiAllowed,
+        onChooseAgent = { setupVisible = true },
+    )
 }

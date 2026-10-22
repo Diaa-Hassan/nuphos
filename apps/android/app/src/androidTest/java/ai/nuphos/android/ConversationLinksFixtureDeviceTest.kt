@@ -8,6 +8,12 @@ import android.os.Build
 import android.content.pm.PackageManager
 import androidx.compose.runtime.MutableState
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.junit4.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
@@ -42,7 +48,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** Explicitly opted-in disposable emulator only. All HTTP is synthetic and socket-free. */
+/** Explicitly opted-in emulator or isolated app only. HTTP is synthetic and socket-free. */
 @RunWith(AndroidJUnit4::class)
 class ConversationLinksFixtureDeviceTest {
     @get:Rule val compose = createEmptyComposeRule()
@@ -58,6 +64,7 @@ class ConversationLinksFixtureDeviceTest {
     private val b = "507f1f77bcf86cd799439012"
     private val token = "conversation-link-synthetic-no-credentials"
     @Volatile private var detailStatus = 200
+    @Volatile private var adaptiveHistory = false
 
     @Suppress("UNCHECKED_CAST")
     private fun setState(value: AuthSession.State) {
@@ -75,7 +82,8 @@ class ConversationLinksFixtureDeviceTest {
     @Before fun setup() {
         val optedIn = InstrumentationRegistry.getArguments().getString("isolatedConversationLinks") == "true"
         assumeTrue("Disposable emulator fixture is disabled by default", optedIn)
-        assertTrue("Refuse to touch a physical phone", Build.HARDWARE in setOf("ranchu", "goldfish"))
+        assertTrue("Physical devices require the isolated fixture package",
+            Build.HARDWARE in setOf("ranchu", "goldfish") || instrumentation.targetContext.packageName == "ai.nuphos.android.adaptivefixture")
         app = instrumentation.targetContext.applicationContext as NuphosApplication
         assertNull("Refuse to replace an installed account", app.tokenStore.read())
         originalAuth = app.authSession
@@ -92,7 +100,13 @@ class ConversationLinksFixtureDeviceTest {
                 path == "/auth/ai-consent" -> """{"version":"2026-09-28","accepted":true}"""
                 path == "/auth/me" -> Http.json.encodeToString(NuphosUser.serializer(), NuphosUser.preview)
                 path == "/teams" -> """{"teams":[{"id":"$a","name":"Fixture Alpha"},{"id":"$b","name":"Fixture Beta"}]}"""
-                path == "/agent/conversations" -> """{"conversations":[],"nextCursor":null}"""
+                path == "/agent/credential-options" -> """{"options":{}}"""
+                path.endsWith("/agent-runtimes/quota") -> """{"quotas":{}}"""
+                path.endsWith("/agent-runtimes") -> """{"runtimes":[]}"""
+                path == "/agent/conversations" -> if (adaptiveHistory)
+                    """{"conversations":[{"sessionId":"fixture-chat","teamId":"$a","title":"Fixture first"},{"sessionId":"second-fixture-chat","teamId":"$a","title":"Fixture second"}],"nextCursor":null}"""
+                    else """{"conversations":[],"nextCursor":null}"""
+                path.endsWith("/resources") -> """{"resources":[]}"""
                 path.startsWith("/agent/conversations/") -> {
                     status = detailStatus
                     if (status == 200) """{"title":"Linked fixture chat","messages":[{"id":"fixture-answer","role":"assistant","parts":[{"type":"text","text":"Fixture content: ${request.url.pathSegments.last()}"}]}],"isOwner":false,"readOnly":true}"""
@@ -196,14 +210,102 @@ class ConversationLinksFixtureDeviceTest {
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP))
     }
     private fun awaitText(text: String) {
-        try {
-            compose.waitUntil(10_000) { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }
-        } catch (error: Throwable) {
-            android.util.Log.e("AppLinksFixture", "State=${auth.state::class.simpleName}, pending=${app.conversationLinks.value.value}, reads=${requests.map { it.method + " " + it.url.encodedPath }}")
-            compose.onRoot(useUnmergedTree = true).printToLog("AppLinksFixture")
-            throw error
+        compose.waitUntil(10_000) {
+            runCatching { compose.onAllNodesWithText(text).fetchSemanticsNodes().isNotEmpty() }.getOrDefault(false)
         }
         compose.onNodeWithText(text).assertIsDisplayed()
+    }
+
+    private fun snapshot(name: String) {
+        if (InstrumentationRegistry.getArguments().getString("captureSynthetic") != "true") return
+        val file = java.io.File(app.getExternalFilesDir(null), "$name.png")
+        file.outputStream().use {
+            compose.onRoot().captureToImage().asAndroidBitmap().compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+        }
+        val config = activity!!.resources.configuration
+        java.io.File(app.getExternalFilesDir(null), "$name.json").writeText(
+            """{"widthDp":${config.screenWidthDp},"heightDp":${config.screenHeightDp},"orientation":${config.orientation}}"""
+        )
+    }
+
+    @Test fun adaptiveBackNewDraftAndReopenAfterRecreation() {
+        adaptiveHistory = true
+        identity()
+        launch(link())
+        awaitText("Fixture content: fixture-chat")
+        snapshot("selected-chat")
+        val wide = activity!!.resources.configuration.screenWidthDp >= 600
+        if (wide) compose.onNodeWithText("New chat").performClick()
+        else compose.onNodeWithContentDescription("Back").performClick()
+        awaitText("Fixture first")
+        if (wide) awaitText("Start a new chat")
+        compose.onNode(hasSetTextAction()).performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("Synthetic new draft")
+        snapshot("new-chat")
+        recreate()
+        awaitText("Synthetic new draft")
+        compose.onNodeWithText("Fixture second").performClick()
+        awaitText("Fixture content: second-fixture-chat")
+        recreate()
+        awaitText("Fixture content: second-fixture-chat")
+        snapshot("recreated-chat")
+        assertNull(app.conversationLinks.value.value)
+    }
+
+    @Test fun simulatedWindowResizeKeepsSelectionAndNextChatLoads() {
+        val args = InstrumentationRegistry.getArguments()
+        val size = args.getString("compactWindowSize")
+        assumeTrue("Explicit simulated viewport size is required", size != null)
+        check(size!!.matches(Regex("[0-9]{3,4}x[0-9]{3,4}")))
+        val rotation = args.getString("expandedWindowRotation")?.toIntOrNull()
+        assumeTrue("Explicit expanded viewport rotation is required", rotation != null)
+        check(rotation!! in 0..3)
+        fun shell(value: String): String = instrumentation.uiAutomation.executeShellCommand(value).use { fd ->
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(fd).use { it.bufferedReader().readText() }
+        }
+        val originalRotation = shell("wm user-rotation").trim()
+        check(originalRotation.matches(Regex("free|lock [0-3]")))
+        fun command(value: String) {
+            shell("wm size $value")
+            shell("wm user-rotation lock $rotation")
+        }
+        fun awaitWidth(wide: Boolean) {
+            compose.waitUntil(10_000) {
+                var matches = false
+                instrumentation.runOnMainSync {
+                    val resumed = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED)
+                        .filterIsInstance<MainActivity>().singleOrNull()
+                    if (resumed != null) {
+                        activity = resumed
+                        matches = (resumed.resources.configuration.screenWidthDp >= 600) == wide
+                    }
+                }
+                matches
+            }
+        }
+        shell("wm user-rotation lock $rotation")
+        identity()
+        adaptiveHistory = true
+        launch(link())
+        awaitText("Fixture content: fixture-chat")
+        awaitWidth(true)
+        try {
+            command(size)
+            awaitWidth(false)
+            awaitText("Fixture content: fixture-chat")
+            snapshot("collapse-selected-chat")
+            warm(link(id = "second-fixture-chat"))
+            awaitText("Fixture content: second-fixture-chat")
+            snapshot("opened-after-collapse")
+            command("reset")
+            awaitWidth(true)
+            awaitText("Fixture content: second-fixture-chat")
+            snapshot("expanded-selected-chat")
+        } finally {
+            shell("wm size reset")
+            shell("wm user-rotation $originalRotation")
+        }
+        assertNull(app.conversationLinks.value.value)
     }
 
     @Test fun coldAndWarmLaunchUseAuthorizedWorkspaceAndDoNotReplayOnRecreation() {

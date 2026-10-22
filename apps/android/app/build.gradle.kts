@@ -44,6 +44,7 @@ android {
 
     buildTypes {
         debug {
+            if (providers.gradleProperty("nuphosIsolatedAdaptiveFixture").orNull == "true") applicationIdSuffix = ".adaptivefixture"
             buildConfigField("String", "PUSH_BASE_URL", "\"$debugPushBaseUrl\"")
             buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
         }
@@ -89,6 +90,7 @@ dependencies {
     implementation(libs.androidx.compose.ui.tooling.preview)
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material3.adaptive.navigation.suite)
+    implementation("androidx.compose.material3.adaptive:adaptive-layout:1.3.0")
     implementation(libs.androidx.compose.material.icons.extended)
     implementation(libs.androidx.navigation.compose)
     implementation(libs.androidx.browser)

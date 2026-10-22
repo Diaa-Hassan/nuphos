@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -87,6 +88,7 @@ fun ConversationScreen(
     nav: NavHostController,
     browsingOnly: Boolean = false,
     browsingTeamId: String? = null,
+    newChat: Boolean = false,
 ) {
     val store = LocalAgentStore.current
     val token = if (browsingOnly) LocalAuthSession.current.token else null
@@ -211,7 +213,8 @@ fun ConversationScreen(
                         modifier = Modifier.clickable { showTitle = true }.semantics { contentDescription = "Show full chat title" })
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
+                    if (newChat) TextButton(onClick = onBack) { Text("New chat") }
+                    else IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back") }
                 },
                 actions = {
                     if (browsingOnly) TextButton(onClick = { refreshBrowse += 1 }) { Text("Refresh") }
@@ -225,7 +228,9 @@ fun ConversationScreen(
             Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .consumeWindowInsets(padding),
+                .consumeWindowInsets(padding)
+                .wrapContentWidth(Alignment.CenterHorizontally)
+                .widthIn(max = 720.dp),
         ) {
             if (resourcesAllowed) SessionResourceStrip(
                 resources = session.linkedResources.resources,
