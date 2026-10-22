@@ -172,18 +172,18 @@ export function TeamActivityCard({
       </div>
       {rows ? (
         <div
-          // Rows share the card's height, so cells grow and shrink with it.
+          // Keep sparse teams compact; larger teams scroll inside the card.
           className="flex min-h-0 flex-1 flex-col gap-[3px] overflow-y-auto scrollbar-thin"
           onMouseLeave={leave}
         >
           {rows.map((row) => (
-            <div key={row.id} className="flex min-h-[10px] flex-1 gap-2">
+            <div key={row.id} className="flex h-7 min-h-7 shrink-0 gap-2">
               <span className="flex w-28 flex-shrink-0 items-center gap-1.5 self-center truncate text-[11.5px] text-secondary">
                 <Avatar src={row.avatarURL} name={row.name} size={16} className="rounded-full" />
                 <span className="truncate">{row.name}</span>
               </span>
               <div
-                className="grid flex-1 gap-[2px]"
+                className="grid min-w-0 flex-1 gap-[2px]"
                 style={{
                   gridTemplateColumns: `repeat(${String(row.cells.length)}, minmax(0, 1fr))`,
                 }}

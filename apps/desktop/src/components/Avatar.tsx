@@ -26,7 +26,7 @@ export function Avatar({ src, name, size = 28, className = '' }: Props) {
     <div
       className={[
         rounding,
-        'overflow-hidden flex items-center justify-center',
+        'overflow-hidden flex shrink-0 items-center justify-center',
         showImage ? 'bg-transparent' : 'shadow-sm shadow-black/25',
         className,
       ].join(' ')}
