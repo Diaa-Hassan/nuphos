@@ -19,6 +19,8 @@ import {
   resumeBox,
 } from '../atlas/boxes.ts'
 
+import { LOCAL_AGENT_PROVIDERS } from './local-runtime/providers.ts'
+
 import type {
   AgentDeviceListOptions,
   BoxAccess,
@@ -31,10 +33,11 @@ function string(value: unknown): string {
   return value
 }
 function agentProvider(value: unknown): LocalAgentProvider {
-  if (value !== 'claude-code' && value !== 'codex')
-    throw new TypeError('Expected an agent provider')
+  const provider = LOCAL_AGENT_PROVIDERS.find((known) => known === value)
 
-  return value
+  if (!provider) throw new TypeError('Expected an agent provider')
+
+  return provider
 }
 function boxAccess(value: unknown): BoxAccess {
   const access = value as Partial<BoxAccess> | null

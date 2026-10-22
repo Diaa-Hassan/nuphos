@@ -62,6 +62,18 @@ test('Box IPC channels scope the list and every Box action to the page team', as
   )
 })
 
+test('Box IPC channels add every agent a Box offers', async () => {
+  calls.length = 0
+  for (const provider of ['claude-code', 'codex', 'grok', 'opencode'])
+    await boxChannels['box:createAgent'](null, 'dev/1', 'team-1', provider)
+
+  assert.deepEqual(
+    calls.map(([, , body]) => (body as { provider: string }).provider),
+    ['claude-code', 'codex', 'grok', 'opencode'],
+  )
+  assert.throws(() => boxChannels['box:createAgent'](null, 'dev/1', 'team-1', 'gemini'), TypeError)
+})
+
 test('Box IPC channels reject arguments that are not strings', () => {
   assert.throws(() => boxChannels['box:pause'](null, 42, 'team-1'), TypeError)
   // A Box action without its team never reaches the backend.
