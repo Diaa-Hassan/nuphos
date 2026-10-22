@@ -151,6 +151,10 @@ export const appApi = {
     scope?: SkillScope,
   ) => window.api.teamSkillsPutObject(teamId, key, file, scope),
   teamSkillsListLocal: () => window.api.teamSkillsListLocal(),
+  localSetupStatus: (teamId: string) => window.api.localSetupStatus(teamId),
+  localSetupSync: (teamId: string) => window.api.localSetupSync(teamId),
+  localSetupSetAutoSync: (teamId: string, enabled: boolean) =>
+    window.api.localSetupSetAutoSync(teamId, enabled),
   teamSkillsImportLocal: (teamId: string, skillId: string, scope?: SkillScope) =>
     window.api.teamSkillsImportLocal(teamId, skillId, scope),
   teamSkillsDeleteObject: (teamId: string, key: string, scope?: SkillScope) =>

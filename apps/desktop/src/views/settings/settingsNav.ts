@@ -8,6 +8,7 @@ import {
   KeyRound,
   Monitor,
   NotebookPen,
+  RefreshCw,
   ScrollText,
   Settings,
   Sparkles,
@@ -81,7 +82,10 @@ const TEAM_GROUPS: SettingsNavGroup[] = [
   },
   {
     title: 'My preferences',
-    items: [{ key: 'preferences.instructions', label: 'Personal instructions', icon: NotebookPen }],
+    items: [
+      { key: 'preferences.instructions', label: 'Personal instructions', icon: NotebookPen },
+      { key: 'preferences.localSetup', label: 'Sync my setup', icon: RefreshCw },
+    ],
   },
 ]
 

@@ -10,6 +10,8 @@ import type {
   LocalAgentSessionInfo,
   LocalSessionSource,
   LocalSkillImportResult,
+  LocalSetupResult,
+  LocalSetupStatus,
   LocalSkillInfo,
   PastedAttachmentPayload,
 } from './app-types.ts'
@@ -174,6 +176,9 @@ export type WindowAppApi = {
     scope?: SkillScope,
   ): Promise<TeamSkillObject>
   teamSkillsListLocal(): Promise<LocalSkillInfo[]>
+  localSetupStatus(teamId: string): Promise<LocalSetupStatus>
+  localSetupSync(teamId: string): Promise<LocalSetupResult>
+  localSetupSetAutoSync(teamId: string, enabled: boolean): Promise<void>
   teamSkillsImportLocal(
     teamId: string,
     skillId: string,

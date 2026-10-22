@@ -41,6 +41,13 @@ before(() => {
     path.join(outside, 'secret.txt'),
     path.join(home, '.claude', 'skills', 'deploy', 'secret.txt'),
   )
+  // A link to a file elsewhere inside the skills directory, as gstack installs
+  // its skills, is followed.
+  writeSkill(path.join(home, '.claude', 'skills', 'shared'), { 'guide.md': '# Guide\n' })
+  symlinkSync(
+    path.join(home, '.claude', 'skills', 'shared', 'guide.md'),
+    path.join(home, '.claude', 'skills', 'deploy', 'guide.md'),
+  )
 })
 
 after(() => {
@@ -65,7 +72,7 @@ describe('listLocalSkills', () => {
     assert.deepEqual(
       skills.map((skill) => [skill.id, skill.description, skill.fileCount]),
       [
-        ['claude/deploy', 'Ship the service', 2],
+        ['claude/deploy', 'Ship the service', 3],
         ['codex/triage', 'Triage alerts', 1],
       ],
     )
@@ -73,12 +80,12 @@ describe('listLocalSkills', () => {
 })
 
 describe('localSkillEntries', () => {
-  it('returns SKILL.md first and ignores node_modules and symlinked files', async () => {
+  it('returns SKILL.md first, ignores node_modules, and follows only links inside the skills directory', async () => {
     const entries = await localSkillEntries(path.join(home, '.claude', 'skills', 'deploy'))
 
     assert.deepEqual(
       entries.map((entry) => entry.relPath),
-      ['SKILL.md', 'scripts/run.sh'],
+      ['SKILL.md', 'guide.md', 'scripts/run.sh'],
     )
   })
 })

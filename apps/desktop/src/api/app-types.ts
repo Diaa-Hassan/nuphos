@@ -103,6 +103,30 @@ export type LocalSkillImportResult = {
   skipped: string[]
 }
 
+/** One "Sync my setup" pass: this computer's Claude Code skills and CLAUDE.md, as personal ones. */
+export type LocalSetupResult = {
+  at: string
+  syncedSkills: number
+  uploadedFiles: number
+  removedSkills: number
+  skipped: {
+    name: string
+    reason: 'too_large' | 'too_many_files' | 'name_taken' | 'over_budget' | 'unreadable'
+  }[]
+  instruction: 'synced' | 'removed' | 'none' | 'too_long'
+  instructionParts: number
+  failed: string[]
+}
+
+export type LocalSetupStatus = {
+  autoSync: boolean
+  running: boolean
+  localSkills: number
+  claudeMdChars: number | null
+  last: LocalSetupResult | null
+  budget: { files: number; bytes: number }
+}
+
 export type PastedAttachmentPayload = {
   paths: string[]
   files: { name: string; type: string; bytes: ArrayBuffer }[]

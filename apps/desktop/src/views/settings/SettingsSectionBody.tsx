@@ -2,6 +2,7 @@ import { GeneralSection } from './GeneralSection'
 import { InstructionsSection } from './InstructionsSection'
 import { LocalExecSection } from './LocalExecSection'
 import { LocalRuntimeSection } from './LocalRuntimeSection'
+import { LocalSetupSection } from './LocalSetupSection'
 import { PersonalCredentialsSection } from './PersonalCredentialsSection'
 import { AppearanceSection } from './personalSections'
 import { ProfileSection } from './ProfileSection'
@@ -30,6 +31,7 @@ const SECTIONS: Partial<Record<string, (props: SectionProps) => ReactNode>> = {
   ),
   'workspace.instructions': ({ team }) => <InstructionsSection team={team} scope="team" />,
   'preferences.instructions': ({ team }) => <InstructionsSection team={team} scope="personal" />,
+  'preferences.localSetup': ({ team }) => <LocalSetupSection team={team} />,
   'account.profile': ({ user, onSignOut, onUserUpdated }) => (
     <ProfileSection user={user} onSignOut={onSignOut} onUserUpdated={onUserUpdated} />
   ),

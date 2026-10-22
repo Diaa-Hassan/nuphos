@@ -5,6 +5,8 @@ import fs from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 
+import type { Dirent, Stats } from 'node:fs'
+
 export type LocalSkillSource = 'claude' | 'codex'
 
 export type LocalSkillInfo = {
@@ -54,17 +56,47 @@ export function skillDescription(markdown: string): string | null {
 }
 
 /**
+ * Where a symlinked file really is, when that is a regular file inside `within`
+ * (the skills directory itself). Tools such as gstack install each skill as a
+ * folder of links into one shared checkout there; a link anywhere else, or to a
+ * directory, is never followed.
+ */
+async function containedLink(full: string, within: string): Promise<Stats | null> {
+  try {
+    const target = await fs.realpath(full)
+
+    if (!target.startsWith(`${within}${path.sep}`)) return null
+    const stat = await fs.stat(target)
+
+    return stat.isFile() ? stat : null
+  } catch {
+    return null
+  }
+}
+
+/** A regular file's stat, or a contained link's target's; null for anything else. */
+async function fileStat(entry: Dirent, full: string, within: string | null): Promise<Stats | null> {
+  if (entry.isSymbolicLink()) return within ? containedLink(full, within) : null
+  if (!entry.isFile()) return null
+
+  // Vanished between readdir and stat: treat it as absent.
+  return fs.lstat(full).catch(() => null)
+}
+
+/**
  * Every regular file under a skill directory, flattened to relative paths.
- * Symlinks are never followed: a `Dirent` for one is neither `isFile()` nor
- * `isDirectory()`, so a link cannot pull anything outside the skill in — the
- * same reason a symlinked skill root never appears in `listLocalSkills`.
+ * Directory symlinks are never followed, and a file symlink only when it points
+ * at a file inside the same skills directory (see containedLink), so a link
+ * cannot pull anything from elsewhere on the computer in — the same reason a
+ * symlinked skill root never appears in `listLocalSkills`.
  */
 export async function localSkillEntries(root: string): Promise<LocalSkillEntry[]> {
   const out: LocalSkillEntry[] = []
+  const within = await fs.realpath(path.dirname(root)).catch(() => null)
 
   async function walk(dir: string, prefix: string, depth: number) {
     if (depth > MAX_DEPTH || out.length >= MAX_FILES) return
-    let entries: import('node:fs').Dirent[]
+    let entries: Dirent[]
 
     try {
       entries = await fs.readdir(dir, { withFileTypes: true })
@@ -81,14 +113,9 @@ export async function localSkillEntries(root: string): Promise<LocalSkillEntry[]
         await walk(full, relPath, depth + 1)
         continue
       }
-      if (!entry.isFile()) continue
-      try {
-        const stat = await fs.lstat(full)
+      const stat = await fileStat(entry, full, within)
 
-        out.push({ relPath, size: stat.size, mtimeMs: stat.mtimeMs })
-      } catch {
-        // Vanished between readdir and stat — treat it as absent.
-      }
+      if (stat) out.push({ relPath, size: stat.size, mtimeMs: stat.mtimeMs })
     }
   }
 

@@ -51,6 +51,7 @@ import { startDevBackendHealthProbe } from './main/dev-backend-health'
 import { APP_NAME, devSuffix, isDev } from './main/env'
 import { prepareFirstLaunch } from './main/first-launch'
 import { initLocalRuntime, stopLocalRuntime } from './main/local-runtime'
+import { resumeLocalSetupSync } from './main/local-setup-watch'
 import { installApplicationMenu } from './main/menu'
 import { readPersistedThemeSource } from './main/theme'
 import { initAutoUpdaterEvents, startUpdatePolling, stopUpdatePolling } from './main/updater'
@@ -245,7 +246,6 @@ app
     if (isDev && devSuffix && process.platform === 'darwin') {
       app.dock?.setBadge(process.env.ATLAS_DEV_SUFFIX ?? '')
     }
-
     registerAppProtocolHandler()
 
     await k8s.init().catch((e: unknown) => {
@@ -258,9 +258,9 @@ app
     })
 
     initAutoUpdaterEvents()
-
     startUpdatePolling()
     startChangelogPolling()
+    resumeLocalSetupSync()
   })
   .catch((e: unknown) => {
     const err = e instanceof Error ? e : new Error(String(e))
