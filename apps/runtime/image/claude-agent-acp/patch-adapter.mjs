@@ -95,6 +95,24 @@ patched = patched.replace(
   instructionsAnchor,
   `        systemPrompt = await nuphosWithProjectInstructions(systemPrompt, params.cwd);\n${instructionsAnchor}`,
 )
+// When Claude Code dies under the adapter (SIGABRT, OOM), the adapter deletes the
+// session but keeps running. OpenAB judges an agent connection alive while its
+// process runs, so it kept sending every later message to the deleted session.
+// Exit instead: OpenAB keeps one adapter process per conversation, sees this one
+// end, and the next message starts a fresh adapter that resumes the conversation
+// through session/load. Exit after stdout drains, so the failed turn's error
+// still reaches the gateway.
+const processDied =
+  '                delete this.sessions[params.sessionId];\n            }\n            else {\n                this.logger.error(`Session ${params.sessionId}: query stream error: ${message}`);'
+if (patched.split(processDied).length !== 2)
+  throw new Error('Expected one Claude process-death handoff.')
+patched = patched.replace(
+  processDied,
+  processDied.replace(
+    '                delete this.sessions[params.sessionId];\n',
+    '                delete this.sessions[params.sessionId];\n                setImmediate(() => process.stdout.write("", () => process.exit(1)));\n',
+  ),
+)
 const sessionHome = readFileSync(new URL('../session-home.mjs', import.meta.url), 'utf8')
 const helper = readFileSync(new URL('../mcp-bridge-config.mjs', import.meta.url), 'utf8')
 const instructions = readFileSync(new URL('./project-instructions.mjs', import.meta.url), 'utf8')
