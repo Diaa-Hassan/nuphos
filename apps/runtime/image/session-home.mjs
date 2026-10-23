@@ -1,6 +1,10 @@
 import { createHash as nuphosHomeHash } from 'node:crypto'
-import { mkdirSync as nuphosMkdir, lstatSync as nuphosLstat } from 'node:fs'
-import { homedir as nuphosHostHome } from 'node:os'
+import {
+  mkdirSync as nuphosMkdir,
+  lstatSync as nuphosLstat,
+  symlinkSync as nuphosSymlink,
+} from 'node:fs'
+import { homedir as nuphosHostHome, userInfo as nuphosAccount } from 'node:os'
 import { join as nuphosJoin, delimiter as nuphosPathDelimiter } from 'node:path'
 
 // Configuration isolation, not a filesystem security boundary: sessions still
@@ -27,6 +31,21 @@ export function nuphosSessionHomeEnv(sessionEnv = {}, runtimeEnv = process.env) 
   for (const dir of [root, home]) {
     nuphosMkdir(dir, { recursive: true, mode: 0o700 })
     if (!nuphosLstat(dir).isDirectory()) throw new Error('Session home must be a directory')
+  }
+  // macOS finds the login Keychain through HOME, so without this a session has
+  // none and every Keychain user (Chrome, for one) raises "Keychain Not Found".
+  // OS credential stores stay shared. Link the account's own Keychains, which is
+  // where they live whatever HOME the runtime itself was given.
+  if (process.platform === 'darwin') {
+    nuphosMkdir(nuphosJoin(home, 'Library'), { recursive: true, mode: 0o700 })
+    try {
+      nuphosSymlink(
+        nuphosJoin(nuphosAccount().homedir, 'Library', 'Keychains'),
+        nuphosJoin(home, 'Library', 'Keychains'),
+      )
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error // Already linked, or a Keychain made here.
+    }
   }
   const config = nuphosJoin(home, '.config')
   return {

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
+import { tmpdir, userInfo } from 'node:os'
 import { join, dirname, relative } from 'node:path'
 import test from 'node:test'
 
@@ -64,6 +64,20 @@ test('concurrent sessions keep HOME state separate, resume it, and never copy th
     /^[a-f0-9]{64}$/,
   )
   assert.throws(() => nuphosSessionHomeEnv({ NUPHOS_TOKEN: 'scoped' }, host), /SESSION_ID/)
+})
+
+test('on macOS a session finds the account login Keychain, as it would without a session home', (t) => {
+  if (process.platform !== 'darwin') return t.skip('Only macOS finds the Keychain through HOME')
+  const keychain = (HOME) =>
+    spawnSync('security', ['default-keychain'], { env: { ...process.env, HOME }, encoding: 'utf8' })
+  const account = keychain(userInfo().homedir)
+  if (account.status !== 0) return t.skip('This account has no default Keychain')
+  const host = runtime(t)
+  // A bare HOME has none: Chrome then shows "Keychain Not Found" and waits for a click.
+  assert.notEqual(keychain(host.HOME).status, 0)
+  const a = nuphosSessionHomeEnv({ NUPHOS_SESSION_ID: 'a' }, host)
+  assert.equal(keychain(a.HOME).stdout, account.stdout)
+  assert.deepEqual(nuphosSessionHomeEnv({ NUPHOS_SESSION_ID: 'a' }, host), a)
 })
 
 test('Claude and Codex receive the same isolated paths without moving the agent login store', (t) => {

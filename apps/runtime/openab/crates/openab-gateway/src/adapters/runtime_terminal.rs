@@ -94,6 +94,40 @@ mod unix {
         }
         Ok(())
     }
+    // macOS finds the login Keychain through HOME, so without this a session has none
+    // and every Keychain user (Chrome, for one) raises "Keychain Not Found". OS credential
+    // stores stay shared. Link the account's own Keychains: on Desktop the terminal's
+    // HOME root is an agent home, which has none.
+    #[cfg(target_os = "macos")]
+    fn link_keychains(home: &std::path::Path) -> io::Result<()> {
+        use std::os::unix::ffi::OsStrExt;
+        let mut entry: libc::passwd = unsafe { std::mem::zeroed() };
+        let mut found = std::ptr::null_mut();
+        let mut buffer = vec![0 as libc::c_char; 4096];
+        let status = unsafe {
+            libc::getpwuid_r(
+                libc::getuid(),
+                &mut entry,
+                buffer.as_mut_ptr(),
+                buffer.len(),
+                &mut found,
+            )
+        };
+        if status != 0 || found.is_null() || entry.pw_dir.is_null() {
+            return Ok(()); // No account home, so no login Keychain to share.
+        }
+        let account = std::ffi::OsStr::from_bytes(
+            unsafe { std::ffi::CStr::from_ptr(entry.pw_dir) }.to_bytes(),
+        );
+        std::fs::create_dir_all(home.join("Library"))?;
+        match std::os::unix::fs::symlink(
+            std::path::Path::new(account).join("Library/Keychains"),
+            home.join("Library/Keychains"),
+        ) {
+            Err(error) if error.kind() != io::ErrorKind::AlreadyExists => Err(error),
+            _ => Ok(()), // Linked now, already linked, or a Keychain made here.
+        }
+    }
     // Match the runtime adapters' session-home contract. Never inherit runtime secrets.
     fn session_environment(session: &str) -> io::Result<std::collections::HashMap<String, String>> {
         let root = std::path::PathBuf::from(
@@ -112,6 +146,8 @@ mod unix {
             }
             std::fs::set_permissions(dir, std::fs::Permissions::from_mode(0o700))?;
         }
+        #[cfg(target_os = "macos")]
+        link_keychains(&home)?;
         let home = home.to_string_lossy().into_owned();
         let mut env = std::collections::HashMap::from([
             ("HOME".into(), home.clone()),
@@ -358,6 +394,18 @@ mod tests {
                 & 0o777,
             0o700
         );
+        #[cfg(target_os = "macos")]
+        {
+            use sha2::{Digest, Sha256};
+            let link = std::fs::read_link(
+                root.join(".nuphos/session-homes")
+                    .join(format!("{:x}", Sha256::digest(b"conversation")))
+                    .join("Library/Keychains"),
+            )
+            .unwrap();
+            // The account's Keychains, not those of the HOME root (an agent home on Desktop).
+            assert!(link.ends_with("Library/Keychains") && !link.starts_with(&root));
+        }
         tx.send(json!({"method":"/input","params":{"data":"yes output\n"}}))
             .await
             .unwrap();
