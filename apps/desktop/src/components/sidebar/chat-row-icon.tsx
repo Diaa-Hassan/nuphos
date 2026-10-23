@@ -13,6 +13,7 @@ export function chatRowIcon(conversation: AgentConversation): Pick<Item, 'icon' 
         provider={conversation.agentRuntime}
         attached={conversation.claudeCodeRuntimeAttached}
         sidebar
+        animated
       />
     ),
   }

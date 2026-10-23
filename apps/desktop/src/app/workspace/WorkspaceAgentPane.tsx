@@ -180,6 +180,7 @@ export function WorkspaceAgentPane({
                 agentId={selectedSessionId}
                 provider={currentHeading.runtime}
                 attached={Boolean(currentHeading.runtime)}
+                animated
               />
             )}
             <EditableConversationTitle

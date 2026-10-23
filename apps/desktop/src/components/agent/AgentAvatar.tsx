@@ -2,8 +2,11 @@ import { MessageSquare } from 'lucide-react'
 
 import { useAgentAppearance } from '../../lib/agentAppearance'
 import { useAgentAvatarPick } from '../../lib/agentAvatarChoices'
-import { botAvatarUrl } from '../../lib/botAvatars'
+import { useAgentRuntimeStates } from '../../lib/agentRuntimeStates'
+import { botAvatarFile } from '../../lib/botAvatars'
+import { runtimeTurnActive } from '../../lib/runtimeExecution'
 
+import { BotAvatarImage } from './BotAvatarImage'
 import { AgentProviderIcon } from './panel/icons'
 
 import type { AgentProvider } from '../../types/runtime'
@@ -16,6 +19,7 @@ export function AgentAvatar({
   attached = true,
   size = 24,
   sidebar = false,
+  animated = false,
 }: {
   agentId: string
   /** The picked avatar as last fetched; a newer pick seen anywhere in the app wins. */
@@ -24,9 +28,12 @@ export function AgentAvatar({
   attached?: boolean
   size?: number
   sidebar?: boolean
+  /** Loops the idle loop while this agent has a running turn. Message rows keep it off; hover still plays it once. */
+  animated?: boolean
 }) {
   const { botAvatars, density } = useAgentAppearance()
   const seen = useAgentAvatarPick(agentId)
+  const running = runtimeTurnActive(useAgentRuntimeStates().get(agentId))
   const sidebarSize = density === 'compact' ? 22 : 30
   const box = sidebar ? sidebarSize : size
   const badge = box <= 24 ? 9 : 12
@@ -44,10 +51,9 @@ export function AgentAvatar({
     >
       {botAvatars ? (
         <>
-          <img
-            src={botAvatarUrl(agentId, seen === undefined ? avatar : seen)}
-            alt=""
-            draggable={false}
+          <BotAvatarImage
+            file={botAvatarFile(agentId, seen === undefined ? avatar : seen)}
+            looping={animated && running}
             className="absolute left-0 top-0 object-contain"
             style={{ width: box, height: box }}
           />

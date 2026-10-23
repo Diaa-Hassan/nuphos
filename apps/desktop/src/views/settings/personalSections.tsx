@@ -152,7 +152,7 @@ export function AppearanceSection() {
               density === 'compact' ? 'h-[30px]' : 'h-[42px]',
             )}
           >
-            <AgentAvatar agentId="appearance-preview" provider="claude-code" sidebar />
+            <AgentAvatar agentId="appearance-preview" provider="claude-code" sidebar animated />
             <span>Product design</span>
           </div>
         </div>

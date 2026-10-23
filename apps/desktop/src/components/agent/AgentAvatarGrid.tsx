@@ -3,6 +3,8 @@ import { useRef, useState } from 'react'
 
 import { BOT_AVATARS, botAvatarLabel } from '../../lib/botAvatars'
 
+import { BotAvatarImage } from './BotAvatarImage'
+
 import type { BotAvatarFile } from '../../lib/botAvatars'
 import type React from 'react'
 
@@ -76,10 +78,8 @@ export function AgentAvatarGrid({
               selected ? 'bg-zViolet-500/15 ring-1 ring-zViolet-500/70' : 'hover:bg-zGray-800/70',
             )}
           >
-            <img
-              src={`/bot-avatars/${file}`}
-              alt=""
-              draggable={false}
+            <BotAvatarImage
+              file={file}
               className="size-8 object-contain transition-transform duration-150 ease-out group-hover/tile:scale-110 motion-reduce:transition-none motion-reduce:group-hover/tile:scale-100"
             />
           </button>
