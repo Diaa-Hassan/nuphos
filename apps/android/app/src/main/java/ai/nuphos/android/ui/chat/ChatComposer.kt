@@ -49,7 +49,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.content.ReceiveContentListener
+import androidx.compose.foundation.content.contentReceiver
+import androidx.compose.foundation.content.consume
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.KeyboardActionHandler
+import kotlinx.coroutines.Job
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
@@ -133,6 +141,7 @@ import kotlin.math.abs
  * text/attachments) it opens into rows: a drag handle, optional controls,
  * the input on its own line, attachment tiles, then + and send/stop.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun ChatComposer(
     isStreaming: Boolean,
@@ -161,18 +170,33 @@ fun ChatComposer(
     val store = LocalAgentStore.current
     val scope = rememberCoroutineScope()
     var showModel by remember(modelSettings) { mutableStateOf(false) }
-    var picking by remember { mutableStateOf(false) }
-    var pickerError by remember { mutableStateOf<String?>(null) }
+    var picking by remember(draft) { mutableStateOf(false) }
+    var pickerError by remember(draft) { mutableStateOf<String?>(null) }
     var focused by remember { mutableStateOf(false) }
     var localText by remember(draft) { mutableStateOf("") }
-    val text = draft?.text ?: localText
+    val fieldState = remember(draft) {
+        val initial = draft?.text ?: localText
+        TextFieldState(initial, TextRange(initial.length))
+    }
+    val text = fieldState.text.toString()
     fun updateText(value: String) {
         if (!draftingEnabled) return
+        fieldState.edit {
+            replace(0, length, value)
+            this.selection = TextRange(value.length)
+        }
         if (draft != null) draft.write(value) else localText = value
     }
-    var field by remember(draft) { mutableStateOf(TextFieldValue(text, TextRange(text.length))) }
-    // External draft restoration must not reset the selection/composition on each keystroke.
-    val fieldValue = if (field.text == text) field else TextFieldValue(text, TextRange(text.length))
+    val externalText = draft?.text ?: localText
+    LaunchedEffect(draft, externalText) {
+        if (externalText != fieldState.text.toString()) {
+            fieldState.edit {
+                replace(0, length, externalText)
+                this.selection = TextRange(externalText.length)
+            }
+        }
+    }
+    val fieldValue = TextFieldValue(text, fieldState.selection)
     var dismissedAt by remember(draft, mentions?.teamId) { mutableIntStateOf(-1) }
     val mentionQuery = if (draftingEnabled && focused && mentions != null) SessionMention.query(fieldValue) else null
     val activeMention = mentionQuery?.takeUnless { text.lastIndexOf('@') == dismissedAt }
@@ -222,8 +246,10 @@ fun ChatComposer(
         }
     }
     val attachments = remember(draft) { mutableStateListOf<ComposerAttachment>() }
-    DisposableEffect(attachments) {
+    var attachmentJob by remember(draft) { mutableStateOf<Job?>(null) }
+    DisposableEffect(draft, attachments) {
         onDispose {
+            attachmentJob?.cancel()
             // Successful Send clears this list after ownership moves to the session.
             attachments.forEach { it.releaseOwnedCopy() }
             attachments.clear()
@@ -244,7 +270,6 @@ fun ChatComposer(
     val latestWrite by rememberUpdatedState<(String) -> Unit> { words ->
         if (draftingEnabled) {
             val appended = appendDictation(latestText, words)
-            field = TextFieldValue(appended, TextRange(appended.length))
             updateText(appended)
         }
     }
@@ -281,7 +306,7 @@ fun ChatComposer(
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer); voice.cancel() }
     }
-    LaunchedEffect(draftingEnabled, canSubmit) { if (!draftingEnabled || !canSubmit) { voice.cancel(); askingVoiceKey = false } }
+    LaunchedEffect(draftingEnabled, canSubmit) { if (!draftingEnabled || !canSubmit) { attachmentJob?.cancel(); voice.cancel(); askingVoiceKey = false } }
     BackHandler(enabled = voice.active) { voice.cancel() }
     if (askingVoiceKey) OpenAIKeyDialog(voiceServices, onDismiss = { askingVoiceKey = false }, onSaved = { askingVoiceKey = false; startVoice() })
     voice.error?.let { message ->
@@ -299,13 +324,14 @@ fun ChatComposer(
         }
     }
 
-    fun loadSelection(uris: List<Uri>, images: Boolean) {
-        if (picking) return
+    fun loadSelection(uris: List<Uri>, images: Boolean, permissionOwner: Any? = null) {
+        if (!draftingEnabled || !canSubmit || voice.active) return
+        if (picking) { pickerError = "Wait for the current files to finish loading, then try again."; return }
         if (uris.isEmpty()) return
         picking = true
         pickerError = null
         val existing = attachments.toList()
-        scope.launch {
+        attachmentJob = scope.launch {
             var loaded: List<ComposerAttachment> = emptyList()
             try {
                 require(existing.size + uris.size <= AttachmentTransfers.MAX_FILES) { "Select at most 20 files." }
@@ -322,11 +348,29 @@ fun ChatComposer(
                 loaded.forEach { it.releaseOwnedCopy() }
                 if (e is CancellationException) throw e
                 pickerError = e.message ?: "Could not read the selected files."
-            } finally { picking = false }
+            } finally {
+                java.lang.ref.Reference.reachabilityFence(permissionOwner)
+                picking = false
+            }
         }
     }
     val photos = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia(20)) { loadSelection(it, true) }
     val files = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { loadSelection(it, false) }
+
+    val receiveContent = ReceiveContentListener { content ->
+        if (!draftingEnabled || !canSubmit || voice.active) content else {
+            val uris = mutableListOf<Uri>()
+            val remaining = content.consume { item ->
+                val uri = item.uri
+                if (uri?.scheme == "content") {
+                    uris += uri
+                    true
+                } else false
+            }
+            if (uris.isNotEmpty()) loadSelection(uris, false, content)
+            remaining
+        }
+    }
 
     val resolvedSelection = selection ?: store.credentialSelection
     val resolvedMode = mode ?: store.permissionMode
@@ -335,6 +379,7 @@ fun ChatComposer(
         if (!hasPayload || !canSubmit || !draftingEnabled || picking || voice.active) return
         if (!onSend(ComposerSubmission(text.trim(), attachments.toList()))) return
         if (draft != null) draft.submitted(true, text) else localText = ""
+        fieldState.edit { replace(0, length, "") }
         attachments.clear()
     }
 
@@ -391,7 +436,6 @@ fun ChatComposer(
                                         // Do not insert text on rejected selection; never interpret typed @text as IAM.
                                         if (devices.pick(device)) {
                                             val inserted = SessionMention.insert(text, "@" + device.label)
-                                            field = TextFieldValue(inserted, TextRange(inserted.length))
                                             updateText(inserted)
                                         } else devicePickFailed = true
                                     }
@@ -428,7 +472,6 @@ fun ChatComposer(
                                     // Recheck the current draft; never insert a result from a replaced query.
                                     if (SessionMention.query(fieldValue) == activeMention && draftingEnabled) {
                                         val inserted = SessionMention.insert(text, SessionMention.link(mentions.teamId, row.sessionId))
-                                        field = TextFieldValue(inserted, TextRange(inserted.length))
                                         updateText(inserted)
                                     }
                                 }.padding(vertical = 8.dp),
@@ -503,17 +546,19 @@ fun ChatComposer(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 if (voice.active) VoiceRecordingBar(voice) else BasicTextField(
-                    value = fieldValue,
-                    onValueChange = { value ->
-                        if (draftingEnabled) {
-                            field = value
-                            if (SessionMention.query(value.text) == null) dismissedAt = -1
-                            updateText(value.text)
+                    state = fieldState,
+                    inputTransformation = InputTransformation {
+                        if (!draftingEnabled) revertAllChanges()
+                        else {
+                            val value = asCharSequence().toString()
+                            if (SessionMention.query(value) == null) dismissedAt = -1
+                            if (draft != null) draft.write(value) else localText = value
                         }
                     },
                     enabled = draftingEnabled,
                     modifier = Modifier
                         .weight(1f)
+                        .contentReceiver(receiveContent)
                         .then(if (expanded) Modifier.heightIn(max = 192.dp) else Modifier)
                         .padding(vertical = if (expanded) 4.dp else 8.dp)
                         .onFocusChanged { state ->
@@ -526,14 +571,13 @@ fun ChatComposer(
                     textStyle = fieldStyle,
                     cursorBrush = SolidColor(colors.primary),
                     // Keep the scroll orientation stable when focus or payload changes.
-                    singleLine = false,
-                    maxLines = if (expanded) 8 else 1,
+                    lineLimits = TextFieldLineLimits.MultiLine(maxHeightInLines = if (expanded) 8 else 1),
                     keyboardOptions = KeyboardOptions(
                         capitalization = KeyboardCapitalization.Sentences,
                         imeAction = if (expanded) ImeAction.Default else ImeAction.Send,
                     ),
-                    keyboardActions = KeyboardActions(onSend = { send() }),
-                    decorationBox = { inner ->
+                    onKeyboardAction = KeyboardActionHandler { send() },
+                    decorator = { inner ->
                         Box(contentAlignment = Alignment.CenterStart) {
                             if (text.isEmpty()) {
                                 Text(
@@ -802,6 +846,7 @@ private fun AttachmentThumbnail(attachment: ComposerAttachment) {
 }
 
 private fun selectionInput(context: android.content.Context, uri: Uri, images: Boolean): AttachmentRetention.Input {
+    require(uri.scheme == "content") { "Only content-provider attachments are supported." }
     var name = "attachment"
     var size: Long? = null
     context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE), null, null, null)?.use { cursor ->

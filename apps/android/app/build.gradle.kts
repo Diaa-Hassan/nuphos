@@ -44,6 +44,9 @@ android {
 
     buildTypes {
         debug {
+            if (providers.gradleProperty("nuphosIsolatedContentFixture").orNull == "true") {
+                applicationIdSuffix = ".contentinput1337"
+            }
             if (providers.gradleProperty("nuphosIsolatedAdaptiveFixture").orNull == "true") applicationIdSuffix = ".adaptivefixture"
             buildConfigField("String", "PUSH_BASE_URL", "\"$debugPushBaseUrl\"")
             buildConfigField("String", "API_BASE_URL", "\"$debugApiBaseUrl\"")
