@@ -49,6 +49,7 @@ export {
   updateCompactionSummary,
   updateConversationTitle,
   renameConversation,
+  setConversationAvatar,
   setConversationParent,
 } from './db/maintenance'
 export { clearPendingDecision, setPendingDecision } from './db/pending-decision'

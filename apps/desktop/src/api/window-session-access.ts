@@ -35,4 +35,9 @@ export type WindowSessionAccessApi = {
     teamId: string,
     generalAccess: GeneralAccess,
   ): Promise<ConversationAccessState>
+  agentSetConversationAvatar(
+    sessionId: string,
+    avatar: string | null,
+    teamId?: string,
+  ): Promise<{ avatar: string | null }>
 }

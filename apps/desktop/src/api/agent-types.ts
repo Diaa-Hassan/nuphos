@@ -36,6 +36,8 @@ export type AgentConversation = {
   sessionId: string
   teamId?: string
   title: string
+  /** Picked bot avatar, e.g. `05-rembrandt`. Absent: the one its sessionId selects. */
+  avatar?: string
   firstMessage: string
   messageCount: number
   tokenUsage?: AgentTokenUsageSummary

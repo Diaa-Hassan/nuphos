@@ -42,4 +42,10 @@ export const agentReadChannels = {
     teamId: string,
     userId: string,
   ) => agent.removeConversationParticipant(sessionId, teamId, userId),
+  'agent:setConversationAvatar': (
+    _e: unknown,
+    sessionId: string,
+    avatar: string | null,
+    teamId?: string,
+  ) => agent.setConversationAvatar(sessionId, avatar, teamId),
 }

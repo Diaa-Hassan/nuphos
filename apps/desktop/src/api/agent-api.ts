@@ -1,3 +1,4 @@
+import { receiveAgentAvatars } from '../lib/agentAvatarChoices.ts'
 import { publishRuntimeStates } from '../lib/agentRuntimeStates.ts'
 import { receiveConversationReadStates } from '../lib/agentUnreadSessions.ts'
 
@@ -85,6 +86,7 @@ export const agentApi = {
       pendingDecision?: boolean
     },
   ) => {
+    const requestedAt = Date.now()
     const page = await window.api.agentListConversations(teamId, options)
 
     publishRuntimeStates(
@@ -95,11 +97,14 @@ export const agentApi = {
       ),
     )
     receiveConversationReadStates(page.conversations)
+    receiveAgentAvatars(page.conversations, requestedAt)
 
     return page
   },
   agentRenameConversation: (sessionId: string, title: string, teamId?: string) =>
     window.api.agentRenameConversation(sessionId, title, teamId),
+  agentSetConversationAvatar: (sessionId: string, avatar: string | null, teamId?: string) =>
+    window.api.agentSetConversationAvatar(sessionId, avatar, teamId),
   agentSetConversationArchived: (sessionId: string, archived: boolean, teamId?: string) =>
     window.api.agentSetConversationArchived(sessionId, archived, teamId),
   agentSetConversationWatched: (sessionId: string, watching: boolean, teamId?: string) =>
@@ -128,9 +133,11 @@ export const agentApi = {
     teamId?: string,
     options?: { tail?: number; runtimeState?: 'omit' },
   ) => {
+    const requestedAt = Date.now()
     const detail = await window.api.agentGetConversation(sessionId, teamId, options)
 
     receiveConversationReadStates([detail], true)
+    receiveAgentAvatars([detail], requestedAt)
 
     return detail
   },

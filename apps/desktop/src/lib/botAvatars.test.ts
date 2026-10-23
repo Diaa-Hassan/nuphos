@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
 
-import { BOT_AVATARS, botAvatarUrl } from './botAvatars.ts'
+import { BOT_AVATARS, botAvatarLabel, botAvatarName, botAvatarUrl } from './botAvatars.ts'
 
 test('Agent identities resolve consistently to one of the 28 shipped vector assets', () => {
   assert.equal(new Set(BOT_AVATARS).size, 28)
@@ -44,4 +44,12 @@ test('Desktop and iOS share the exact ID mapping and SVG bytes', () => {
       readFileSync(new URL(`../../public/bot-avatars/${file}`, import.meta.url)),
     )
   }
+})
+
+test('a picked character wins; a name this build does not ship falls back to the ID', () => {
+  assert.equal(botAvatarUrl('any-agent', '05-rembrandt'), '/bot-avatars/05-rembrandt.svg')
+  assert.equal(botAvatarUrl('any-agent', '99-from-the-future'), botAvatarUrl('any-agent'))
+  assert.equal(botAvatarUrl('any-agent', null), botAvatarUrl('any-agent'))
+  for (const file of BOT_AVATARS) assert.match(botAvatarName(file), /^\d{2}-[a-z0-9-]{1,40}$/)
+  assert.equal(botAvatarLabel('22-lady-with-an-ermine.svg'), 'Lady with an ermine')
 })

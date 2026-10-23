@@ -71,6 +71,8 @@ export type AgentConversation = {
   linkedResources?: SessionResource[]
   titleManuallySet?: boolean
   title: string
+  /** Bot avatar picked by the owner or a manager, e.g. `05-rembrandt`. Absent = derived from sessionId. */
+  avatar?: string
   firstMessage: string
   messageCount: number
   transcriptUpdatedAt?: Date

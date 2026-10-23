@@ -9,6 +9,7 @@ export function chatRowIcon(conversation: AgentConversation): Pick<Item, 'icon' 
     iconNode: (
       <AgentAvatar
         agentId={conversation.sessionId}
+        avatar={conversation.avatar}
         provider={conversation.agentRuntime}
         attached={conversation.claudeCodeRuntimeAttached}
         sidebar

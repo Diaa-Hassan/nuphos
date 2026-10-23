@@ -30,10 +30,33 @@ export const BOT_AVATARS = [
   '28-the-sleeping-gypsy.svg',
 ] as const
 
-export function botAvatarUrl(agentId: string): string {
+export type BotAvatarFile = (typeof BOT_AVATARS)[number]
+
+/** The name an Agent stores when someone picks a character: the file without `.svg`. */
+export function botAvatarName(file: BotAvatarFile): string {
+  return file.slice(0, -4)
+}
+
+/** "22-lady-with-an-ermine.svg" → "Lady with an ermine". */
+export function botAvatarLabel(file: BotAvatarFile): string {
+  const words = botAvatarName(file).slice(3).replaceAll('-', ' ')
+
+  return words.charAt(0).toUpperCase() + words.slice(1)
+}
+
+export function derivedBotAvatar(agentId: string): BotAvatarFile {
   let hash = 2166136261
 
   for (const char of agentId) hash = Math.imul(hash ^ char.charCodeAt(0), 16777619) >>> 0
 
-  return `/bot-avatars/${BOT_AVATARS[hash % BOT_AVATARS.length]}`
+  return BOT_AVATARS[hash % BOT_AVATARS.length]
+}
+
+/** The picked character when this build ships it, else the one the ID selects. */
+export function botAvatarFile(agentId: string, picked?: string | null): BotAvatarFile {
+  return BOT_AVATARS.find((file) => botAvatarName(file) === picked) ?? derivedBotAvatar(agentId)
+}
+
+export function botAvatarUrl(agentId: string, picked?: string | null): string {
+  return `/bot-avatars/${botAvatarFile(agentId, picked)}`
 }

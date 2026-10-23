@@ -1,6 +1,7 @@
 import { MessageSquare } from 'lucide-react'
 
 import { useAgentAppearance } from '../../lib/agentAppearance'
+import { useAgentAvatarPick } from '../../lib/agentAvatarChoices'
 import { botAvatarUrl } from '../../lib/botAvatars'
 
 import { AgentProviderIcon } from './panel/icons'
@@ -10,18 +11,22 @@ import type { AgentProvider } from '../../types/runtime'
 /** Agent identity stays stable when its title or Runtime changes. */
 export function AgentAvatar({
   agentId,
+  avatar,
   provider,
   attached = true,
   size = 24,
   sidebar = false,
 }: {
   agentId: string
+  /** The picked avatar as last fetched; a newer pick seen anywhere in the app wins. */
+  avatar?: string
   provider?: AgentProvider | null
   attached?: boolean
   size?: number
   sidebar?: boolean
 }) {
   const { botAvatars, density } = useAgentAppearance()
+  const seen = useAgentAvatarPick(agentId)
   const sidebarSize = density === 'compact' ? 22 : 30
   const box = sidebar ? sidebarSize : size
   const badge = box <= 24 ? 9 : 12
@@ -40,7 +45,7 @@ export function AgentAvatar({
       {botAvatars ? (
         <>
           <img
-            src={botAvatarUrl(agentId)}
+            src={botAvatarUrl(agentId, seen === undefined ? avatar : seen)}
             alt=""
             draggable={false}
             className="absolute left-0 top-0 object-contain"

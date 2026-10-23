@@ -559,6 +559,7 @@
   "PATCH /agent-sessions/:sessionId/teams/:teamId/uptime-kuma-instances/:instanceId/monitors/:monitorId": "user",
   "PATCH /agent/conversations/:sessionId/access": "user",
   "PATCH /agent/conversations/:sessionId/archive": "user",
+  "PATCH /agent/conversations/:sessionId/avatar": "user",
   "PATCH /agent/conversations/:sessionId/credentials": "user",
   "PATCH /agent/conversations/:sessionId/model-config": "user",
   "PATCH /agent/conversations/:sessionId/participants/:userId": "user",
