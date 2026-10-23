@@ -43,6 +43,7 @@ export function Sidebar({
   repositoryNav,
   canGoBack = false,
   canGoForward = false,
+  history,
   onBack,
   onForward,
   onSidebarBack,
@@ -189,6 +190,8 @@ export function Sidebar({
           canGoForward={canGoForward}
           onBack={onBack}
           onForward={onForward}
+          history={history}
+          chatTitle={(id) => chatItems.find((chat) => chat.key === `agent-session:${id}`)?.label}
         />
 
         <SidebarTeamSwitcher

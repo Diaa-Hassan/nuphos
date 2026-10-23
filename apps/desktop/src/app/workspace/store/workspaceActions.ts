@@ -27,8 +27,9 @@ export type WorkspaceAction =
       keepMainPage?: boolean
       resetHomeScroll?: boolean
     }
-  | { type: 'openMainPage'; teamId: string }
+  | { type: 'openMainPage'; teamId: string; updater?: TabUpdater }
   | { type: 'stepSurface'; direction: -1 | 1 }
+  | { type: 'goToSurface'; index: number }
   | { type: 'forgetSession'; sessionId: string }
   | { type: 'setSessionReadOnly'; readOnly: boolean }
   | { type: 'switchTeam'; sessionKey: string; teamId: string }

@@ -1,5 +1,4 @@
-import clsx from 'clsx'
-import { ChevronLeft, ChevronRight, ChevronsUpDown, Loader2, LogOut, Settings } from 'lucide-react'
+import { ChevronRight, ChevronsUpDown, Loader2, LogOut, Settings } from 'lucide-react'
 
 import { Avatar } from '../Avatar'
 import { SkeletonReveal } from '../SkeletonReveal'
@@ -15,8 +14,10 @@ import {
 } from '../ui/menu'
 import { renderWorkspaceMenuOptions } from '../WorkspaceMenuOptions'
 
+import { SidebarHistoryButtons } from './history-buttons'
 import { SidebarToggleButton } from './nav-stack'
 
+import type { HistoryTimeline } from './historyRows'
 import type { UserInfo } from '../../types'
 import type { BreadcrumbSegment } from '../Toolbar'
 
@@ -31,6 +32,8 @@ export function SidebarHeaderBar({
   canGoForward,
   onBack,
   onForward,
+  history,
+  chatTitle,
 }: {
   collapsed: boolean
   onToggleCollapse?: () => void
@@ -38,6 +41,8 @@ export function SidebarHeaderBar({
   canGoForward: boolean
   onBack?: () => void
   onForward?: () => void
+  history?: HistoryTimeline
+  chatTitle?: (sessionId: string) => string | undefined
 }) {
   return (
     <div className="titlebar-drag h-[44px] flex-shrink-0 flex items-center justify-between px-3.5">
@@ -53,67 +58,9 @@ export function SidebarHeaderBar({
         canGoForward={canGoForward}
         onBack={onBack}
         onForward={onForward}
+        history={history}
+        chatTitle={chatTitle}
       />
-    </div>
-  )
-}
-
-export function SidebarHistoryButtons({
-  canGoBack,
-  canGoForward,
-  onBack,
-  onForward,
-}: {
-  canGoBack: boolean
-  canGoForward: boolean
-  onBack?: () => void
-  onForward?: () => void
-}) {
-  return (
-    <div className="titlebar-no-drag flex items-center gap-1.5">
-      <button
-        type="button"
-        // Navigate on press, not on release — same reasoning as the tab
-        // strip: waiting for `click` adds the held mouse button to the
-        // perceived latency. Keyboard activation arrives as detail-0 click.
-        onPointerDown={(event) => {
-          if (event.button === 0 && canGoBack) onBack?.()
-        }}
-        onClick={(event) => {
-          if (event.detail === 0) onBack?.()
-        }}
-        disabled={!canGoBack}
-        className={clsx(
-          'w-8 h-8 rounded-md flex items-center justify-center transition-colors',
-          canGoBack
-            ? 'text-secondary hover:text-main hover:bg-[var(--sidebar-overlay-hover)]'
-            : 'text-tertiary/45 cursor-default',
-        )}
-        title="Back"
-        aria-label="Back"
-      >
-        <ChevronLeft className="w-[15px] h-[15px]" />
-      </button>
-      <button
-        type="button"
-        onPointerDown={(event) => {
-          if (event.button === 0 && canGoForward) onForward?.()
-        }}
-        onClick={(event) => {
-          if (event.detail === 0) onForward?.()
-        }}
-        disabled={!canGoForward}
-        className={clsx(
-          'w-8 h-8 rounded-md flex items-center justify-center transition-colors',
-          canGoForward
-            ? 'text-secondary hover:text-main hover:bg-[var(--sidebar-overlay-hover)]'
-            : 'text-tertiary/45 cursor-default',
-        )}
-        title="Forward"
-        aria-label="Forward"
-      >
-        <ChevronRight className="w-[15px] h-[15px]" />
-      </button>
     </div>
   )
 }

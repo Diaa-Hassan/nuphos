@@ -9,7 +9,6 @@ import { isTeamManagementKey } from '../../lib/teamOverviewNav'
 import { settingsSectionForPage } from '../../views/settings/settingsNav'
 
 import { selectActiveTab, selectCurrentBucket, selectScope } from './store/workspaceState'
-
 import { useWorkspacePane } from './WorkspacePaneContext'
 
 import type { WorkspaceAccountsResult } from './useWorkspaceAccounts'
@@ -82,10 +81,9 @@ export function useWorkspaceSidebarNav(a: Args) {
       const teamId = selectScope(workspaceStore.getState())?.teamId
 
       if (!teamId) return
-      workspaceActions.openMainPage(teamId)
-      updateActiveTab(sidebarKeyTabUpdater(key))
+      workspaceActions.openMainPage(teamId, sidebarKeyTabUpdater(key))
     },
-    [sidebarKeyTabUpdater, updateActiveTab, workspaceActions, workspaceStore],
+    [sidebarKeyTabUpdater, workspaceActions, workspaceStore],
   )
 
   // Chats and management pages are what the main pane shows; every other key

@@ -7,6 +7,7 @@ import {
 } from './workspaceState.ts'
 import {
   forgetSession,
+  goToSurface,
   recordSurface,
   retainSurfaces,
   stepSurface,
@@ -24,7 +25,7 @@ import {
   updateTabIn,
 } from './workspaceTabOps.ts'
 
-import type { WorkspaceAction, WorkspaceStoreDeps } from './workspaceActions'
+import type { TabUpdater, WorkspaceAction, WorkspaceStoreDeps } from './workspaceActions'
 import type { TabBucket, WorkspaceState } from './workspaceState'
 
 function writeBucket(
@@ -95,14 +96,19 @@ function openMainPage(
   state: WorkspaceState,
   teamId: string,
   deps: WorkspaceStoreDeps,
+  updater?: TabUpdater,
 ): WorkspaceState {
   const next = writeBucket(state, MAIN_PAGE_BUCKET_KEY, (bucket) => {
     const active = bucket.tabs.find((tab) => tab.id === bucket.activeTabId)
+    let opened = bucket
 
-    if (active?.scope.teamId === teamId) return bucket
-    const tab = deps.createTab(teamId)
+    if (active?.scope.teamId !== teamId) {
+      const tab = deps.createTab(teamId)
 
-    return { ...bucket, tabs: [tab], activeTabId: tab.id }
+      opened = { ...bucket, tabs: [tab], activeTabId: tab.id }
+    }
+
+    return updater && opened.activeTabId ? updateTabIn(opened, opened.activeTabId, updater) : opened
   })
 
   return next.mainPageOpen ? next : { ...next, mainPageOpen: true }
@@ -140,6 +146,7 @@ const WORKSPACE_LEVEL_ACTIONS = new Set<WorkspaceAction['type']>([
   'selectSession',
   'openMainPage',
   'stepSurface',
+  'goToSurface',
   'forgetSession',
   'setSessionReadOnly',
   'switchTeam',
@@ -154,6 +161,7 @@ type WorkspaceLevelAction = Extract<
       | 'selectSession'
       | 'openMainPage'
       | 'stepSurface'
+      | 'goToSurface'
       | 'forgetSession'
       | 'setSessionReadOnly'
       | 'switchTeam'
@@ -232,11 +240,13 @@ function applyAction(
     case 'selectSession':
       return selectSession(state, action)
     case 'openMainPage':
-      return openMainPage(state, action.teamId, deps)
+      return openMainPage(state, action.teamId, deps, action.updater)
     case 'forgetSession':
       return forgetSession(state, action.sessionId)
     case 'stepSurface':
       return stepSurface(state, action.direction)
+    case 'goToSurface':
+      return goToSurface(state, action.index)
     case 'setSessionReadOnly':
       return action.readOnly === state.sessionReadOnly
         ? state
@@ -269,7 +279,9 @@ export function workspaceReducer(
 
   return finalizeWorkspaceState(
     state,
-    action.type === 'stepSurface' ? next : recordSurface(next),
+    action.type === 'stepSurface' || action.type === 'goToSurface'
+      ? next
+      : recordSurface(next, action.type === 'updateTab' ? action.history : undefined),
     deps,
   )
 }

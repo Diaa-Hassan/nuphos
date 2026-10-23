@@ -2,6 +2,7 @@ import { canStepNavigation } from '../../../lib/navHistory.ts'
 import { isTeamManagementKey } from '../../../lib/teamOverviewNav.ts'
 import { NO_SESSION_TAB_BUCKET_KEY } from '../../workspaceTabState.ts'
 
+import type { NavigationSnapshot } from '../../../lib/appRoutes'
 import type { Scope } from '../../../types'
 import type { WorkspaceTabState } from '../../workspaceTabState'
 
@@ -33,15 +34,19 @@ export type WorkspaceState = {
   recentSessionKeys: readonly string[]
   /** Back/forward across what the main pane showed: chats and the main page.
    *  Runtime-only; a dock tab keeps its own history for moves inside it. */
-  surfaceHistory: readonly WorkspaceSurface[]
+  surfaceHistory: readonly SurfaceEntry[]
   surfaceHistoryIndex: number
 }
 
-/** What the main pane shows, as one entry of `surfaceHistory`. */
+/** What the main pane shows. */
 export type WorkspaceSurface = Pick<
   WorkspaceState,
   'sessionId' | 'sessionReadOnly' | 'teamScope' | 'mainPageOpen'
 >
+
+/** One entry of `surfaceHistory`: the surface, the main page's page when it is
+ *  the main page, and when the user arrived there. */
+export type SurfaceEntry = WorkspaceSurface & { page?: NavigationSnapshot; at: number }
 
 export const EMPTY_BUCKET: TabBucket = {
   tabs: [],
@@ -159,23 +164,23 @@ export function createWorkspaceState(
     teamsKnown: false,
     buckets,
     recentSessionKeys: Object.keys(buckets),
-    surfaceHistory: [surface],
+    surfaceHistory: [{ ...surface, at: Date.now() }],
     surfaceHistoryIndex: 0,
   }
 }
 
 /**
- * What Back/Forward moves: the page in front of the user while it has
- * somewhere to go — the main page, or an open dock's tab — and otherwise the
- * chats and main page the pane showed before, so leaving a chat by any route
- * (the sidebar, a link in a message) can be undone.
+ * What Back/Forward moves: an open dock's tab while it has somewhere to go,
+ * and otherwise the one timeline of chats and main-page pages the pane showed.
+ * The main page never steps its own tab: its stack can hold pages from an
+ * earlier visit, which sent Back from a chat → Agents move to Inbox.
  */
 export function selectHistoryStep(
   state: WorkspaceState,
   direction: -1 | 1,
 ): 'tab' | 'surface' | null {
   const tab = selectActiveTab(state)
-  const tabVisible = state.mainPageOpen || selectCurrentBucket(state).dockOpen
+  const tabVisible = !state.mainPageOpen && selectCurrentBucket(state).dockOpen
 
   if (tabVisible && tab && canStepNavigation(tab, direction)) return 'tab'
   const index = state.surfaceHistoryIndex + direction

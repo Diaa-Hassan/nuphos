@@ -32,6 +32,8 @@ export function WorkspaceSidebarPanel({ ws, user }: { ws: WorkspaceController; u
     sidebarRepositoryNav,
     canGoBack,
     canGoForward,
+    surfaceHistory,
+    surfaceHistoryIndex,
     updateActiveTab,
     navigateHistory,
     acceptInvitation,
@@ -104,6 +106,11 @@ export function WorkspaceSidebarPanel({ ws, user }: { ws: WorkspaceController; u
         canGoForward={canGoForward}
         onBack={() => navigateHistory(-1)}
         onForward={() => navigateHistory(1)}
+        history={{
+          entries: surfaceHistory,
+          index: surfaceHistoryIndex,
+          onJump: workspaceActions.goToSurface,
+        }}
         onSidebarBack={
           activeTab?.active === 'observability.datasources' &&
           (activeTab.logDatasourceTarget || activeTab.traceDatasourceTarget)

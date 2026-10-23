@@ -4,6 +4,7 @@ import { navigationFromAppPath } from '../../lib/appRoutes'
 import { HREF_FAVORITE_PREFIX } from '../../lib/sidebarFavorites'
 import { teamOverviewNavItemFor } from '../../lib/teamOverviewNav'
 
+import type { HistoryTimeline } from './historyRows'
 import type { Scope, TeamInvitation, UserInfo } from '../../types'
 import type { BreadcrumbSegment } from '../Toolbar'
 import type { LucideIcon } from 'lucide-react'
@@ -163,6 +164,8 @@ export type SidebarProps = {
   }
   canGoBack?: boolean
   canGoForward?: boolean
+  /** The main pane's timeline, for the Back/Forward history menu. */
+  history?: HistoryTimeline
   onBack?: () => void
   onForward?: () => void
   /** Go up one navigation level (parent scope). Absent at the team root. */

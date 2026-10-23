@@ -31,8 +31,10 @@ export type WorkspaceActions = {
     sessionId: string | null,
     options?: { readOnly?: boolean; teamId?: string; keepMainPage?: boolean },
   ) => void
-  openMainPage: (teamId: string) => void
+  /** Opens the main page, landing on `updater`'s page in the same step so it is one history entry. */
+  openMainPage: (teamId: string, updater?: TabUpdater) => void
   stepSurface: (direction: -1 | 1) => void
+  goToSurface: (index: number) => void
   forgetSession: (sessionId: string) => void
   setSessionReadOnly: (readOnly: boolean) => void
   switchTeam: (teamId: string) => void
@@ -99,8 +101,9 @@ export function createWorkspaceStore(
         keepMainPage: options?.keepMainPage,
         resetHomeScroll: sessionId === null && !options?.keepMainPage,
       }),
-    openMainPage: (teamId) => dispatch({ type: 'openMainPage', teamId }),
+    openMainPage: (teamId, updater) => dispatch({ type: 'openMainPage', teamId, updater }),
     stepSurface: (direction) => dispatch({ type: 'stepSurface', direction }),
+    goToSurface: (index) => dispatch({ type: 'goToSurface', index }),
     forgetSession: (sessionId) => dispatch({ type: 'forgetSession', sessionId }),
     setSessionReadOnly: (readOnly) => dispatch({ type: 'setSessionReadOnly', readOnly }),
     // The open session belongs to the team being left, so its dock is not

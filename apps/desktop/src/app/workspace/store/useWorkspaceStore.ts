@@ -46,6 +46,8 @@ export function useWorkspaceStore() {
     workspaceScope: selectScope(state),
     canGoBack: selectHistoryStep(state, -1) !== null,
     canGoForward: selectHistoryStep(state, 1) !== null,
+    surfaceHistory: state.surfaceHistory,
+    surfaceHistoryIndex: state.surfaceHistoryIndex,
   }
 }
 

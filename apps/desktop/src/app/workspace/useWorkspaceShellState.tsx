@@ -101,8 +101,7 @@ export function useWorkspaceShellState() {
 
         if (!teamId) return
         setSettingsOpen(false)
-        workspaceActions.openMainPage(teamId)
-        workspaceActions.updateActiveTab((tab) => ({
+        workspaceActions.openMainPage(teamId, (tab) => ({
           ...tab,
           ...emptyNavigation({ kind: 'team', teamId }, 'team.agents'),
         }))
