@@ -1,5 +1,6 @@
 import { useCallback } from 'react'
 
+import { SWITCH_TEAM_PREFIX } from '../../components/session-search/paletteCommands'
 import {
   TEAM_SETTINGS_DEFAULT_SECTION,
   USER_SETTINGS_DEFAULT_SECTION,
@@ -17,6 +18,7 @@ export function usePaletteCommand(ws: WorkspaceController) {
     toggleSidebarCollapsed,
     openSettingsSection,
     setShortcutsHelpOpen,
+    switchTeam,
   } = ws
 
   return useCallback(
@@ -28,6 +30,7 @@ export function usePaletteCommand(ws: WorkspaceController) {
       else if (id === 'open-settings') openSettingsSection(USER_SETTINGS_DEFAULT_SECTION)
       else if (id === 'open-team-settings') openSettingsSection(TEAM_SETTINGS_DEFAULT_SECTION)
       else if (id === 'shortcuts-help') setShortcutsHelpOpen(true)
+      else if (id.startsWith(SWITCH_TEAM_PREFIX)) switchTeam(id.slice(SWITCH_TEAM_PREFIX.length))
       else onSidebarSelect(id)
     },
     [
@@ -38,6 +41,7 @@ export function usePaletteCommand(ws: WorkspaceController) {
       toggleSidebarCollapsed,
       openSettingsSection,
       setShortcutsHelpOpen,
+      switchTeam,
     ],
   )
 }
