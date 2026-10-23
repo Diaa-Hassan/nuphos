@@ -2,6 +2,7 @@ import clsx from 'clsx'
 import { ArrowUp, Square } from 'lucide-react'
 import { useLayoutEffect, useRef } from 'react'
 
+import { isRichImageDrop } from './attachmentDrag'
 import { AGENT_QUEUE_PLACEHOLDER } from './constants'
 import { OpenSlackThreadButton } from './ReadOnlyNotice'
 
@@ -80,6 +81,9 @@ export function ComposerEditor({
         onInput={onInput}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
+        onDrop={(e) => {
+          if (isRichImageDrop(e.dataTransfer)) e.preventDefault()
+        }}
         onCompositionStart={onCompositionStart}
         onCompositionEnd={onCompositionEnd}
         role="textbox"

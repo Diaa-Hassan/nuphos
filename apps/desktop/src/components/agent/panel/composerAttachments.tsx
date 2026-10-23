@@ -4,6 +4,7 @@ import clsx from 'clsx'
 import { X } from 'lucide-react'
 import { useState } from 'react'
 
+import { setAttachmentDragData } from './attachmentDrag'
 import { isImageAttachmentPath } from './attachments'
 import { ImageAttachmentThumb, ImageLightbox } from './messageInline'
 import { fileNameFromPath } from './textUtils'
@@ -25,8 +26,18 @@ export function AttachmentChips({
 
   return (
     // Attachments sit on their own row above the input so they
-    // lay out cleanly instead of crowding the bottom toolbar.
-    <div className="mb-2 flex flex-wrap items-center gap-2">
+    // lay out cleanly instead of crowding the bottom toolbar. Dragging one
+    // (the thumbnail's image is draggable on its own) hands its path to
+    // whichever chat it is dropped on.
+    <div
+      className="mb-2 flex flex-wrap items-center gap-2"
+      onDragStart={(e) => {
+        const chip = (e.target as HTMLElement).closest<HTMLElement>('[data-attachment-path]')
+
+        if (chip?.dataset.attachmentPath)
+          setAttachmentDragData(e.dataTransfer, [chip.dataset.attachmentPath])
+      }}
+    >
       {filePaths.map((filePath) => {
         const isFolder = folderPaths.has(filePath)
         const isImage = isImageAttachmentPath(filePath)
@@ -34,14 +45,15 @@ export function AttachmentChips({
 
         if (isImage) {
           return (
-            <ImageAttachmentThumb
-              key={filePath}
-              url={imageThumbs[filePath]}
-              fileName={fileNameFromPath(filePath)}
-              badge={`#${String(images.indexOf(filePath) + 1)}`}
-              onRemove={removeAttachment}
-              onOpen={() => setPreview(previewable.indexOf(filePath))}
-            />
+            <div key={filePath} data-attachment-path={filePath} className="contents">
+              <ImageAttachmentThumb
+                url={imageThumbs[filePath]}
+                fileName={fileNameFromPath(filePath)}
+                badge={`#${String(images.indexOf(filePath) + 1)}`}
+                onRemove={removeAttachment}
+                onOpen={() => setPreview(previewable.indexOf(filePath))}
+              />
+            </div>
           )
         }
         const name = fileNameFromPath(filePath)
@@ -52,6 +64,8 @@ export function AttachmentChips({
         return (
           <div
             key={filePath}
+            data-attachment-path={filePath}
+            draggable
             // Canvas-coloured, so the chip still reads against the
             // composer now that the composer itself is the light surface.
             className="surface-raised group relative flex h-12 max-w-[220px] items-center gap-2.5 rounded-lg bg-agentCanvas pl-2 pr-3"

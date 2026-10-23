@@ -19,11 +19,6 @@ export const IMAGE_ATTACHMENT_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp
 export function isImageAttachmentPath(p: string): boolean {
   return IMAGE_ATTACHMENT_EXTS.has(p.toLowerCase().split('.').pop() ?? '')
 }
-// True while a file/image drag is over a drop target. During dragover
-// `dataTransfer.files` is empty — the only reliable signal is the `Files` type.
-export function dataTransferHasFiles(dt: DataTransfer | null): boolean {
-  return dt != null && Array.from(dt.types ?? []).includes('Files')
-}
 // Build a turn's user message + (optional) upload machinery. Every attachment
 // goes through the transfer-upload flow, so the upload bits no-op when the
 // turn is text-only.
@@ -65,7 +60,7 @@ export function makeAttachmentTurn(
       .fileTransferUpload({
         teamId,
         ...(sessionId ? { sessionId } : {}),
-        filePaths: filePaths,
+        filePaths,
       })
       .then((group) => ({
         type: 'transfer-upload' as const,

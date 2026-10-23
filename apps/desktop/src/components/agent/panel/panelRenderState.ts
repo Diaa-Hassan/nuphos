@@ -1,4 +1,4 @@
-import { dataTransferHasFiles } from './attachments'
+import { dataTransferHasFiles } from './attachmentDrag'
 import { allCredentialAccess, credentialOptionsLoaded } from './credentialAccess'
 import { unseenCredentials } from './credentialFreshness'
 import { HOME_TAB_ID } from './model'

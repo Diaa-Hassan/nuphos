@@ -9,6 +9,7 @@ import {
   insertImageRefs,
   insertMentionIntoEditor,
   insertTextIntoEditor,
+  dropAttachmentPaths,
   saveClipboardAttachments,
 } from './composerSerialize'
 import { useComposerRecall } from './useComposerRecall'
@@ -242,7 +243,7 @@ export function useComposerActions(
     const handler = readOnly
       ? null
       : (dt: DataTransfer) => {
-          void saveClipboardAttachments(dt)
+          void dropAttachmentPaths(dt)
             .then(attachPaths)
             .catch((err: unknown) => {
               toast.apiError('Could not attach files', err)

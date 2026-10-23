@@ -2,6 +2,7 @@ import { api } from '../../../api'
 import { svg } from '../../../lib/atlas-link-mention/icons'
 import { isAtlasUrl, renderMentionChip } from '../../../lib/atlasLinkMention'
 
+import { attachmentDragPaths } from './attachmentDrag'
 import { isImageAttachmentPath } from './attachments'
 
 // ------------------------------------------------------------------------
@@ -196,6 +197,17 @@ export function insertTextIntoEditor(
     sel.removeAllRanges()
     sel.addRange(range)
   }
+}
+
+/**
+ * The local paths a drop attaches. An attachment dragged from another chat is
+ * already a local file, so its path is used as-is; read synchronously, since
+ * the drop's data is gone once the event returns.
+ */
+export function dropAttachmentPaths(dt: DataTransfer): Promise<string[]> {
+  const dragged = attachmentDragPaths(dt)
+
+  return dragged.length > 0 ? Promise.resolve(dragged) : saveClipboardAttachments(dt)
 }
 
 export async function saveClipboardAttachments(data: DataTransfer): Promise<string[]> {
