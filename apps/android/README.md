@@ -419,6 +419,28 @@ menu selection, cursor reset, duplicate suppression, filtered refresh/navigation
 and held first-page/cursor response races across a sort change. Use its existing
 isolated package restriction and optionally `-e refreshEvidence true` for captures.
 
+### Native email sign-in fixture
+
+Email codes create accounts only after verification. The optional password control
+uses the same email code to set or reset a password. Existing Google and password
+sign-in remain available. The backend owns code validity and rate limits; the UI
+shows its 60-second resend cooldown and 10-minute expiry. Cancellation invalidates
+local results; an already accepted reset cannot be undone by canceling the UI.
+Only email and non-secret delivery progress survive saved-state restoration;
+codes and passwords must be entered again. Nothing sends automatically on restore.
+
+`AccountApiTest` covers unauthenticated wire contracts and invalid responses.
+`EmailLoginFixtureDeviceTest` uses synthetic Compose content and an injected
+transport/clock, without live sign-in or email delivery. Build using
+`-PnuphosIsolatedEmailFixture=true` and run only that class on the separately
+installed `ai.nuphos.android.emailfixture1335` package. Keep the Play app, its data,
+keys and `FLAG_SECURE` unchanged. These tests do not establish real mail delivery
+or server-side password/session revocation; those require a separately approved
+isolated-account test plan.
+`EmailSessionFixtureDeviceTest` intercepts every request while testing duplicate
+submission, cancellation, token persistence and consent loading in the same isolated package.
+
+
 ### Composer rich content
 
 The composer receives content-provider attachments through native paste, keyboard

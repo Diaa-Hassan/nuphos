@@ -303,16 +303,26 @@ class AuthSession(
         }
     }
 
-    fun passwordSignIn(email: String, password: String) {
+    fun passwordSignIn(email: String, password: String) = credentialSignIn(email, password, true)
+
+    fun emailSignIn(email: String, code: String, newPassword: String? = null) =
+        credentialSignIn(email, code, false, newPassword)
+
+    fun cancelCredentialSignIn() {
+        if (state is State.SigningIn && loginAttempt == null) signOut()
+    }
+
+    private fun credentialSignIn(email: String, credential: String, password: Boolean, newPassword: String? = null) {
         if (state !is State.SignedOut) return
         val expected = beginIdentity()
         state = State.SigningIn
         loginJob = scope.launch {
             try {
                 val received = try {
-                    AccountApi("").passwordSignIn(email, password)
+                    if (password) AccountApi("").passwordSignIn(email, credential)
+                    else AccountApi("").emailSignIn(email, credential, newPassword)
                 } catch (_: NuphosApi.Failure.Unauthorized) {
-                    if (generation == expected) state = State.SignedOut("The email or password is incorrect.")
+                    if (generation == expected) state = State.SignedOut(if (password) "The email or password is incorrect." else "Incorrect or expired code. Request a new code if needed.")
                     return@launch
                 }
                 val user = NuphosApi.currentUser(received)
@@ -329,9 +339,13 @@ class AuthSession(
             } catch (_: NuphosApi.Failure.Unauthorized) {
                 if (generation == expected) state = State.SignedOut(NuphosApi.Failure.Unauthorized.message)
             } catch (e: NuphosApi.Failure.Http) {
-                if (generation == expected) state = State.SignedOut(e.message)
+                if (generation == expected) state = State.SignedOut(if (password) e.message else when (e.code) {
+                    400 -> "Incorrect or expired code, or invalid details. Check your entries or request a new code."
+                    429 -> "Too many attempts. Wait before requesting a new code."
+                    else -> "Email sign-in did not complete. Try again or request a new code."
+                })
             } catch (_: Exception) {
-                if (generation == expected) state = State.SignedOut("Password sign-in did not complete. Check your details and connection, then try again.")
+                if (generation == expected) state = State.SignedOut("Sign-in did not complete. Check your details and connection, then try again.")
             } finally {
                 if (generation == expected) loginJob = null
             }

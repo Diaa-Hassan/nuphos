@@ -25,6 +25,26 @@ class AccountApi internal constructor(private val token: String, private val cli
             ?.takeIf { it.isNotBlank() } ?: throw NuphosApi.Failure.InvalidResponse
     }
 
+    suspend fun requestSignInCode(email: String) {
+        require(email.trim().isNotBlank() && email.trim().length <= 254)
+        val result: JsonObject = execute("email/request-code", "POST", buildJsonObject {
+            put("email", email.trim())
+        }, authenticated = false, allowRedirects = false)
+        if (result["ok"] != JsonPrimitive(true)) throw NuphosApi.Failure.InvalidResponse
+    }
+
+    suspend fun emailSignIn(email: String, code: String, newPassword: String? = null): String {
+        require(email.trim().isNotBlank() && email.trim().length <= 254)
+        require(code.matches(Regex("[0-9]{6}")))
+        require(newPassword == null || newPassword.length in 12..128)
+        val result: JsonObject = execute(if (newPassword == null) "email/verify-code" else "password/set", "POST", buildJsonObject {
+            put("email", email.trim()); put("code", code)
+            if (newPassword != null) put("password", newPassword)
+        }, authenticated = false, allowRedirects = false)
+        return (result["token"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+            ?.takeIf { it.isNotBlank() } ?: throw NuphosApi.Failure.InvalidResponse
+    }
+
     suspend fun consent(): AIConsent = execute("ai-consent", "GET")
 
     suspend fun setConsent(accepted: Boolean): AIConsent = execute("ai-consent", "PUT", buildJsonObject {
@@ -63,7 +83,7 @@ class AccountApi internal constructor(private val token: String, private val cli
             .header("x-atlas-client", Http.clientHeader())
             .apply { if (authenticated) header("Authorization", "Bearer $token") }
             .method(method, body?.toString()?.toRequestBody(Http.jsonMedia)).build()
-        val transport = if (allowRedirects) client else client.newBuilder().followRedirects(false).followSslRedirects(false).build()
+        val transport = if (allowRedirects) client else client.newBuilder().followRedirects(false).followSslRedirects(false).retryOnConnectionFailure(false).build()
         transport.newCall(request).execute().use { response ->
             val text = response.body.string()
             if (response.code == 401) throw NuphosApi.Failure.Unauthorized

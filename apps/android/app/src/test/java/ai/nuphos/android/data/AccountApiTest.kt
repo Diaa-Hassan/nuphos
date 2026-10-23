@@ -57,6 +57,54 @@ class AccountApiTest {
         assertTrue(requests.isEmpty())
     }
 
+    @Test fun emailSignupAndPasswordResetUseExactIosContracts() = runTest {
+        response = """{"ok":true}"""
+        api.requestSignInCode(" fixture@example.com ")
+        assertEquals("/auth/email/request-code", requests.last().url.encodedPath)
+        assertEquals("""{"email":"fixture@example.com"}""", body())
+        response = """{"token":"fixture-session"}"""
+        assertEquals("fixture-session", api.emailSignIn(" fixture@example.com ", "123456"))
+        assertEquals("/auth/email/verify-code", requests.last().url.encodedPath)
+        assertEquals("""{"email":"fixture@example.com","code":"123456"}""", body())
+        assertEquals("fixture-session", api.emailSignIn("fixture@example.com", "123456", " new password "))
+        assertEquals("/auth/password/set", requests.last().url.encodedPath)
+        assertEquals("""{"email":"fixture@example.com","code":"123456","password":" new password "}""", body())
+        requests.forEach {
+            assertNull(it.header("Authorization"))
+            assertNull(it.header("x-nuphos-ai-consent-version"))
+            assertEquals("POST", it.method)
+        }
+    }
+
+    @Test fun emailSecretsAreNotSentForInvalidInput() = runTest {
+        for (code in listOf("12345", "1234567", "abcdef", "１２３４５６")) {
+            try { api.emailSignIn("fixture@example.com", code); fail() } catch (_: IllegalArgumentException) { }
+        }
+        for (password in listOf("short", "p".repeat(129))) {
+            try { api.emailSignIn("fixture@example.com", "123456", password); fail() } catch (_: IllegalArgumentException) { }
+        }
+        try { api.requestSignInCode(" "); fail() } catch (_: IllegalArgumentException) { }
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test fun emailRejectsMalformedResponsesAndDoesNotFollowRedirects() = runTest {
+        for (value in listOf("{}", "{\"token\":3}", "{\"token\":\" \"}")) {
+            response = value
+            try { api.emailSignIn("fixture@example.com", "123456"); fail() }
+            catch (_: NuphosApi.Failure.InvalidResponse) { }
+        }
+        for (value in listOf("{}", "{\"ok\":\"true\"}", "{\"ok\":false}")) {
+            response = value
+            try { api.requestSignInCode("fixture@example.com"); fail() }
+            catch (_: NuphosApi.Failure.InvalidResponse) { }
+        }
+        for (httpStatus in listOf(400, 429, 503, 302)) {
+            status = httpStatus; response = "{}"
+            try { api.emailSignIn("fixture@example.com", "123456"); fail() }
+            catch (e: NuphosApi.Failure.Http) { assertEquals(httpStatus, e.code) }
+        }
+    }
+
     @Test fun consentHasFixedHostAndAccountHeadersWithoutAiGate() = runTest {
         assertFalse(api.consent().accepted)
         api.setConsent(true)

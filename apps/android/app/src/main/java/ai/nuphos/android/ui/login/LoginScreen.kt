@@ -47,6 +47,17 @@ import ai.nuphos.android.ui.LocalAuthSession
 fun LoginScreen(modifier: Modifier = Modifier) {
     val auth = LocalAuthSession.current
     val activity = LocalActivity.current
+    var emailMode by androidx.compose.runtime.saveable.rememberSaveable { androidx.compose.runtime.mutableStateOf(false) }
+    if (emailMode) {
+        EmailLoginContent(
+            busy = auth.state is AuthSession.State.SigningIn,
+            error = (auth.state as? AuthSession.State.SignedOut)?.error,
+            onSubmit = auth::emailSignIn,
+            onCancel = { auth.cancelCredentialSignIn(); emailMode = false },
+            modifier = modifier,
+        )
+        return
+    }
     var passwordMode by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
     var email by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf("") }
     // Deliberately not saveable: credentials must not survive recreation or navigation.
@@ -173,6 +184,9 @@ fun LoginScreen(modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.titleMedium,
                 )
             }
+            androidx.compose.material3.TextButton(
+                onClick = { emailMode = true; password = "" }, enabled = !busy,
+            ) { Text("Email code / create account / reset password") }
             androidx.compose.material3.TextButton(
                 onClick = { passwordMode = !passwordMode; password = "" }, enabled = !busy,
             ) { Text(if (passwordMode) "Continue with Google" else "Use a password") }
