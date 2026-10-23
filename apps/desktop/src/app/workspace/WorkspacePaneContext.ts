@@ -1,10 +1,11 @@
 import { createContext, useContext } from 'react'
 
+import type { SidebarSlot } from './sidebarSlot'
 import type { WorkspaceState } from './store/workspaceState'
 import type { WorkspaceStore } from './store/workspaceStore'
 import type { Dispatch, SetStateAction } from 'react'
 
-export const WorkspacePaneContext = createContext<{
+export type WorkspacePaneValue = {
   sessionSearchOpen: boolean
   setSessionSearchOpen: Dispatch<SetStateAction<boolean>>
   focusSession: (sessionId: string, teamId?: string) => boolean
@@ -15,10 +16,13 @@ export const WorkspacePaneContext = createContext<{
   closePane: () => void
   active: boolean
   primary: boolean
-  sidebarHost: HTMLDivElement | null
+  /** The window's one sidebar; the active pane hands it what to show. */
+  sidebar: SidebarSlot
   initialState?: WorkspaceState
   registerStore: (store: WorkspaceStore) => () => void
-} | null>(null)
+}
+
+export const WorkspacePaneContext = createContext<WorkspacePaneValue | null>(null)
 
 export function useWorkspacePane() {
   return useContext(WorkspacePaneContext)

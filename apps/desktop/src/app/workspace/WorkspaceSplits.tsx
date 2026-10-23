@@ -4,6 +4,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { isMac } from '../../lib/platform'
 import { readLocalStorage, writeLocalStorage } from '../localStorage'
 
+import { createSidebarSlot } from './sidebarSlot'
+import { SidebarSlotHost } from './SidebarSlotHost'
 import { SplitDropOverlay } from './SplitDropOverlay'
 import {
   dropPane,
@@ -59,7 +61,7 @@ export function WorkspaceSplits({
       sessionSearchOpen: typeof open === 'function' ? open(previous.sessionSearchOpen) : open,
     }))
   }, [])
-  const [sidebarHost, setSidebarHost] = useState<HTMLDivElement | null>(null)
+  const [sidebar] = useState(createSidebarSlot)
   const [focusSurfaces] = useState(() => new Map<string, string>())
   const [stores] = useState(() => new Map<string, WorkspaceStore>())
   const [seeds] = useState(() => new Map<string, WorkspaceState>())
@@ -195,7 +197,9 @@ export function WorkspaceSplits({
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden">
-      <div ref={setSidebarHost} className="flex shrink-0" />
+      <div className="flex shrink-0">
+        <SidebarSlotHost slot={sidebar} />
+      </div>
       <div className="relative min-w-0 flex-1 bg-main">
         {/* Flat keyed leaves stay mounted even when the split tree changes shape. */}
         {rects.map((rect) => {
@@ -230,7 +234,7 @@ export function WorkspaceSplits({
                 active: activeId === rect.id,
                 // The first surviving leaf owns persistence, even after the original closes.
                 primary: rect.id === rects[0].id,
-                sidebarHost,
+                sidebar,
                 initialState: seeds.get(rect.id),
                 registerStore,
               }}
