@@ -71,7 +71,8 @@ export function configFile(deps: ConfigFileDeps) {
   }
 
   async function forget(account: string | undefined) {
-    if (!account) return
+    // Only the packaged app made the item, so only it may remove it.
+    if (!account || !deps.secure()) return
     try {
       await deps.store.delete(account)
     } catch (e) {
@@ -153,7 +154,10 @@ export function configFile(deps: ConfigFileDeps) {
 
       return cfg
     }
-    if (!cfg.keychainAccount) return cfg
+    // Only the packaged app may read the item it made: a dev build or plain
+    // Node (tests, `pnpm test` in a shell) is another binary, and macOS would
+    // ask for the login keychain password.
+    if (!cfg.keychainAccount || !deps.secure()) return cfg
     const token = await deps.store.get(cfg.keychainAccount).catch((e: unknown) => {
       // Locked or denied: signed out for now, without forgetting the sign-in.
       console.warn('auth: failed to read the session token from the keychain', e)

@@ -28,6 +28,9 @@ export function secureStorageEnabled(
 }
 
 async function entry(account: string) {
+  // Any other binary is not the item's creator, so macOS would ask for the
+  // login keychain password: fail instead of reaching the keychain.
+  if (!secureStorageEnabled()) throw new Error('the keychain is used only by the packaged app')
   // Loaded on first use: the native module exists only in the packaged
   // dependencies, and only macOS needs it today.
   const { AsyncEntry } = await import('@napi-rs/keyring')

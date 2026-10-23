@@ -171,6 +171,18 @@ test('without a keychain the token stays in the file', async () => {
   assert.equal((await h.config.read()).token, 'tok-1')
 })
 
+test('outside the packaged app the keychain item is never read or removed', async () => {
+  const h = await harness({ secure: false })
+
+  h.items.set(ACCOUNT, 'tok-1')
+  await fs.writeFile(h.file, yaml.dump({ keychainAccount: ACCOUNT, userInfo: USER }))
+
+  assert.deepEqual(await h.config.read(), { keychainAccount: ACCOUNT, userInfo: USER })
+  await h.config.write({})
+  assert.deepEqual(h.calls, [])
+  assert.equal(h.items.get(ACCOUNT), 'tok-1')
+})
+
 test('a keychain that refuses the write leaves the token in the file', async () => {
   const h = await harness({ failSet: true })
 
