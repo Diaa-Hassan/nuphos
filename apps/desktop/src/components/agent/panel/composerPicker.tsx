@@ -53,14 +53,21 @@ export function ComposerPicker({
   )
 }
 
-/** One option. Mouse-down selects without taking focus (and the caret) from the editor. */
+/**
+ * One option. Mouse-down selects without taking focus (and the caret) from the
+ * editor. Only a moving pointer highlights a row: one resting over the list must
+ * not take the highlight from the arrows as the rows scroll under it.
+ */
 export function ComposerPickerRow({
   selected,
+  compact = false,
   onSelect,
   onActive,
   children,
 }: {
   selected: boolean
+  /** One-line rows, packed tighter. */
+  compact?: boolean
   onSelect: () => void
   onActive: () => void
   children: ReactNode
@@ -70,14 +77,15 @@ export function ComposerPickerRow({
       role="option"
       aria-selected={selected}
       className={clsx(
-        'flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-[13px]',
+        'flex cursor-pointer items-center gap-2 rounded-md px-2 text-[13px]',
+        compact ? 'py-1' : 'py-1.5',
         selected && 'bg-zGray-800/60',
       )}
       onMouseDown={(e) => {
         e.preventDefault()
         onSelect()
       }}
-      onMouseEnter={onActive}
+      onMouseMove={selected ? undefined : onActive}
     >
       {children}
     </div>
