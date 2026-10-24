@@ -480,6 +480,7 @@
   "GET /teams/:teamId/onprem-clusters/:clusterId/kubeconfig": "editor",
   "GET /teams/:teamId/permission-grant-proposals": "member",
   "GET /teams/:teamId/permission-grant-proposals/:id": "member",
+  "GET /teams/:teamId/personal-credentials/:provider/token": "member",
   "GET /teams/:teamId/plaud-accounts": "member",
   "GET /teams/:teamId/plaud-accounts/:bindingId": "member",
   "GET /teams/:teamId/plaud-accounts/:bindingId/access": "admin",

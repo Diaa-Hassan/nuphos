@@ -9,9 +9,10 @@ description: Read and act on the message sender's own Gmail and Google Drive —
 
 Keep CLI credentials and settings inside the current session's `HOME` (`NUPHOS_SESSION_HOME`) and respect the supplied CLI config environment variables. Do not copy another session's or the runtime owner's credentials. Without `NUPHOS_SESSION_HOME`, CLI defaults may use shared runtime configuration; be aware of the affected scope.
 
-Gmail and Drive are a member's private data, not team resources. The token
-belongs to the member who sent this turn's message (the session owner for
-automated turns). Read only what the request needs, and never copy mail or file
+Gmail and Drive are a member's private data, not team resources. The token is
+always the session owner's, and only in their own conversations: when a
+teammate sends the message in someone else's session, the handout answers 403
+`personal_credential_owner_only`; tell them to ask from a conversation they own. Read only what the request needs, and never copy mail or file
 contents anywhere the member did not ask for. Sending mail, deleting, trashing
 and sharing are irreversible or outward-facing: do them only when the member
 asked for that specific action, and never add recipients they did not name.

@@ -331,20 +331,24 @@ describe('Google token handout', () => {
     )
   })
 
-  test('a member’s turn gets the sender’s own token', async () => {
-    const res = await fetchToken('gmail', turn('teammate', true))
+  test('the owner’s own and automated turns get the owner’s token', async () => {
+    for (const humanTurn of [true, false]) {
+      const res = await fetchToken('gmail', turn('owner', humanTurn))
 
-    expect(res.status).toBe(200)
-    expect(await res.json()).toMatchObject({
-      token: 'teammate-mail',
-      login: 'teammate@example.com',
+      expect(res.status).toBe(200)
+      expect(await res.json()).toMatchObject({ token: 'owner-mail', login: 'owner@example.com' })
+    }
+    // An agent's turn on the owner's behalf, e.g. a thread message.
+    expect(await (await fetchToken('gmail', turn('teammate', false))).json()).toMatchObject({
+      token: 'owner-mail',
     })
   })
 
-  test('an automated turn gets the session owner’s token', async () => {
-    const res = await fetchToken('gmail', turn('teammate', false))
+  test('a teammate’s message in someone else’s session gets no token', async () => {
+    const res = await fetchToken('gmail', turn('teammate', true))
 
-    expect(await res.json()).toMatchObject({ token: 'owner-mail' })
+    expect(res.status).toBe(403)
+    expect(await res.json()).toEqual({ code: 'personal_credential_owner_only' })
   })
 
   test('404 when the member has not connected the provider', async () => {

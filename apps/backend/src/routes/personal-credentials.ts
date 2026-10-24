@@ -1,6 +1,6 @@
 import { Hono } from 'hono'
 
-import { personalCredentialSubject } from '@/lib/claude-code-preview/mcp-token'
+import { verifyPreviewMcpToken } from '@/lib/claude-code-preview/mcp-token'
 import { desktopCallbackResponse } from '@/lib/desktop-callback-page'
 import { AppError } from '@/lib/errors'
 import { logError } from '@/lib/observability'
@@ -90,8 +90,10 @@ personalCredentialRoutes.get('/:provider/callback', async (c) => {
 })
 
 // Mounted under /teams/:teamId for conversation tokens: the agent's Gmail /
-// Google Drive handout. It is the turn's member's own grant (the sender, or the
-// session owner for automated turns); there is no team token to fall back to.
+// Google Drive handout. It is always the session owner's own grant, and a
+// teammate's message in that session gets none: a shared session may run on
+// someone else's runtime, so mail and files never leave their owner's sessions.
+// There is no team token to fall back to.
 export const personalCredentialTokenRoutes = new Hono()
 
 personalCredentialTokenRoutes.get('/:provider/token', async (c) => {
@@ -100,12 +102,22 @@ personalCredentialTokenRoutes.get('/:provider/token', async (c) => {
   if (!isGoogleProvider(provider)) {
     throw new AppError(404, 'not_found', 'Unknown Personal Credential provider')
   }
-  const subject = personalCredentialSubject(c.req.header('Authorization'))
+  const authorization = c.req.header('Authorization') ?? ''
+  const claims = authorization.startsWith('Bearer ')
+    ? verifyPreviewMcpToken(authorization.slice('Bearer '.length))
+    : null
 
-  if (!subject) {
+  if (!claims) {
     throw new AppError(403, 'forbidden', 'Only an agent conversation can use this handout')
   }
-  const personal = await personalGoogleToken(subject, provider)
+  if (claims.hum && claims.sub !== claims.own) {
+    throw new AppError(
+      403,
+      'personal_credential_owner_only',
+      'Gmail and Google Drive are only available in conversations you own',
+    )
+  }
+  const personal = await personalGoogleToken(claims.own, provider)
 
   if (!personal) {
     throw new AppError(

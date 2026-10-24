@@ -29,6 +29,13 @@ function stillFresh(expiresAt: Date | null): boolean {
   return expiresAt === null || expiresAt.getTime() - 5 * 60_000 > Date.now()
 }
 
+/** The provider's token endpoint refused the grant, as opposed to a network or server error. */
+function refused(error: unknown): boolean {
+  const status = (error as { status?: unknown } | null)?.status
+
+  return typeof status === 'number' && status >= 400 && status < 500
+}
+
 async function refresh(doc: PersonalCredential): Promise<PersonalToken | null> {
   if (!doc.encryptedRefreshToken) return null
   const refreshToken = open(doc.provider, doc.encryptedRefreshToken)
@@ -56,8 +63,10 @@ async function refresh(doc: PersonalCredential): Promise<PersonalToken | null> {
         login: latest.login,
       }
     }
-    // The grant is gone (revoked or expired): drop it so the team token takes over.
     logError('personal_credential.refresh_failed', error, { provider: doc.provider })
+    // A timeout or 5xx keeps the grant for the next try. Only a refused grant
+    // (revoked or expired) is dropped, so the team token takes over.
+    if (!refused(error)) return null
     await personalCredentials().deleteOne({ _id: doc._id, updatedAt: doc.updatedAt })
 
     return null

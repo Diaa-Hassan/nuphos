@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, test } from 'bun:test'
 import { ObjectId } from 'mongodb'
 
+import { GithubApiError } from '@/lib/byos/github-http'
 import { useByosSecrets } from '@/lib/test/doubles/byos-secrets'
 import { useModels } from '@/lib/test/doubles/models'
 import { usePersonalCredentialsGithub } from '@/lib/test/doubles/personal-credentials-github'
@@ -111,12 +112,22 @@ describe('personalGithubToken', () => {
     expect(rows[0]?.encryptedRefreshToken).toEqual(sealed('ghr_new'))
   })
 
-  test('drops a grant whose refresh fails so the team token takes over', async () => {
+  test('drops a grant the provider refuses so the team token takes over', async () => {
     rows = [credential({ userId: 'user-4', accessTokenExpiresAt: new Date(Date.now() - 1000) })]
-    refreshResult = () => Promise.reject(new Error('bad_refresh_token'))
+    refreshResult = () => Promise.reject(new GithubApiError(400, 'bad_refresh_token'))
 
     expect(await personalGithubToken('user-4', 7)).toBeNull()
     expect(rows).toHaveLength(0)
+  })
+
+  test('keeps the grant through a network or server error', async () => {
+    rows = [credential({ userId: 'user-5', accessTokenExpiresAt: new Date(Date.now() - 1000) })]
+
+    for (const error of [new Error('fetch failed'), new GithubApiError(503, 'unavailable')]) {
+      refreshResult = () => Promise.reject(error)
+      expect(await personalGithubToken('user-5', 7)).toBeNull()
+    }
+    expect(rows).toHaveLength(1)
   })
 })
 

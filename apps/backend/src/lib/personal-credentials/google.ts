@@ -51,6 +51,16 @@ export function googleAuthorizeUrl(args: {
   return `${AUTHORIZE_URL}?${params.toString()}`
 }
 
+/** A token endpoint answer; 4xx means the grant itself was refused. */
+export class GoogleOAuthError extends Error {
+  constructor(
+    public status: number,
+    message: string,
+  ) {
+    super(message)
+  }
+}
+
 async function tokenRequest(body: Record<string, string>): Promise<ProviderTokens> {
   const res = await fetch(TOKEN_URL, {
     method: 'POST',
@@ -67,7 +77,8 @@ async function tokenRequest(body: Record<string, string>): Promise<ProviderToken
   }
 
   if (!res.ok || !raw.access_token) {
-    throw new Error(
+    throw new GoogleOAuthError(
+      res.status,
       `Google token request failed: ${raw.error_description ?? raw.error ?? String(res.status)}`,
     )
   }
