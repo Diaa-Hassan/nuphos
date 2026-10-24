@@ -217,16 +217,11 @@ private struct FilterMenu: View {
                 Label("Team agents", systemImage: "person.2").tag(NuphosAPI.ConversationScope.team)
             }
             .pickerStyle(.inline)
-            Picker("Sort", selection: $store.sort) {
-                Label("Date created", systemImage: "calendar").tag(NuphosAPI.ConversationSort.created)
-                Label("Recent activity", systemImage: "clock").tag(NuphosAPI.ConversationSort.activity)
-            }
-            .pickerStyle(.inline)
             Toggle(isOn: $store.showArchived) {
                 Label("Archived", systemImage: "archivebox")
             }
         } label: {
-            Label("Filter agents", systemImage: store.scope == .mine && !store.showArchived && store.sort == .created
+            Label("Filter agents", systemImage: store.scope == .mine && !store.showArchived
                   ? "line.3.horizontal.decrease"
                   : "line.3.horizontal.decrease.circle.fill")
         }

@@ -30,30 +30,18 @@ final class AgentStore {
     var showArchived = false {
         didSet { if showArchived != oldValue { Task { await reload() } } }
     }
-    /// The desktop sidebar lists by creation date.
-    var sort: NuphosAPI.ConversationSort = .created {
-        didSet { if sort != oldValue { Task { await reload() } } }
-    }
 
     // MARK: - Pinned chats (sidebar favorites)
 
     private(set) var favorites: SidebarFavorites?
     var pinnedSessionIds: Set<String> { favorites?.pinnedSessionIds ?? [] }
-    /// Pinned chats, newest pin first.
-    private var pinnedOrder: [String] { (favorites?.entries ?? []).compactMap(\.sessionId).reversed() }
+    /// Pinned chats in pin order, as the desktop sidebar lists them.
+    private var pinnedOrder: [String] { (favorites?.entries ?? []).compactMap(\.sessionId) }
 
-    /// Sessions the viewer joined but does not own — the desktop's Shared
-    /// group. Only the personal list adds them; team scope already has them.
-    private(set) var sharedConversations: [AgentConversation] = []
-
-    /// What the Agent page lists: pinned chats first, then the viewer's own
-    /// chats and the ones shared with them, newest first.
+    /// What the Agent page lists, as the desktop sidebar does: pinned chats
+    /// first, then the rest by latest activity.
     var listedConversations: [AgentConversation] {
-        var seen = Set<String>()
-        let date: (AgentConversation) -> Date = sort == .created ? { $0.createdAt } : { $0.lastActiveAt }
-        let rows = (conversations + (scope == .mine ? sharedConversations : []))
-            .filter { seen.insert($0.sessionId).inserted }
-            .sorted { date($0) > date($1) }
+        let rows = conversations.sorted { $0.lastActiveAt > $1.lastActiveAt }
         let rank = Dictionary(pinnedOrder.enumerated().map { ($1, $0) }, uniquingKeysWith: { first, _ in first })
         return rows.compactMap { row in rank[row.sessionId].map { (row, $0) } }.sorted { $0.1 < $1.1 }.map(\.0)
             + rows.filter { rank[$0.sessionId] == nil }
@@ -116,7 +104,6 @@ final class AgentStore {
     /// it again.
     func removeFromList(_ sessionId: String) {
         conversations.removeAll { $0.sessionId == sessionId }
-        sharedConversations.removeAll { $0.sessionId == sessionId }
         if phase == .loaded { loadGeneration += 1 } else { Task { await reload() } }
     }
 
@@ -286,7 +273,6 @@ final class AgentStore {
         newModelPick = [:]
         credentials.reset()
         favorites = nil
-        sharedConversations = []
         runtimes = []
         agentDevices = []
         agentDevicesError = false
@@ -399,7 +385,6 @@ final class AgentStore {
     func reload() async {
         guard let team = selectedTeam else {
             conversations = []
-            sharedConversations = []
             phase = teamsPhase == .loaded ? .loaded : phase
             return
         }
@@ -410,14 +395,13 @@ final class AgentStore {
         if conversations.isEmpty { phase = .loading }
         async let favoritesLoad: () = loadFavorites()
         async let runtimesLoad: () = loadRuntimes()
-        async let sharedLoad: () = loadShared(team: team, generation: generation)
 
         do {
             let page = try await NuphosAPI.conversations(
                 token: token, teamId: team.id, limit: Self.pageSize, scope: scope, search: search,
-                archived: showArchived ? .only : .exclude, sort: sort
+                archived: showArchived ? .only : .exclude
             )
-            _ = await (favoritesLoad, runtimesLoad, sharedLoad)
+            _ = await (favoritesLoad, runtimesLoad)
             guard generation == loadGeneration else { return }
             conversations = page.rows
             nextCursor = page.nextCursor
@@ -425,23 +409,13 @@ final class AgentStore {
             phase = .loaded
             // A pinned chat stays on top however old it is, so page until each one is listed.
             for _ in 0..<10 where hasMore && search.isEmpty && !showArchived
-                && !Set(pinnedOrder).isSubset(of: (conversations + sharedConversations).map(\.sessionId)) {
+                && !Set(pinnedOrder).isSubset(of: conversations.map(\.sessionId)) {
                 await loadMore()
             }
         } catch {
             guard generation == loadGeneration else { return }
             phase = .failed(error.localizedDescription)
         }
-    }
-
-    /// One page of shared sessions, under the same filters as the list.
-    private func loadShared(team: Team, generation: Int) async {
-        guard scope == .mine else { sharedConversations = []; return }
-        guard let page = try? await NuphosAPI.conversations(
-            token: token, teamId: team.id, limit: 100, scope: .shared, search: search,
-            archived: showArchived ? .only : .exclude, sort: sort
-        ), generation == loadGeneration else { return }
-        sharedConversations = page.rows
     }
 
     /// Next page, appended. Rows can repeat across pages because the cursor
@@ -455,7 +429,7 @@ final class AgentStore {
         do {
             let page = try await NuphosAPI.conversations(
                 token: token, teamId: team.id, cursor: cursor, limit: Self.pageSize, scope: scope, search: search,
-                archived: showArchived ? .only : .exclude, sort: sort
+                archived: showArchived ? .only : .exclude
             )
             guard generation == loadGeneration else { return }
             if !loadedPageCursors.contains(cursor) { loadedPageCursors.append(cursor) }
@@ -528,17 +502,15 @@ final class AgentStore {
         await refreshFirstPage()
     }
 
-    /// At most three requests per tick: page one, shared sessions and one
-    /// rotating loaded page.
+    /// At most two requests per tick: page one and one rotating loaded page.
     /// Scrolling increases the rotation interval, never the request burst size.
     private func refreshFirstPage() async {
         guard let team = selectedTeam else { return }
         let generation = loadGeneration
         guard let page = try? await NuphosAPI.conversations(
             token: token, teamId: team.id, limit: Self.pageSize, scope: scope, search: search,
-            archived: showArchived ? .only : .exclude, sort: sort
+            archived: showArchived ? .only : .exclude
         ), generation == loadGeneration, !Task.isCancelled else { return }
-        await loadShared(team: team, generation: generation)
         conversations = conversations.refreshed(firstPage: page.rows)
         if loadedPageCursors.isEmpty, !isLoadingMore, conversations.count <= page.rows.count {
             nextCursor = page.nextCursor
@@ -549,7 +521,7 @@ final class AgentStore {
         refreshPageIndex = (refreshPageIndex + 1) % loadedPageCursors.count
         guard let background = try? await NuphosAPI.conversations(
             token: token, teamId: team.id, cursor: cursor, limit: Self.pageSize, scope: scope, search: search,
-            archived: showArchived ? .only : .exclude, sort: sort
+            archived: showArchived ? .only : .exclude
         ), generation == loadGeneration, !Task.isCancelled else { return }
         let fresh = Dictionary(background.rows.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         conversations = conversations.map { fresh[$0.sessionId] ?? $0 }
