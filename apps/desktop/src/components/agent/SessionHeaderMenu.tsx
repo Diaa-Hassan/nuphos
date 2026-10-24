@@ -17,6 +17,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { api } from '../../api'
 import { emptyNavigation, pageLocationForNavigation } from '../../lib/appRoutes'
+import { toggleChatSummary, useChatSummaryOpen } from '../../lib/chatSummaryPanel'
 import { copyLinkWithFeedback } from '../../lib/copyLink'
 import { sessionShortcutCombo } from '../../lib/sessionShortcuts'
 import {
@@ -41,6 +42,7 @@ import { toast } from '../ui/toast'
 import { Tooltip } from '../ui/tooltip'
 
 import { agentSessionUrl } from './sessionUrl'
+import { SummaryIcon } from './summary/ChatSummaryToggle'
 import { useArchiveSession } from './useArchiveSession'
 
 type Props = {
@@ -61,6 +63,8 @@ type Props = {
   canFork: boolean
   /** Closes this pane of a split window, as ⌘W does; absent when it is the only pane. */
   onClosePane?: () => void
+  /** The pane is too narrow for the summary button, so the menu offers it. */
+  summaryInMenu?: boolean
 }
 
 function findPin(userId: string, teamId: string, sessionId: string) {
@@ -96,8 +100,10 @@ export function SessionHeaderMenu({
   onFork,
   canFork,
   onClosePane,
+  summaryInMenu = false,
 }: Props) {
   const { archiving, archive } = useArchiveSession({ sessionId, teamId, title })
+  const summaryOpen = useChatSummaryOpen()
   const pin = useSessionPin(userId, teamId, sessionId)
   // What the server said when the chat opened; a toggle here wins after that.
   const [toggled, setToggled] = useState<boolean | undefined>(undefined)
@@ -185,6 +191,18 @@ export function SessionHeaderMenu({
         </MenuTrigger>
       </Tooltip>
       <MenuContent align="end" className="w-max min-w-[200px]">
+        {summaryInMenu && (
+          <>
+            <MenuItem
+              icon={<SummaryIcon />}
+              hint={<ShortcutHint combo="mod+i" className="pl-4" />}
+              onClick={toggleChatSummary}
+            >
+              {summaryOpen ? 'Hide agent summary' : 'Show agent summary'}
+            </MenuItem>
+            <MenuSeparator />
+          </>
+        )}
         {canRename && (
           <MenuItem
             icon={<Pencil className="h-3.5 w-3.5" />}
