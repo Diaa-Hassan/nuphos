@@ -29,11 +29,14 @@ function stillFresh(expiresAt: Date | null): boolean {
   return expiresAt === null || expiresAt.getTime() - 5 * 60_000 > Date.now()
 }
 
-/** The provider's token endpoint refused the grant, as opposed to a network or server error. */
+/**
+ * The provider's token endpoint refused the grant (e.g. Google `invalid_grant`,
+ * a revoked token), as opposed to a network error, a 5xx, or a rate limit.
+ */
 function refused(error: unknown): boolean {
   const status = (error as { status?: unknown } | null)?.status
 
-  return typeof status === 'number' && status >= 400 && status < 500
+  return typeof status === 'number' && status >= 400 && status < 500 && ![408, 429].includes(status)
 }
 
 async function refresh(doc: PersonalCredential): Promise<PersonalToken | null> {
