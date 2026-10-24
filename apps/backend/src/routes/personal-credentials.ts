@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 
+import { personalCredentialSubject } from '@/lib/claude-code-preview/mcp-token'
 import { desktopCallbackResponse } from '@/lib/desktop-callback-page'
 import { AppError } from '@/lib/errors'
 import { logError } from '@/lib/observability'
@@ -8,15 +9,17 @@ import {
   deletePersonalCredential,
   listPersonalCredentials,
   PERSONAL_CREDENTIAL_PROVIDERS,
+  personalGoogleToken,
   stagePersonalCredentialOAuth,
   startPersonalCredentialOAuth,
 } from '@/lib/personal-credentials'
+import { isGoogleProvider } from '@/lib/personal-credentials/google'
 import { requireAuth } from '@/middleware/auth'
 
 import type { AuthVariables } from '@/middleware/auth'
 import type { PersonalCredentialProvider } from '@/models'
 
-// A member's own GitHub / Linear grants. Only a signed-in user session reaches
+// A member's own GitHub / Linear / Google grants. Only a signed-in user session reaches
 // these: conversation tokens are not accepted by requireAuth, so an agent can
 // never start, list or remove a Personal Credential.
 export const personalCredentialRoutes = new Hono<{ Variables: AuthVariables }>()
@@ -84,4 +87,37 @@ personalCredentialRoutes.get('/:provider/callback', async (c) => {
 
     return back({ provider, error: error instanceof AppError ? error.code : 'exchange_failed' })
   }
+})
+
+// Mounted under /teams/:teamId for conversation tokens: the agent's Gmail /
+// Google Drive handout. It is the turn's member's own grant (the sender, or the
+// session owner for automated turns); there is no team token to fall back to.
+export const personalCredentialTokenRoutes = new Hono()
+
+personalCredentialTokenRoutes.get('/:provider/token', async (c) => {
+  const provider = c.req.param('provider')
+
+  if (!isGoogleProvider(provider)) {
+    throw new AppError(404, 'not_found', 'Unknown Personal Credential provider')
+  }
+  const subject = personalCredentialSubject(c.req.header('Authorization'))
+
+  if (!subject) {
+    throw new AppError(403, 'forbidden', 'Only an agent conversation can use this handout')
+  }
+  const personal = await personalGoogleToken(subject, provider)
+
+  if (!personal) {
+    throw new AppError(
+      404,
+      'personal_credential_not_connected',
+      `This member has not connected ${provider === 'gmail' ? 'Gmail' : 'Google Drive'}. They can connect it in Settings → Personal Credentials.`,
+    )
+  }
+
+  return c.json({
+    token: personal.token,
+    expiresAt: personal.expiresAt?.toISOString() ?? null,
+    login: personal.login,
+  })
 })

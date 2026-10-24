@@ -1,6 +1,8 @@
-// The agent's two credential handouts call personalGithubToken /
+// The agent's GitHub and Linear handouts call personalGithubToken /
 // personalLinearToken with the turn's sender and fall back to the team token
-// when they return null. Refreshes rotate the stored grant in place.
+// when they return null. Gmail and Google Drive have no team token: their
+// handout returns personalGoogleToken or nothing. Refreshes rotate the stored
+// grant in place.
 import { getConversationBySessionId } from '@/lib/agent/db'
 import { getDefaultClientCredentials } from '@/lib/byos/linear'
 import { refreshTokens } from '@/lib/byos/linear-oauth'
@@ -12,10 +14,12 @@ import { logError } from '@/lib/observability'
 import { personalCredentials } from '@/models'
 
 import { githubUserInstallationIds, refreshGithubToken } from './github'
+import { isGoogleProvider, refreshGoogleToken } from './google'
 import { open, seal } from './seal'
 
 import type { ProviderTokens } from './github'
-import type { PersonalCredential, PersonalCredentialProvider } from '@/models'
+import type { GoogleProvider } from './google'
+import type { PersonalCredential } from '@/models'
 
 export type PersonalToken = { token: string; expiresAt: Date | null; login: string }
 
@@ -33,6 +37,8 @@ async function refresh(doc: PersonalCredential): Promise<PersonalToken | null> {
   try {
     if (doc.provider === 'github') {
       tokens = await refreshGithubToken(refreshToken)
+    } else if (isGoogleProvider(doc.provider)) {
+      tokens = await refreshGoogleToken(refreshToken)
     } else {
       const client = getDefaultClientCredentials()
 
@@ -128,13 +134,23 @@ export async function personalLinearToken(
   return doc ? currentToken(doc) : null
 }
 
+/** The member's own Gmail or Google Drive token, when they connected it. */
+export async function personalGoogleToken(
+  userId: string,
+  provider: GoogleProvider,
+): Promise<PersonalToken | null> {
+  const doc = await personalCredentials().findOne({ userId, provider })
+
+  return doc ? currentToken(doc) : null
+}
+
 /**
  * The member whose Personal Credential this handout uses, or null for the team
  * identity: the agent asked for it (`identity=team`), or the conversation's
  * credential selection has the team act for this provider.
  */
 export async function personalCredentialSubjectFor(
-  provider: PersonalCredentialProvider,
+  provider: 'github' | 'linear',
   authorization: string | undefined,
   identity?: string,
 ): Promise<string | null> {

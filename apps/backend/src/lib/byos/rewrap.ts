@@ -1,7 +1,9 @@
 import { sealers } from '@/lib/byos/secrets'
+import { sealerOf } from '@/lib/personal-credentials/seal'
 import { personalCredentials, teamByosBindings } from '@/models'
 
 import type { EncryptedSecret, SealerName } from '@/lib/byos/secrets'
+import type { PersonalCredentialProvider } from '@/models'
 import type { Collection, Document } from 'mongodb'
 
 /** The sealer for the envelopes in each team_byos_bindings array. */
@@ -143,7 +145,9 @@ export async function rewrapByokSecrets(options: {
     personal_credentials: await rewrapCollection(
       personalCredentials() as unknown as Collection,
       (doc) => (field) =>
-        field.startsWith('encrypted') ? (doc.provider as SealerName) : undefined,
+        field.startsWith('encrypted')
+          ? sealerOf(doc.provider as PersonalCredentialProvider)
+          : undefined,
       options.dryRun,
     ),
   }

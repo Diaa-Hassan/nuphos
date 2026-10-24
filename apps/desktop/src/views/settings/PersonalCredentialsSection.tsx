@@ -25,6 +25,16 @@ const PROVIDERS: { provider: PersonalCredentialProvider; name: string; descripti
     name: 'Linear',
     description: 'Linear issues and comments are authored by you instead of the team’s Linear app.',
   },
+  {
+    provider: 'gmail',
+    name: 'Gmail',
+    description: 'Let the agent read, label, draft and send mail in your own inbox.',
+  },
+  {
+    provider: 'google-drive',
+    name: 'Google Drive',
+    description: 'Let the agent find, read and save files in your own Google Drive.',
+  },
 ]
 
 export function PersonalCredentialsSection() {
@@ -169,7 +179,11 @@ export function PersonalCredentialsSection() {
       <ConfirmDialog
         open={disconnecting !== null}
         title={`Disconnect ${disconnecting ? nameOf(disconnecting) : ''}`}
-        description="Your messages will use the team’s credentials again. The grant is also revoked at the provider."
+        description={
+          disconnecting === 'github' || disconnecting === 'linear'
+            ? 'Your messages will use the team’s credentials again. The grant is also revoked at the provider.'
+            : 'The agent will no longer have access. Google revokes the grant once neither Gmail nor Google Drive is connected.'
+        }
         confirmLabel="Disconnect"
         destructive
         onConfirm={() => (disconnecting ? disconnect(disconnecting) : undefined)}

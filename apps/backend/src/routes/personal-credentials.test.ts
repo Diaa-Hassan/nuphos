@@ -2,12 +2,13 @@ import { afterAll, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { Hono } from 'hono'
 
 import { config } from '@/config'
+import { mintPreviewMcpToken } from '@/lib/claude-code-preview/mcp-token'
 import { AppError } from '@/lib/errors'
 import { useAuthMiddleware } from '@/lib/test/doubles/auth-middleware'
 import { useByosSecrets } from '@/lib/test/doubles/byos-secrets'
 import { useModels } from '@/lib/test/doubles/models'
 
-import { personalCredentialRoutes } from './personal-credentials'
+import { personalCredentialRoutes, personalCredentialTokenRoutes } from './personal-credentials'
 
 import type { EncryptedSecret } from '@/lib/byos/secrets'
 import type { AuthVariables } from '@/middleware/auth'
@@ -23,6 +24,7 @@ function matches(doc: Doc, filter: Doc): boolean {
     if (value && typeof value === 'object' && !(value instanceof Date)) {
       if ('$exists' in value) return (doc[key] !== undefined) === value.$exists
       if ('$gt' in value) return (doc[key] as Date) > (value.$gt as Date)
+      if ('$in' in value) return (value.$in as unknown[]).includes(doc[key])
     }
 
     return doc[key] === value
@@ -36,6 +38,9 @@ function collection(rows: Doc[]) {
 
       return Promise.resolve({ acknowledged: true })
     },
+    findOne: (filter: Doc) => Promise.resolve(rows.find((doc) => matches(doc, filter)) ?? null),
+    countDocuments: (filter: Doc) =>
+      Promise.resolve(rows.filter((doc) => matches(doc, filter)).length),
     findOneAndDelete: (filter: Doc) => {
       const index = rows.findIndex((doc) => matches(doc, filter))
 
@@ -77,6 +82,7 @@ useAuthMiddleware({
 const saveConfig = {
   github: { ...config.byos.github },
   linear: { ...config.byos.linear },
+  google: { ...config.auth.google },
   publicBackendUrl: config.agent.publicBackendUrl,
 }
 
@@ -96,7 +102,9 @@ Object.assign(config.byos.linear, {
   setupRedirect: 'https://elsewhere.test/linear-app/setup',
   encryptionKey: 'k',
 })
+Object.assign(config.auth.google, { clientId: 'google-client', clientSecret: 'google-secret' })
 afterAll(() => {
+  Object.assign(config.auth.google, saveConfig.google)
   Object.assign(config.byos.github, saveConfig.github)
   Object.assign(config.byos.linear, saveConfig.linear)
   Object.assign(config.agent, { publicBackendUrl: saveConfig.publicBackendUrl })
@@ -104,6 +112,7 @@ afterAll(() => {
 
 // Each provider's token exchange and identity lookup, answered for the approver.
 const fetchSpy = spyOn(globalThis, 'fetch')
+const revoked: string[] = []
 
 afterAll(() => fetchSpy.mockRestore())
 fetchSpy.mockImplementation(((input: string | URL | Request) => {
@@ -125,6 +134,18 @@ fetchSpy.mockImplementation(((input: string | URL | Request) => {
         },
       }),
     )
+
+  if (url.includes('oauth2.googleapis.com/token'))
+    return Promise.resolve(
+      Response.json({ access_token: 'ya29_v', refresh_token: 'g_refresh', expires_in: 3599 }),
+    )
+  if (url.includes('googleapis.com/oauth2/v2/userinfo'))
+    return Promise.resolve(Response.json({ id: 'g9', email: 'victim' }))
+  if (url.includes('oauth2.googleapis.com/revoke')) {
+    revoked.push(url)
+
+    return Promise.resolve(new Response(null, { status: 200 }))
+  }
 
   return Promise.reject(new Error(`unexpected fetch ${url}`))
 }) as typeof fetch)
@@ -176,54 +197,165 @@ function complete(provider: string, userId: string, state: string, code: string)
 beforeEach(() => {
   pending.length = 0
   saved.length = 0
+  revoked.length = 0
 })
 
-describe.each(['github', 'linear'])('%s Personal Credential OAuth', (provider) => {
-  test('the starter claims the staged grant with the callback code', async () => {
-    const state = await start(provider, 'alice')
-    const link = await callback(provider, state)
+describe.each(['github', 'linear', 'gmail', 'google-drive'])(
+  '%s Personal Credential OAuth',
+  (provider) => {
+    test('the starter claims the staged grant with the callback code', async () => {
+      const state = await start(provider, 'alice')
+      const link = await callback(provider, state)
 
-    expect(link.protocol).toBe('nuphos:')
-    expect(saved).toHaveLength(0)
-    const res = await complete(provider, 'alice', state, link.searchParams.get('code') ?? '')
+      expect(link.protocol).toBe('nuphos:')
+      expect(saved).toHaveLength(0)
+      const res = await complete(provider, 'alice', state, link.searchParams.get('code') ?? '')
+
+      expect(res.status).toBe(200)
+      expect(saved).toMatchObject([{ userId: 'alice', provider, login: 'victim' }])
+    })
+
+    test('another member cannot claim a grant someone else started', async () => {
+      const state = await start(provider, 'attacker')
+      const link = await callback(provider, state)
+      const code = link.searchParams.get('code') ?? ''
+
+      // The victim's app holds the code but did not start the flow.
+      expect((await complete(provider, 'victim', state, code)).status).toBe(404)
+      // The starter never receives the code, and guessing it fails.
+      expect((await complete(provider, 'attacker', state, 'guessed')).status).toBe(404)
+      expect(saved).toHaveLength(0)
+    })
+
+    test('a claim and a callback are single-use', async () => {
+      const state = await start(provider, 'alice')
+      const link = await callback(provider, state)
+      const code = link.searchParams.get('code') ?? ''
+
+      expect((await callback(provider, state)).searchParams.get('error')).toBe('invalid_state')
+      expect((await complete(provider, 'alice', state, code)).status).toBe(200)
+      expect((await complete(provider, 'alice', state, code)).status).toBe(404)
+    })
+
+    test('an expired request or staged grant is refused', async () => {
+      const state = await start(provider, 'alice')
+
+      pending[0]!.expiresAt = new Date(Date.now() - 1000)
+      expect((await callback(provider, state)).searchParams.get('error')).toBe('invalid_state')
+
+      const fresh = await start(provider, 'alice')
+      const code = (await callback(provider, fresh)).searchParams.get('code') ?? ''
+
+      pending.find((doc) => doc._id === fresh)!.expiresAt = new Date(Date.now() - 1000)
+      expect((await complete(provider, 'alice', fresh, code)).status).toBe(404)
+      expect(saved).toHaveLength(0)
+    })
+  },
+)
+
+describe('Google Personal Credentials', () => {
+  test('each provider asks Google for its own scope with offline access', async () => {
+    for (const [provider, scope] of [
+      ['gmail', 'https://www.googleapis.com/auth/gmail.modify'],
+      ['google-drive', 'https://www.googleapis.com/auth/drive'],
+    ] as const) {
+      const res = await app.request(`/personal-credentials/${provider}/start`, {
+        method: 'POST',
+        headers: { 'x-test-user': 'alice' },
+      })
+      const url = new URL(((await res.json()) as { authorizeUrl: string }).authorizeUrl)
+
+      expect(url.searchParams.get('scope')).toBe(`openid email ${scope}`)
+      expect(url.searchParams.get('access_type')).toBe('offline')
+      expect(url.searchParams.get('code_challenge_method')).toBe('S256')
+    }
+  })
+
+  test('disconnecting revokes at Google only once no Google grant remains', async () => {
+    saved.push(googleGrant('alice', 'gmail', 'mail'), googleGrant('alice', 'google-drive', 'drive'))
+    expect((await disconnect('gmail')).status).toBe(204)
+    expect(revoked).toHaveLength(0)
+    expect((await disconnect('google-drive')).status).toBe(204)
+    expect(revoked).toHaveLength(1)
+  })
+})
+
+const disconnect = (provider: string) =>
+  app.request(`/personal-credentials/${provider}`, {
+    method: 'DELETE',
+    headers: { 'x-test-user': 'alice' },
+  })
+
+function googleGrant(userId: string, provider: string, token: string): Doc {
+  return {
+    userId,
+    provider,
+    login: `${userId}@example.com`,
+    encryptedAccessToken: fakeSeal(token),
+    encryptedRefreshToken: fakeSeal(`${token}-refresh`),
+    accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  }
+}
+
+/** A turn in conv-1, owned by `owner`. */
+const turn = (actor: string, humanTurn: boolean) =>
+  mintPreviewMcpToken({
+    userId: actor,
+    conversationOwnerUserId: 'owner',
+    sessionId: 'conv-1',
+    teamId: 'team-1',
+    humanTurn,
+  })
+
+describe('Google token handout', () => {
+  const handout = new Hono()
+
+  handout.onError((error, c) =>
+    error instanceof AppError
+      ? c.json({ code: error.code }, error.status as 400)
+      : c.json({ code: 'internal' }, 500),
+  )
+  handout.route('/personal-credentials', personalCredentialTokenRoutes)
+
+  const fetchToken = (provider: string, token?: string) =>
+    handout.request(`/personal-credentials/${provider}/token`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    })
+
+  beforeEach(() => {
+    saved.push(
+      googleGrant('owner', 'gmail', 'owner-mail'),
+      googleGrant('teammate', 'gmail', 'teammate-mail'),
+    )
+  })
+
+  test('a member’s turn gets the sender’s own token', async () => {
+    const res = await fetchToken('gmail', turn('teammate', true))
 
     expect(res.status).toBe(200)
-    expect(saved).toMatchObject([{ userId: 'alice', provider, login: 'victim' }])
+    expect(await res.json()).toMatchObject({
+      token: 'teammate-mail',
+      login: 'teammate@example.com',
+    })
   })
 
-  test('another member cannot claim a grant someone else started', async () => {
-    const state = await start(provider, 'attacker')
-    const link = await callback(provider, state)
-    const code = link.searchParams.get('code') ?? ''
+  test('an automated turn gets the session owner’s token', async () => {
+    const res = await fetchToken('gmail', turn('teammate', false))
 
-    // The victim's app holds the code but did not start the flow.
-    expect((await complete(provider, 'victim', state, code)).status).toBe(404)
-    // The starter never receives the code, and guessing it fails.
-    expect((await complete(provider, 'attacker', state, 'guessed')).status).toBe(404)
-    expect(saved).toHaveLength(0)
+    expect(await res.json()).toMatchObject({ token: 'owner-mail' })
   })
 
-  test('a claim and a callback are single-use', async () => {
-    const state = await start(provider, 'alice')
-    const link = await callback(provider, state)
-    const code = link.searchParams.get('code') ?? ''
+  test('404 when the member has not connected the provider', async () => {
+    const res = await fetchToken('google-drive', turn('owner', true))
 
-    expect((await callback(provider, state)).searchParams.get('error')).toBe('invalid_state')
-    expect((await complete(provider, 'alice', state, code)).status).toBe(200)
-    expect((await complete(provider, 'alice', state, code)).status).toBe(404)
+    expect(res.status).toBe(404)
+    expect(await res.json()).toEqual({ code: 'personal_credential_not_connected' })
   })
 
-  test('an expired request or staged grant is refused', async () => {
-    const state = await start(provider, 'alice')
-
-    pending[0]!.expiresAt = new Date(Date.now() - 1000)
-    expect((await callback(provider, state)).searchParams.get('error')).toBe('invalid_state')
-
-    const fresh = await start(provider, 'alice')
-    const code = (await callback(provider, fresh)).searchParams.get('code') ?? ''
-
-    pending.find((doc) => doc._id === fresh)!.expiresAt = new Date(Date.now() - 1000)
-    expect((await complete(provider, 'alice', fresh, code)).status).toBe(404)
-    expect(saved).toHaveLength(0)
+  test('only conversation tokens, and only Google providers', async () => {
+    expect((await fetchToken('gmail')).status).toBe(403)
+    expect((await fetchToken('github', turn('owner', true))).status).toBe(404)
   })
 })

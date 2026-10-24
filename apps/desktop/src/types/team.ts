@@ -12,7 +12,7 @@ export type UserInfo = {
 
 export type AuthStatus = { loggedIn: false } | { loggedIn: true; user: UserInfo; token: string }
 
-export type PersonalCredentialProvider = 'github' | 'linear'
+export type PersonalCredentialProvider = 'github' | 'linear' | 'gmail' | 'google-drive'
 
 export type PersonalCredential = {
   provider: PersonalCredentialProvider

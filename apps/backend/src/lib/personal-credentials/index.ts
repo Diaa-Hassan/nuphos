@@ -1,4 +1,4 @@
-// Personal Credentials: a member's own GitHub / Linear grant. Connect,
+// Personal Credentials: a member's own GitHub / Linear / Google grant. Connect,
 // list and disconnect live here; the agent-facing handout is in ./handout.
 import { createHash, randomBytes } from 'node:crypto'
 
@@ -9,16 +9,11 @@ import { getDefaultClientCredentials, getViewer } from '@/lib/byos/linear'
 import { buildAuthorizeUrl, exchangeCodeForTokens } from '@/lib/byos/linear-oauth'
 import { publicBackendUrl } from '@/lib/claude-code-preview/runtime-backend-url'
 import { AppError } from '@/lib/errors'
-import { logError } from '@/lib/observability'
 import { personalCredentialPendingOAuth, personalCredentials } from '@/models'
 
-import {
-  exchangeGithubCode,
-  getGithubUser,
-  githubAuthorizeUrl,
-  githubOAuthClient,
-  revokeGithubToken,
-} from './github'
+import { GOOGLE_PROVIDERS, isGoogleProvider } from './google'
+import { pkceFlow } from './pkce'
+import { revokeQuietly } from './revoke'
 import { open, seal } from './seal'
 
 import type { ProviderTokens } from './github'
@@ -26,9 +21,15 @@ import type { PersonalCredential, PersonalCredentialProvider } from '@/models'
 
 const PENDING_TTL_MS = 10 * 60 * 1000
 const LINEAR_SCOPE = 'read,write'
-const LINEAR_REVOKE_URL = 'https://api.linear.app/oauth/revoke'
 
-export const PERSONAL_CREDENTIAL_PROVIDERS = ['github', 'linear'] as const
+export const PERSONAL_CREDENTIAL_PROVIDERS = ['github', 'linear', ...GOOGLE_PROVIDERS] as const
+
+const NAMES: Record<PersonalCredentialProvider, string> = {
+  github: 'GitHub',
+  linear: 'Linear',
+  gmail: 'Gmail',
+  'google-drive': 'Google Drive',
+}
 
 /** The callback is on the backend's public origin (NUPHOS_PUBLIC_BACKEND_URL). */
 function callbackUrl(provider: PersonalCredentialProvider): string | null {
@@ -43,7 +44,7 @@ function notConfigured(provider: PersonalCredentialProvider): AppError {
   return new AppError(
     503,
     'personal_credential_not_configured',
-    `Personal Credentials for ${provider === 'github' ? 'GitHub' : 'Linear'} are not configured on this server`,
+    `Personal Credentials for ${NAMES[provider]} are not configured on this server`,
   )
 }
 
@@ -77,11 +78,12 @@ export async function startPersonalCredentialOAuth(
   const state = randomBytes(24).toString('base64url')
   const expiresAt = new Date(Date.now() + PENDING_TTL_MS)
 
-  if (provider === 'github') {
-    const client = githubOAuthClient()
+  const flow = pkceFlow(provider)
 
-    if (!client || !redirectUri || !config.byos.github.encryptionKey) throw notConfigured(provider)
+  if (flow) {
+    if (!flow.client || !redirectUri || !flow.key) throw notConfigured(provider)
     const verifier = randomBytes(32).toString('base64url')
+    const codeChallenge = createHash('sha256').update(verifier).digest('base64url')
 
     await personalCredentialPendingOAuth().insertOne({
       _id: state,
@@ -93,11 +95,11 @@ export async function startPersonalCredentialOAuth(
 
     return {
       state,
-      authorizeUrl: githubAuthorizeUrl({
-        clientId: client.clientId,
+      authorizeUrl: flow.authorizeUrl({
+        clientId: flow.client.clientId,
         redirectUri,
         state,
-        codeChallenge: createHash('sha256').update(verifier).digest('base64url'),
+        codeChallenge,
       }),
     }
   }
@@ -152,17 +154,19 @@ export async function stagePersonalCredentialOAuth(
   let tokens: ProviderTokens
   let identity: Identity
 
-  if (provider === 'github') {
-    const client = githubOAuthClient()
+  const flow = pkceFlow(provider)
 
-    if (!client || !redirectUri || !pending.encryptedCodeVerifier) throw notConfigured(provider)
-    tokens = await exchangeGithubCode({
-      ...client,
+  if (flow) {
+    if (!flow.client || !redirectUri || !pending.encryptedCodeVerifier) {
+      throw notConfigured(provider)
+    }
+    tokens = await flow.exchange({
+      ...flow.client,
       code,
       redirectUri,
       codeVerifier: open(provider, pending.encryptedCodeVerifier),
     })
-    const user = await getGithubUser(tokens.accessToken)
+    const user = await flow.user(tokens.accessToken)
 
     identity = { providerUserId: user.id, login: user.login }
   } else {
@@ -226,7 +230,8 @@ export async function claimPersonalCredential(
     { upsert: true, returnDocument: 'before' },
   )
 
-  if (previous) void revokeQuietly(previous)
+  // Revoking a replaced Google token would revoke the new grant with it.
+  if (previous && !isGoogleProvider(provider)) void revokeQuietly(previous)
 
   return {
     provider,
@@ -240,35 +245,37 @@ function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex')
 }
 
-async function revokeAtProvider(doc: PersonalCredential): Promise<void> {
-  const token = open(doc.provider, doc.encryptedAccessToken)
-
-  if (doc.provider === 'github') return revokeGithubToken(token)
-  await fetch(LINEAR_REVOKE_URL, {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(10_000),
-  })
-}
-
-function revokeQuietly(doc: PersonalCredential): Promise<void> {
-  return revokeAtProvider(doc).catch((error: unknown) => {
-    logError('personal_credential.revoke_failed', error, { provider: doc.provider })
-  })
-}
-
 export async function deletePersonalCredential(
   userId: string,
   provider: PersonalCredentialProvider,
 ): Promise<void> {
   const doc = await personalCredentials().findOneAndDelete({ userId, provider })
 
-  if (doc) await revokeQuietly(doc)
+  if (!doc) return
+  // One Google revoke ends both Google grants, so keep it while another remains.
+  if (
+    isGoogleProvider(provider) &&
+    (await personalCredentials().countDocuments({
+      userId,
+      provider: { $in: [...GOOGLE_PROVIDERS] },
+    }))
+  ) {
+    return
+  }
+  await revokeQuietly(doc)
 }
 
 export async function deleteAllPersonalCredentials(userId: string): Promise<void> {
-  await Promise.all(PERSONAL_CREDENTIAL_PROVIDERS.map((p) => deletePersonalCredential(userId, p)))
+  // In turn, so the last Google grant still sees it is the last and revokes.
+  for (const provider of PERSONAL_CREDENTIAL_PROVIDERS) {
+    await deletePersonalCredential(userId, provider)
+  }
 }
 
-export { personalCredentialSubjectFor, personalGithubToken, personalLinearToken } from './handout'
+export {
+  personalCredentialSubjectFor,
+  personalGithubToken,
+  personalGoogleToken,
+  personalLinearToken,
+} from './handout'
 export type { PersonalToken } from './handout'
