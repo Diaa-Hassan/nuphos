@@ -22,15 +22,6 @@ final class AgentStore {
     private(set) var hasMore = false
     private var nextCursor: String?
 
-    var scope: NuphosAPI.ConversationScope = .mine {
-        didSet { if scope != oldValue { Task { await reload() } } }
-    }
-    /// Archived chats only (the default list excludes them; the backend
-    /// auto-archives idle chats after a week).
-    var showArchived = false {
-        didSet { if showArchived != oldValue { Task { await reload() } } }
-    }
-
     // MARK: - Pinned chats (sidebar favorites)
 
     private(set) var favorites: SidebarFavorites?
@@ -74,10 +65,10 @@ final class AgentStore {
 
     // MARK: - Archive
 
-    func setArchived(_ archived: Bool, conversation: AgentConversation) async {
+    func archive(_ conversation: AgentConversation) async {
         guard conversation.canManage, let teamId = conversation.teamId ?? selectedTeam?.id else { return }
         do {
-            try await AgentChatAPI.setArchived(token: token, teamId: teamId, sessionId: conversation.sessionId, archived: archived)
+            try await AgentChatAPI.setArchived(token: token, teamId: teamId, sessionId: conversation.sessionId, archived: true)
             removeFromList(conversation.sessionId)
         } catch {
             phase = .failed(error.localizedDescription)
@@ -97,7 +88,7 @@ final class AgentStore {
         }
     }
 
-    /// Drops a chat that left this list (archived or restored). The poller
+    /// Drops a chat that was archived. The poller
     /// keeps rows its first page misses, so it would not drop it; reads
     /// already in flight are discarded so they cannot bring it back. Before
     /// the list has loaded, the discarded read is the load itself, so start
@@ -293,7 +284,7 @@ final class AgentStore {
     /// The viewer's own sessions whose title or first message contains
     /// `query`, newest first, other than `excluded` — what an `@` offers.
     func mentionableSessions(teamId: String, excluding excluded: String?, matching query: String) async -> [AgentConversation] {
-        guard let page = try? await NuphosAPI.conversations(token: token, teamId: teamId, limit: 6, scope: .mine, search: query) else { return [] }
+        guard let page = try? await NuphosAPI.conversations(token: token, teamId: teamId, limit: 6, search: query) else { return [] }
         return Array(page.conversations.filter { $0.sessionId != excluded }.prefix(5))
     }
 
@@ -398,8 +389,7 @@ final class AgentStore {
 
         do {
             let page = try await NuphosAPI.conversations(
-                token: token, teamId: team.id, limit: Self.pageSize, scope: scope, search: search,
-                archived: showArchived ? .only : .exclude
+                token: token, teamId: team.id, limit: Self.pageSize, search: search
             )
             _ = await (favoritesLoad, runtimesLoad)
             guard generation == loadGeneration else { return }
@@ -408,7 +398,7 @@ final class AgentStore {
             hasMore = page.hasMore
             phase = .loaded
             // A pinned chat stays on top however old it is, so page until each one is listed.
-            for _ in 0..<10 where hasMore && search.isEmpty && !showArchived
+            for _ in 0..<10 where hasMore && search.isEmpty
                 && !Set(pinnedOrder).isSubset(of: conversations.map(\.sessionId)) {
                 await loadMore()
             }
@@ -428,8 +418,7 @@ final class AgentStore {
 
         do {
             let page = try await NuphosAPI.conversations(
-                token: token, teamId: team.id, cursor: cursor, limit: Self.pageSize, scope: scope, search: search,
-                archived: showArchived ? .only : .exclude
+                token: token, teamId: team.id, cursor: cursor, limit: Self.pageSize, search: search
             )
             guard generation == loadGeneration else { return }
             if !loadedPageCursors.contains(cursor) { loadedPageCursors.append(cursor) }
@@ -508,8 +497,7 @@ final class AgentStore {
         guard let team = selectedTeam else { return }
         let generation = loadGeneration
         guard let page = try? await NuphosAPI.conversations(
-            token: token, teamId: team.id, limit: Self.pageSize, scope: scope, search: search,
-            archived: showArchived ? .only : .exclude
+            token: token, teamId: team.id, limit: Self.pageSize, search: search
         ), generation == loadGeneration, !Task.isCancelled else { return }
         conversations = conversations.refreshed(firstPage: page.rows)
         if loadedPageCursors.isEmpty, !isLoadingMore, conversations.count <= page.rows.count {
@@ -520,8 +508,7 @@ final class AgentStore {
         let cursor = loadedPageCursors[refreshPageIndex % loadedPageCursors.count]
         refreshPageIndex = (refreshPageIndex + 1) % loadedPageCursors.count
         guard let background = try? await NuphosAPI.conversations(
-            token: token, teamId: team.id, cursor: cursor, limit: Self.pageSize, scope: scope, search: search,
-            archived: showArchived ? .only : .exclude
+            token: token, teamId: team.id, cursor: cursor, limit: Self.pageSize, search: search
         ), generation == loadGeneration, !Task.isCancelled else { return }
         let fresh = Dictionary(background.rows.map { ($0.sessionId, $0) }, uniquingKeysWith: { first, _ in first })
         conversations = conversations.map { fresh[$0.sessionId] ?? $0 }

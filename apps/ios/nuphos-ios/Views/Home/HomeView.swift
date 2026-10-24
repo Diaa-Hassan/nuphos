@@ -62,11 +62,6 @@ struct HomeView: View {
                         }
                     }
                     ToolbarSpacer(.fixed, placement: .topBarTrailing)
-                    ToolbarItem(placement: .topBarTrailing) {
-                        FilterMenu()
-                            .environment(store)
-                    }
-                    ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 }
                 if page == .plans, let plans {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -201,29 +196,6 @@ struct HomeView: View {
             }
             .background(Theme.canvas)
             .onAppear { titleCollapsed = false }
-        }
-    }
-}
-
-/// Which conversations the Agent list shows.
-private struct FilterMenu: View {
-    @Environment(AgentStore.self) private var store
-
-    var body: some View {
-        @Bindable var store = store
-        Menu {
-            Picker("Show", selection: $store.scope) {
-                Label("My agents", systemImage: "person").tag(NuphosAPI.ConversationScope.mine)
-                Label("Team agents", systemImage: "person.2").tag(NuphosAPI.ConversationScope.team)
-            }
-            .pickerStyle(.inline)
-            Toggle(isOn: $store.showArchived) {
-                Label("Archived", systemImage: "archivebox")
-            }
-        } label: {
-            Label("Filter agents", systemImage: store.scope == .mine && !store.showArchived
-                  ? "line.3.horizontal.decrease"
-                  : "line.3.horizontal.decrease.circle.fill")
         }
     }
 }
