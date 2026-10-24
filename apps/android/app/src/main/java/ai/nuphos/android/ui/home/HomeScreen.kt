@@ -237,6 +237,7 @@ fun HomeRoute(
             val target = notifications.pending.take(notificationAuth.user?.id, agentStore.selectedTeam?.id, notificationAuth.aiAllowed)
             if (target != null) nav.navigate("conversation/${android.net.Uri.encode(target.sessionId)}") { launchSingleTop = true }
         }
+        ai.nuphos.android.ui.chat.IncomingShareSheet(nav)
         val entry by nav.currentBackStackEntryAsState()
         val showingDetail = entry?.destination?.route?.let { it != "home" } == true
         val info = currentWindowAdaptiveInfoV2()
@@ -321,6 +322,11 @@ fun HomeScreen(
     val store = LocalAgentStore.current
     val plans = LocalPlansStore.current
     var page by rememberSaveable { mutableStateOf(HomePage.Agent.route) }
+    val shares = (LocalContext.current.applicationContext as ai.nuphos.android.NuphosApplication).incomingShares
+    val shared by shares.state.collectAsState()
+    LaunchedEffect(shared?.id, shared?.destination) {
+        if (shared?.destination?.destination == ai.nuphos.android.session.ComposerDrafts.Destination.NewChat) page = HomePage.Agent.route
+    }
     val current = HomePage.fromRoute(page)
     var searching by rememberSaveable { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }

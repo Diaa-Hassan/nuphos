@@ -35,6 +35,7 @@ fun NuphosRoot(auth: AuthSession) {
         if (auth.state !is AuthSession.State.Restoring)
             app.pushNotifications.sync(auth.user?.id, auth.token, auth.aiAllowed)
         notifications.onIdentity(auth.user?.id, auth.state is AuthSession.State.SignedOut)
+        auth.user?.id?.let { app.incomingShares.bindAccount(it) }
         if (auth.state is AuthSession.State.SignedIn && auth.aiAllowed) host?.requestNotificationPermission()
     }
     CompositionLocalProvider(LocalAuthSession provides auth) {

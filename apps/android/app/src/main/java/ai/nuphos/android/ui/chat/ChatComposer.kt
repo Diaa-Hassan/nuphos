@@ -81,6 +81,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.material3.Text
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -245,13 +246,19 @@ fun ChatComposer(
             if (currentCoroutineContext().isActive) devicesLoading = false
         }
     }
-    val attachments = remember(draft) { mutableStateListOf<ComposerAttachment>() }
+    val context = LocalContext.current
+    val incomingShares = (context.applicationContext as ai.nuphos.android.NuphosApplication).incomingShares
+    val attachments = remember(draft) {
+        mutableStateListOf<ComposerAttachment>().apply { draft?.key?.let { addAll(incomingShares.attachments(it)) } }
+    }
     var attachmentJob by remember(draft) { mutableStateOf<Job?>(null) }
     DisposableEffect(draft, attachments) {
         onDispose {
             attachmentJob?.cancel()
             // Successful Send clears this list after ownership moves to the session.
-            attachments.forEach { it.releaseOwnedCopy() }
+            attachments.forEach { attachment ->
+                if (draft?.key?.let { incomingShares.owns(it, attachment.id) } != true) attachment.releaseOwnedCopy()
+            }
             attachments.clear()
         }
     }
@@ -261,7 +268,6 @@ fun ChatComposer(
     var showMode by remember { mutableStateOf(false) }
     var collapsedByUser by remember { mutableStateOf(false) }
     var handleDrag by remember { mutableFloatStateOf(0f) }
-    val context = LocalContext.current
     val focusManager = LocalFocusManager.current
     val keyboard = LocalSoftwareKeyboardController.current
     val injectedVoice = LocalVoiceServices.current
@@ -372,6 +378,25 @@ fun ChatComposer(
         }
     }
 
+    val incomingShare by incomingShares.state.collectAsState()
+    LaunchedEffect(incomingShare, draft, draftingEnabled, store.selectedTeam?.id) {
+        val shared = incomingShare ?: return@LaunchedEffect
+        val lease = draft ?: return@LaunchedEffect
+        if (!draftingEnabled || store.selectedTeam?.id != lease.key.teamId || shared.destination != lease.key || shared.loading || shared.error != null) return@LaunchedEffect
+        // No suspension between validation, transfer and consumption: rotation cannot append twice.
+        try {
+            require(attachments.size + shared.attachments.size <= AttachmentTransfers.MAX_FILES) { "This draft already has too many attachments." }
+            if (attachments.isNotEmpty() || shared.attachments.isNotEmpty()) AttachmentTransfers().retain(attachments.toList() + shared.attachments)
+            val merged = listOf(text, shared.text).filter { it.isNotEmpty() }.joinToString("\n\n")
+            if (!lease.write(merged)) return@LaunchedEffect
+            updateText(merged)
+            attachments.addAll(shared.attachments)
+            incomingShares.consumed(shared.id, lease.key)
+        } catch (_: Exception) {
+            incomingShares.failed(shared.id, "This share does not fit in the selected draft. Cancel it and try fewer or smaller attachments.")
+        }
+    }
+
     val resolvedSelection = selection ?: store.credentialSelection
     val resolvedMode = mode ?: store.permissionMode
 
@@ -380,6 +405,7 @@ fun ChatComposer(
         if (!onSend(ComposerSubmission(text.trim(), attachments.toList()))) return
         if (draft != null) draft.submitted(true, text) else localText = ""
         fieldState.edit { replace(0, length, "") }
+        draft?.key?.let(incomingShares::sent)
         attachments.clear()
     }
 
@@ -604,6 +630,7 @@ fun ChatComposer(
                 ) {
                     items(attachments, key = { it.id }) { attachment ->
                         AttachmentTile(attachment) {
+                            draft?.key?.let { incomingShares.forgetAttachment(it, attachment.id) }
                             attachments.removeAll { it.id == attachment.id }
                             attachment.releaseOwnedCopy()
                         }
@@ -845,7 +872,7 @@ private fun AttachmentThumbnail(attachment: ComposerAttachment) {
     }
 }
 
-private fun selectionInput(context: android.content.Context, uri: Uri, images: Boolean): AttachmentRetention.Input {
+internal fun selectionInput(context: android.content.Context, uri: Uri, images: Boolean): AttachmentRetention.Input {
     require(uri.scheme == "content") { "Only content-provider attachments are supported." }
     var name = "attachment"
     var size: Long? = null
@@ -882,7 +909,7 @@ private fun imageInput(input: AttachmentRetention.Input): InputStream = object :
     }
 }
 
-private fun loadImage(input: AttachmentRetention.Input, remaining: Long): ComposerAttachment {
+internal fun loadImage(input: AttachmentRetention.Input, remaining: Long): ComposerAttachment {
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     imageInput(input).use { BitmapFactory.decodeStream(it, null, bounds) }
     require(bounds.outWidth > 0 && bounds.outHeight > 0) { "This image cannot be read." }

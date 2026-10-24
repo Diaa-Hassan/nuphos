@@ -24,3 +24,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "nuphos-android"
 include(":app")
+
+// Synthetic cross-UID sender is never part of a production build.
+if (providers.gradleProperty("nuphosIsolatedShareFixture").orNull == "true") include(":share-sender")

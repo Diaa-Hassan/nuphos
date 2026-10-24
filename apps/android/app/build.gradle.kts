@@ -44,12 +44,17 @@ android {
         versionName = releaseVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        manifestPlaceholders["contentInputFixtureAuthority"] = "ai.nuphos.content-input-fixture"
         buildConfigField("String", "PUSH_BASE_URL", "\"https://api.nuphos.ai\"")
         buildConfigField("String", "API_BASE_URL", "\"https://api.nuphos.ai\"")
     }
 
     buildTypes {
         debug {
+            if (providers.gradleProperty("nuphosIsolatedShareFixture").orNull == "true") {
+                applicationIdSuffix = ".shareinput1355"
+                manifestPlaceholders["contentInputFixtureAuthority"] = "ai.nuphos.shareinput1355.test.contentinput"
+            }
             if (providers.gradleProperty("nuphosIsolatedEmailFixture").orNull == "true") applicationIdSuffix = ".emailfixture1335"
 
             if (providers.gradleProperty("nuphosIsolatedContentFixture").orNull == "true") {

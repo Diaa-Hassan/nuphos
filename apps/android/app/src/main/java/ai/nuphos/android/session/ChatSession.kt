@@ -47,6 +47,7 @@ class ChatSession(
     val creationRuntimeBinding: ai.nuphos.android.data.RuntimeBinding? = null,
     private val moveRuntime: suspend (String, String, String, ai.nuphos.android.data.AgentRuntime, String?) -> ai.nuphos.android.data.RuntimeBinding = ai.nuphos.android.data.ConversationRuntimeApi::move,
     private val steerRuntime: suspend (String, String, String, String) -> String = RuntimeApi::steer,
+    private val readBypass: suspend (String, String) -> Boolean = AgentChatApi::bypass,
 ) {
     private var initialModelPick: Map<String, String>? = null
     fun presetModelSettings(pick: Map<String, String>) { initialModelPick = pick.takeIf { it.isNotEmpty() } }
@@ -303,7 +304,7 @@ class ChatSession(
             }
             if (!browsingOnly) scope.launch {
                 if (!hasAiAccess) return@launch
-                runCatching { AgentChatApi.bypass(token, sessionId) }.getOrNull()?.let {
+                runCatching { readBypass(token, sessionId) }.getOrNull()?.let {
                     if (!hasAiAccess) return@launch
                     permissionMode = if (it) PermissionMode.Bypass else PermissionMode.Auto
                 }

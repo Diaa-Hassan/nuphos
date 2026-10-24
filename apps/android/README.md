@@ -68,8 +68,9 @@ service-dependent and are not added to the self-hosted backend by this client.
 Text drafts persist in app-private storage, separately for each account, workspace,
 existing conversation, and the new-conversation composer. Sending clears only the
 submitted draft; sign-out, identity replacement and consent withdrawal remove
-that account's drafts. Attachments remain temporary and are not restored after
-leaving the composer or restarting the process. Draft preferences are explicitly excluded from cloud backup, device-to-device
+that account's drafts. Picker and clipboard attachments remain temporary and are not restored after
+leaving the composer or restarting the process. Shared attachment drafts follow
+the Sharesheet lifecycle described below. Draft preferences are explicitly excluded from cloud backup, device-to-device
 transfer, and legacy full backup by the XML backup rules.
 
 The Agent chip remains visible beside Send. New conversations open the Agent
@@ -491,3 +492,23 @@ package IDs, instrumentation runner, targetPackage and signing certificate in th
 validation evidence. Expected image fixture values are
 `ai.nuphos.android.imageexport1336`, its separate test package and
 `androidx.test.runner.AndroidJUnitRunner`; build properties alone are not proof.
+
+### Receive from the Android Sharesheet
+
+Share text, URLs, images or files to Nuphos, choose a workspace and a new or
+existing agent, then review the editable draft. Sharing never sends a message.
+Existing text is preserved and shared text is appended. Binary inputs must be
+content-provider URIs; at most 20 attachments, 100 MiB per file and 500 MiB total
+are accepted, using the composer's existing image conversion and size limits.
+Shared text is limited to 100,000 characters. Shared attachment drafts together
+are capped at 500 MiB per process. Files are copied before relying
+on them after the sender's temporary read grant expires.
+
+Pending shares and imported shared attachments survive Activity recreation and
+composer switching while the process lives. Ordinary picker attachments keep
+their existing temporary behavior. They are
+canceled on identity replacement or AI consent withdrawal; the first sign-in
+can claim an unowned share. Finish or cancel a pending share before starting
+another. As with other composer attachments, pending shares and their attachments
+are not restored after process death; share again if Android restarts the app.
+Only imported text uses the existing persistent composer draft store.

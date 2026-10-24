@@ -9,6 +9,7 @@ import org.junit.Assert.*
 
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
 class ConversationAgentMoveTest {
+    // Keep permission lookups synchronous: real IO can resume after resetMain between tests.
     @Before fun setup() { Dispatchers.setMain(UnconfinedTestDispatcher()) }
     @After fun cleanup() { Dispatchers.resetMain() }
     private val target = AgentRuntime("new", "codex", "New", "active", "managed")
@@ -19,7 +20,7 @@ class ConversationAgentMoveTest {
     @Test fun managerCanMoveButCannotChooseLocalAndFailurePreservesIdentityAndHistory() = runTest {
         val saved = detail(owner = false, manage = true)
         var calls = 0
-        val session = ChatSession("fixture", "team", aiAllowed = { true }, readDetail = { _, _, _ -> saved },
+        val session = ChatSession("fixture", "team", readBypass = { _, _ -> false }, aiAllowed = { true }, readDetail = { _, _, _ -> saved },
             moveRuntime = { _, _, _, _, _ -> calls++; throw IllegalStateException("Unavailable") })
         session.load()
         assertTrue(session.canMoveAgent)
@@ -35,7 +36,7 @@ class ConversationAgentMoveTest {
         session.disposeForConsent()
     }
     @Test fun activeRunBlocksMovesEvenWithoutLocalStreaming() = runTest {
-        val session = ChatSession("fixture", "team", aiAllowed = { true }, readDetail = { _, _, _ -> detail() })
+        val session = ChatSession("fixture", "team", readBypass = { _, _ -> false }, aiAllowed = { true }, readDetail = { _, _, _ -> detail() })
         session.load()
         ChatSession::class.java.getDeclaredMethod("refreshMetadata", AgentConversationDetail::class.java, Double::class.javaPrimitiveType, Long::class.javaPrimitiveType)
             .also { it.isAccessible = true }.invoke(session, detail(busy = true), RuntimeObservation.now(), 0L)
@@ -44,7 +45,7 @@ class ConversationAgentMoveTest {
     }
     @Test fun memberAndExplicitlyDeniedOwnerCannotMove() = runTest {
         for (saved in listOf(detail(false), detail(true, false))) {
-            val session = ChatSession("fixture", "team", aiAllowed = { true }, readDetail = { _, _, _ -> saved })
+            val session = ChatSession("fixture", "team", readBypass = { _, _ -> false }, aiAllowed = { true }, readDetail = { _, _, _ -> saved })
             assertFalse(session.canMoveAgent)
             session.load()
             assertFalse(session.canMoveAgent)
@@ -54,7 +55,7 @@ class ConversationAgentMoveTest {
     @Test fun successfulMovePreservesHistoryAndBlocksSubmissionDuringRequest() = runTest {
         var saved = detail()
         lateinit var session: ChatSession
-        session = ChatSession("fixture", "team", aiAllowed = { true }, readDetail = { _, _, _ -> saved },
+        session = ChatSession("fixture", "team", readBypass = { _, _ -> false }, aiAllowed = { true }, readDetail = { _, _, _ -> saved },
             moveRuntime = { _, _, _, _, _ ->
                 assertTrue(session.movingAgent)
                 assertFalse(session.canMoveAgent)
