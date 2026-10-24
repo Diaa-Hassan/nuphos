@@ -51,9 +51,9 @@ struct HomeView: View {
                 }
                 .sharedBackgroundVisibility(.hidden)
 
-                // Search and filter each get their own glass group
+                // Each control gets its own glass group
                 // (ToolbarSpacer(.fixed) splits groups, per the toolbar docs).
-                if page == .agent, let store {
+                if page == .agent, store != nil {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             isSearching.toggle()
