@@ -85,7 +85,7 @@ final class DesktopKeyInputView: UITextView, UITextViewDelegate {
     override func resignFirstResponder() -> Bool {
         let resigned = super.resignFirstResponder()
         if resigned, softKeyboard { softKeyboard = false; dismissed?() }
-        for keys in held.values { release(keys) }
+        for keys in held.values { releaseKeys(keys) }
         held = [:]
         return resigned
     }
@@ -130,12 +130,12 @@ final class DesktopKeyInputView: UITextView, UITextViewDelegate {
     private func lift(_ presses: Set<UIPress>) -> Set<UIPress> {
         var others = Set<UIPress>()
         for press in presses {
-            if let keys = held.removeValue(forKey: press) { release(keys) } else { others.insert(press) }
+            if let keys = held.removeValue(forKey: press) { releaseKeys(keys) } else { others.insert(press) }
         }
         return others
     }
 
-    private func release(_ keys: [UInt32]) {
+    private func releaseKeys(_ keys: [UInt32]) {
         for key in keys.reversed() { desktop.key(key, down: false) }
     }
 

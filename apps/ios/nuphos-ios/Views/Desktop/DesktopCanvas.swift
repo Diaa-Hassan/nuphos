@@ -26,7 +26,7 @@ final class DesktopCanvasView: UIScrollView, UIScrollViewDelegate {
     private var cursorSize = CGSize.zero
     private var fitted = CGSize.zero
     private var holdOrigin = CGPoint.zero
-    private var dragging = false
+    private var holdDragging = false
     private let haptic = UIImpactFeedbackGenerator(style: .rigid)
     let momentum = ScrollMomentum()
 
@@ -88,10 +88,10 @@ final class DesktopCanvasView: UIScrollView, UIScrollViewDelegate {
             maximumZoomScale = max(3, screenSize.width / size.width / traitCollection.displayScale * 2)
             place(desktop.pointer, reveal: false)
         }
-        center()
+        centerContent()
     }
 
-    private func center() {
+    private func centerContent() {
         let x = max(0, (bounds.width - contentSize.width) / 2)
         let y = max(0, (bounds.height - contentSize.height) / 2)
         contentInset = UIEdgeInsets(top: y, left: x, bottom: y, right: x)
@@ -100,7 +100,7 @@ final class DesktopCanvasView: UIScrollView, UIScrollViewDelegate {
     func viewForZooming(in scrollView: UIScrollView) -> UIView? { screen }
 
     func scrollViewDidZoom(_ scrollView: UIScrollView) {
-        center()
+        centerContent()
         reportVisible()
     }
 
@@ -132,28 +132,28 @@ final class DesktopCanvasView: UIScrollView, UIScrollViewDelegate {
         case .began:
             momentum.stop()
             holdOrigin = recognizer.location(in: self)
-            dragging = false
+            holdDragging = false
             haptic.impactOccurred(intensity: 1)
             desktop.movePointer(to: point)
         case .changed:
             let location = recognizer.location(in: self)
-            if !dragging, hypot(location.x - holdOrigin.x, location.y - holdOrigin.y) > 8 {
-                dragging = true
+            if !holdDragging, hypot(location.x - holdOrigin.x, location.y - holdOrigin.y) > 8 {
+                holdDragging = true
                 desktop.press(.left)
             }
-            if dragging { desktop.movePointer(to: point) }
+            if holdDragging { desktop.movePointer(to: point) }
         case .ended:
-            if dragging {
+            if holdDragging {
                 desktop.movePointer(to: point)
                 desktop.release(.left)
                 haptic.impactOccurred(intensity: 0.5)
             } else {
                 desktop.click(.right)
             }
-            dragging = false
+            holdDragging = false
         case .cancelled, .failed:
-            if dragging { desktop.release(.left) }
-            dragging = false
+            if holdDragging { desktop.release(.left) }
+            holdDragging = false
         default:
             break
         }
