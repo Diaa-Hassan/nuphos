@@ -17,7 +17,7 @@ object ConversationNesting {
 
     fun nest(
         conversations: List<AgentConversation>, pinned: Set<String> = emptySet(),
-        folded: Set<String> = emptySet(), accountId: String? = null,
+        folded: Set<String> = emptySet(), accountId: String? = null, groupSections: Boolean = true,
     ): Result {
         val rows = conversations.distinctBy { it.sessionId }
         val byId = rows.associateBy { it.sessionId }
@@ -54,7 +54,7 @@ object ConversationNesting {
                 else -> Section.Shared
             }
             // Cross-section children remain visible roots in their own section.
-            if (p != null && sections[p] != sections[row.sessionId]) parent[row.sessionId] = null
+            if (groupSections && p != null && sections[p] != sections[row.sessionId]) parent[row.sessionId] = null
             children[row.sessionId].orEmpty().asReversed().forEach(stack::addLast)
         }
         // Rebuild after cross-section cuts: newly promoted roots retain source order,
@@ -86,7 +86,8 @@ object ConversationNesting {
             }
             visible += Row(row, sections.getValue(id), depths.getValue(id), counts[id] ?: 0, id in folded)
         }
-        return Result(Section.entries.flatMap { section -> visible.filter { it.section == section }.map { it.copy(hidden = hiddenChildren[it.conversation.sessionId].orEmpty()) } },
+        val displayed = if (groupSections) Section.entries.flatMap { section -> visible.filter { it.section == section } } else visible
+        return Result(displayed.map { it.copy(hidden = hiddenChildren[it.conversation.sessionId].orEmpty()) },
             rows.filter { it.sessionId in pinned }.mapTo(mutableSetOf()) { it.sessionId })
     }
     /** Only visible folded roots retain hidden rows, so total retained descendants stays O(n). */

@@ -55,6 +55,7 @@ android {
                 applicationIdSuffix = ".sharepersist1359"
                 manifestPlaceholders["contentInputFixtureAuthority"] = "ai.nuphos.sharepersist1359.test.contentinput"
             }
+            if (providers.gradleProperty("nuphosIsolatedPinIosFixture").orNull == "true") applicationIdSuffix = ".pinios1370"
             if (providers.gradleProperty("nuphosIsolatedRowActionsFixture").orNull == "true") applicationIdSuffix = ".rowactions1357"
             if (providers.gradleProperty("nuphosIsolatedShareFixture").orNull == "true") {
                 applicationIdSuffix = ".shareinput1355"

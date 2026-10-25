@@ -3,6 +3,8 @@ package ai.nuphos.android.ui.agent
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.clickable
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.ExpandLess
@@ -154,11 +156,10 @@ fun AgentPage(
     val pins = store.pinnedShortcuts
     var foldedIds by rememberSaveable(account, team?.id) { mutableStateOf(emptyList<String>()) }
     val tree = remember(store.conversations, pins, foldedIds, account) {
-        ConversationNesting.nest(store.conversations, pins.mapTo(mutableSetOf()) { it.sessionId }, foldedIds.toSet(), account)
+        PinnedHistory.nest(store.conversations, pins, foldedIds.toSet(), account)
     }
-    val treeSections = remember(tree) { tree.rows.groupBy { it.section } }
+    val historyItems = remember(tree, pins) { PinnedHistory.items(tree, pins) }
     LaunchedEffect(tree.rows.map { Triple(it.conversation.sessionId, it.depth, it.section) }) { rowInteractions.dismiss() }
-    val shortcuts = pins.filter { it.sessionId !in tree.loadedPinnedIds }
     LaunchedEffect(store, store.selectedTeam?.id) { store.loadFavorites() }
     LaunchedEffect(listState, store.hasMore, store.conversations) {
         snapshotFlow { listState.layoutInfo.visibleItemsInfo.map { it.key } }
@@ -240,40 +241,38 @@ fun AgentPage(
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        for (section in ConversationNesting.Section.entries) {
-                            val rows = treeSections[section].orEmpty()
-                            if (rows.isNotEmpty() || (section == ConversationNesting.Section.Pinned && shortcuts.isNotEmpty())) {
-                                item(key = "section:$section") { Text(section.title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
-                            }
-                            if (section == ConversationNesting.Section.Pinned) {
-                                items(shortcuts, key = { it.listKey }) { pin ->
+                        items(historyItems, key = { it.key }) { item ->
+                            when (item) {
+                                is PinnedHistory.Item.Missing -> {
+                                    val pin = item.shortcut
                                     Card(Modifier.fillMaxWidth().clickable {
                                         nav.navigate("conversation/${android.net.Uri.encode(pin.sessionId)}") { popUpTo("home"); launchSingleTop = true }
                                     }) {
                                         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Outlined.PushPin, contentDescription = "Pinned agent")
+                                            PinnedAvatar(true) { Icon(Icons.Outlined.ChatBubbleOutline, contentDescription = null) }
                                             Text(pin.title, Modifier.padding(start = 12.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                         }
                                     }
                                 }
-                            }
-                            items(rows, key = { "history:${it.conversation.sessionId}" }) { row ->
-                                ConversationTreeRow(row, store.favorites?.contains(row.conversation.sessionId) == true,
-                                    ConversationNesting.status(row) { store.historyObservation(it)?.label(maxOf(statusClock, RuntimeObservation.now())) },
-                                    onWatch = if (store.canWatch(row.conversation)) ({ scope.launch { store.setWatching(row.conversation) } }) else null,
-                                    watchBusy = store.watchingSessionId != null,
-                                    onUnlink = if (store.canUnlink(row.conversation)) ({ store.clearUnlinkError(); unlinkTarget = row.conversation }) else null,
-                                    unlinking = store.unlinkingSessionId == row.conversation.sessionId,
-                                    interactions = rowInteractions,
-                                    onPin = { scope.launch { store.pin(row.conversation, store.favorites?.contains(row.conversation.sessionId) != true) } },
-                                    pinEnabled = store.canPin(row.conversation),
-                                    onArchive = if (store.canArchive(row.conversation)) ({ store.clearRowActionError(); archiveTarget = row.conversation }) else null,
-                                    actionBusy = store.rowActionSessionId != null,
-                                    onToggle = {
-                                        foldedIds = if (row.conversation.sessionId in foldedIds) foldedIds - row.conversation.sessionId else foldedIds + row.conversation.sessionId
-                                    },
-                                    onClick = { nav.navigate("conversation/${android.net.Uri.encode(row.conversation.sessionId)}") { popUpTo("home"); launchSingleTop = true } },
-                                    selected = row.conversation.sessionId == selectedSessionId)
+                                is PinnedHistory.Item.Loaded -> {
+                                    val row = item.row
+                                    ConversationTreeRow(row, store.favorites?.contains(row.conversation.sessionId) == true,
+                                        ConversationNesting.status(row) { store.historyObservation(it)?.label(maxOf(statusClock, RuntimeObservation.now())) },
+                                        onWatch = if (store.canWatch(row.conversation)) ({ scope.launch { store.setWatching(row.conversation) } }) else null,
+                                        watchBusy = store.watchingSessionId != null,
+                                        onUnlink = if (store.canUnlink(row.conversation)) ({ store.clearUnlinkError(); unlinkTarget = row.conversation }) else null,
+                                        unlinking = store.unlinkingSessionId == row.conversation.sessionId,
+                                        interactions = rowInteractions,
+                                        onPin = { scope.launch { store.pin(row.conversation, store.favorites?.contains(row.conversation.sessionId) != true) } },
+                                        pinEnabled = store.canPin(row.conversation),
+                                        onArchive = if (store.canArchive(row.conversation)) ({ store.clearRowActionError(); archiveTarget = row.conversation }) else null,
+                                        actionBusy = store.rowActionSessionId != null,
+                                        onToggle = {
+                                            foldedIds = if (row.conversation.sessionId in foldedIds) foldedIds - row.conversation.sessionId else foldedIds + row.conversation.sessionId
+                                        },
+                                        onClick = { nav.navigate("conversation/${android.net.Uri.encode(row.conversation.sessionId)}") { popUpTo("home"); launchSingleTop = true } },
+                                        selected = row.conversation.sessionId == selectedSessionId)
+                                }
                             }
                         }
                         if (store.hasMore) {
@@ -343,15 +342,17 @@ private fun ConversationRow(conversation: AgentConversation, pinned: Boolean, st
                 Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                NuphosAvatar(
-                    NuphosUser(
-                        id = conversation.owner?.id.orEmpty(),
-                        email = conversation.owner?.email.orEmpty(),
-                        name = conversation.owner?.name.orEmpty(),
-                        avatarURL = conversation.owner?.avatarURL.orEmpty(),
-                    ),
-                    size = 40.dp,
-                )
+                PinnedAvatar(pinned) {
+                    NuphosAvatar(
+                        NuphosUser(
+                            id = conversation.owner?.id.orEmpty(),
+                            email = conversation.owner?.email.orEmpty(),
+                            name = conversation.owner?.name.orEmpty(),
+                            avatarURL = conversation.owner?.avatarURL.orEmpty(),
+                        ),
+                        size = 40.dp,
+                    )
+                }
                 Column(Modifier.weight(1f).padding(start = 12.dp)) {
                     Text(conversation.displayTitle, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
                     if (status != null) Text(status, style = MaterialTheme.typography.labelSmall)
@@ -368,9 +369,6 @@ private fun ConversationRow(conversation: AgentConversation, pinned: Boolean, st
                     }
                 }
                 more()
-                if (pinned) {
-                    Icon(Icons.Outlined.PushPin, contentDescription = "Pinned agent", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
-                }
                 if (conversation.isArchived) {
                     Icon(Icons.Outlined.Archive, contentDescription = "Archived", tint = MaterialTheme.colorScheme.outline, modifier = Modifier.size(18.dp))
                 }
@@ -510,4 +508,17 @@ fun NewChatComposer(nav: NavHostController) {
         agentEnabled = setup != null && auth.aiAllowed,
         onChooseAgent = { setupVisible = true },
     )
+}
+
+/** An overlay reserves no title width and only marks an explicit favorite. */
+@Composable
+private fun PinnedAvatar(pinned: Boolean, content: @Composable () -> Unit) {
+    Box(Modifier.size(40.dp), contentAlignment = Alignment.Center) {
+        content()
+        if (pinned) Box(Modifier.align(Alignment.TopEnd).size(15.dp)
+            .background(MaterialTheme.colorScheme.primary, CircleShape), contentAlignment = Alignment.Center) {
+            Icon(Icons.Outlined.PushPin, contentDescription = "Pinned agent",
+                tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(9.dp))
+        }
+    }
 }

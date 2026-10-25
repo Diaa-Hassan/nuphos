@@ -144,8 +144,8 @@ class ConversationNestingFixtureDeviceTest {
         compose.onNodeWithText("Synthetic child").assertExists()
         compose.onNodeWithContentDescription("Hide 2 sub-agents").performClick()
         compose.onNodeWithText("Synthetic child").assertDoesNotExist()
-        compose.onNodeWithText("My agents").assertExists()
-        compose.onNodeWithText("Shared").assertExists()
+        compose.onNodeWithText("My agents").assertDoesNotExist()
+        compose.onNodeWithText("Shared").assertDoesNotExist()
         compose.onNodeWithText("Unread").assertExists()
         shot("collapsed")
         compose.onNodeWithContentDescription("Show 2 sub-agents").performClick()
@@ -188,7 +188,7 @@ class ConversationNestingFixtureDeviceTest {
                 AgentConversation("M2", "A", "Synthetic own parent", isOwner = true))
         }
         compose.onNodeWithText("Synthetic recent shared child").assertExists()
-        compose.onNodeWithText("Shared").assertExists()
+        compose.onNodeWithText("Shared").assertDoesNotExist()
         shot("shared-parent")
         assertTrue(requests.none { it.method != "GET" })
     }
