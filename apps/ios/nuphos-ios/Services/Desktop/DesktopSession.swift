@@ -147,32 +147,29 @@ final class DesktopSession {
 
         let key = sessionId
         let mailbox = frames
+        // The handlers hold the session until the connection ends, which stop() makes happen.
         let handlers = RFBClient.Handlers(
-            credentials: { [weak self] in
-                guard let self else { throw CancellationError() }
-                return try await self.account(for: key, failed: signInFailed)
+            credentials: { try await self.account(for: key, failed: signInFailed) },
+            ready: { width, height, _ in
+                Task { @MainActor in self.began(width: width, height: height) }
             },
-            ready: { [weak self] width, height, _ in
-                Task { @MainActor in self?.began(width: width, height: height) }
-            },
-            frame: { [weak self] framebuffer in
+            frame: { framebuffer in
                 guard let image = framebuffer.image() else { return }
                 mailbox.post(image) { image in
-                    guard let self else { return }
                     let size = CGSize(width: image.width, height: image.height)
                     if self.screenSize != size { self.screenSize = size } // The remote screen changed resolution.
                     self.lastFrame = image
                     self.onFrame?(image)
                 }
             },
-            cursor: { [weak self] cursor in
+            cursor: { cursor in
                 Task { @MainActor in
-                    self?.lastCursor = cursor
-                    self?.onCursor?(cursor)
+                    self.lastCursor = cursor
+                    self.onCursor?(cursor)
                 }
             },
-            pointer: { [weak self] x, y in
-                Task { @MainActor in self?.serverMoved(to: CGPoint(x: x, y: y)) }
+            pointer: { x, y in
+                Task { @MainActor in self.serverMoved(to: CGPoint(x: x, y: y)) }
             },
             clipboard: { _ in }
         )
