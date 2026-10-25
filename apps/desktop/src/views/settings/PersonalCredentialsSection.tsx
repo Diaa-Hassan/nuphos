@@ -103,7 +103,7 @@ export function PersonalCredentialsSection({ team }: { team: AtlasTeam | undefin
   async function disconnect(provider: PersonalCredentialProvider) {
     setBusy(provider)
     try {
-      await api.atlasDeletePersonalCredential(provider)
+      await api.atlasDeletePersonalCredential(provider, isGoogle(provider) ? team?.id : undefined)
       toast.success(`${nameOf(provider)} disconnected`)
     } catch (err) {
       toast.apiError(`Could not disconnect ${nameOf(provider)}`, err)
@@ -139,7 +139,10 @@ export function PersonalCredentialsSection({ team }: { team: AtlasTeam | undefin
         >
           <div className="space-y-3">
             {PROVIDERS.map(({ provider, name, description }) => {
-              const credential = credentials?.find((c) => c.provider === provider)
+              // Gmail / Google Drive grants are per team; show this team's.
+              const credential = credentials?.find(
+                (c) => c.provider === provider && (!isGoogle(provider) || c.teamId === team?.id),
+              )
               const needsTeamClient = isGoogle(provider) && !teamHasGoogleClient
 
               return (

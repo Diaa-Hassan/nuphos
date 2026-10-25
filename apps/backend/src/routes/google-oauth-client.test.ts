@@ -13,17 +13,35 @@ import type { TeamAuthVariables } from '@/middleware/auth'
 
 const TEAM = new ObjectId().toHexString()
 let doc: Record<string, unknown> | null = null
+let grants: { teamId: string; provider: string }[] = []
 
 useModels({
   teamByosBindings: () =>
     ({
       findOne: () => Promise.resolve(doc),
+      findOneAndUpdate: (_filter: unknown, update: { $set: Record<string, unknown> }) => {
+        const before = doc
+
+        doc = { ...doc, ...update.$set }
+
+        return Promise.resolve(before)
+      },
       updateOne: (
         _filter: unknown,
         update: { $set?: Record<string, unknown>; $unset?: Record<string, unknown> },
       ) => {
         doc = { ...doc, ...update.$set }
         for (const key of Object.keys(update.$unset ?? {})) delete doc[key]
+
+        return Promise.resolve({})
+      },
+    }) as never,
+  personalCredentials: () =>
+    ({
+      deleteMany: (filter: { teamId: string; provider: { $in: string[] } }) => {
+        grants = grants.filter(
+          (g) => g.teamId !== filter.teamId || !filter.provider.$in.includes(g.provider),
+        )
 
         return Promise.resolve({})
       },
@@ -61,7 +79,15 @@ function put(role: string, body: unknown) {
 
 beforeEach(() => {
   doc = null
+  grants = [
+    { teamId: TEAM, provider: 'gmail' },
+    { teamId: TEAM, provider: 'github' },
+    { teamId: 'other-team', provider: 'gmail' },
+  ]
 })
+
+const remove = () =>
+  app.request('/', { method: 'DELETE', headers: { 'x-test-role': 'ADMINISTRATOR' } })
 
 describe('team Google OAuth client', () => {
   test('an admin saves it with the secret sealed, and no read returns the secret', async () => {
@@ -94,12 +120,29 @@ describe('team Google OAuth client', () => {
 
   test('an admin removes it, and reads report none', async () => {
     await put('ADMINISTRATOR', CLIENT)
-    const res = await app.request('/', {
-      method: 'DELETE',
-      headers: { 'x-test-role': 'ADMINISTRATOR' },
-    })
+    const res = await remove()
 
     expect(res.status).toBe(204)
     expect(await (await app.request('/')).json()).toEqual({ clientId: null })
+  })
+
+  test('removing or replacing the client drops the team’s Google grants', async () => {
+    const teamGmail = { teamId: TEAM, provider: 'gmail' }
+
+    await put('ADMINISTRATOR', CLIENT)
+    // A new secret for the same client keeps them: their refresh tokens still work.
+    await put('ADMINISTRATOR', { ...CLIENT, clientSecret: 'rotated' })
+    expect(grants).toContainEqual(teamGmail)
+
+    await put('ADMINISTRATOR', { ...CLIENT, clientId: 'other.apps.googleusercontent.com' })
+    expect(grants).not.toContainEqual(teamGmail)
+    expect(grants).toHaveLength(2)
+
+    grants.push(teamGmail)
+    await remove()
+    expect(grants).toEqual([
+      { teamId: TEAM, provider: 'github' },
+      { teamId: 'other-team', provider: 'gmail' },
+    ])
   })
 })

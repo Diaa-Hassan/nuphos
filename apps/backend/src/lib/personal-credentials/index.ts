@@ -53,6 +53,8 @@ export type PersonalCredentialSummary = {
   provider: PersonalCredentialProvider
   login: string
   workspaceName: string | null
+  /** Gmail / Google Drive: the team whose OAuth client issued the grant. */
+  teamId: string | null
   connectedAt: string
 }
 
@@ -60,13 +62,17 @@ export async function listPersonalCredentials(
   userId: string,
 ): Promise<PersonalCredentialSummary[]> {
   const docs = await personalCredentials()
-    .find({ userId }, { projection: { provider: 1, login: 1, workspaceName: 1, createdAt: 1 } })
+    .find(
+      { userId },
+      { projection: { provider: 1, login: 1, workspaceName: 1, teamId: 1, createdAt: 1 } },
+    )
     .toArray()
 
   return docs.map((doc) => ({
     provider: doc.provider,
     login: doc.login,
     workspaceName: doc.workspaceName ?? null,
+    teamId: doc.teamId ?? null,
     connectedAt: doc.createdAt.toISOString(),
   }))
 }
@@ -232,7 +238,7 @@ export async function claimPersonalCredential(
   }
   const now = new Date()
   const previous = await personalCredentials().findOneAndUpdate(
-    { userId, provider },
+    { userId, provider, ...(ready.staged.teamId ? { teamId: ready.staged.teamId } : {}) },
     {
       $set: { ...ready.staged, updatedAt: now },
       $setOnInsert: { _id: new ObjectId(), createdAt: now },
@@ -240,16 +246,15 @@ export async function claimPersonalCredential(
     { upsert: true, returnDocument: 'before' },
   )
 
-  // Google revokes a member's whole grant to one client, so a replaced grant
-  // from the same team's client is left alone: revoking it would end the new one.
-  if (previous && (!isGoogleProvider(provider) || previous.teamId !== ready.staged.teamId)) {
-    void revokeQuietly(previous)
-  }
+  // Google revokes a member's whole grant to one client, so a replaced Google
+  // grant (always the same team's client) is left alone: revoking it would end the new one.
+  if (previous && !isGoogleProvider(provider)) void revokeQuietly(previous)
 
   return {
     provider,
     login: ready.staged.login,
     workspaceName: ready.staged.workspaceName ?? null,
+    teamId: ready.staged.teamId ?? null,
     connectedAt: (previous?.createdAt ?? now).toISOString(),
   }
 }
@@ -258,34 +263,7 @@ function sha256(value: string): string {
   return createHash('sha256').update(value).digest('hex')
 }
 
-export async function deletePersonalCredential(
-  userId: string,
-  provider: PersonalCredentialProvider,
-): Promise<void> {
-  const doc = await personalCredentials().findOneAndDelete({ userId, provider })
-
-  if (!doc) return
-  // One Google revoke ends both grants from that team's client, so keep it while another remains.
-  if (
-    isGoogleProvider(provider) &&
-    (await personalCredentials().countDocuments({
-      userId,
-      teamId: doc.teamId,
-      provider: { $in: [...GOOGLE_PROVIDERS] },
-    }))
-  ) {
-    return
-  }
-  await revokeQuietly(doc)
-}
-
-export async function deleteAllPersonalCredentials(userId: string): Promise<void> {
-  // In turn, so the last Google grant still sees it is the last and revokes.
-  for (const provider of PERSONAL_CREDENTIAL_PROVIDERS) {
-    await deletePersonalCredential(userId, provider)
-  }
-}
-
+export { deleteAllPersonalCredentials, deletePersonalCredential } from './revoke'
 export {
   personalCredentialSubjectFor,
   personalGithubToken,

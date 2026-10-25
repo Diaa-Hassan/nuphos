@@ -73,7 +73,11 @@ personalCredentialRoutes.post('/:provider/complete', requireAuth, async (c) => {
 })
 
 personalCredentialRoutes.delete('/:provider', requireAuth, async (c) => {
-  await deletePersonalCredential(c.get('userId'), providerParam(c.req.param('provider')))
+  await deletePersonalCredential(
+    c.get('userId'),
+    providerParam(c.req.param('provider')),
+    c.req.query('teamId'),
+  )
 
   return c.body(null, 204)
 })

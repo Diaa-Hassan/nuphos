@@ -5,13 +5,20 @@ import { encryptLinearSecret } from '@/lib/byos/secrets'
 import { parseObjectId } from '@/lib/objectid'
 import { zv } from '@/lib/validate'
 import { requireTeamRole } from '@/middleware/auth'
-import { teamByosBindings } from '@/models'
+import { GOOGLE_PROVIDERS } from '@/lib/personal-credentials/google'
+import { personalCredentials, teamByosBindings } from '@/models'
 
 import type { TeamAuthVariables } from '@/middleware/auth'
 
 // The team's own Google OAuth client, which its members' Gmail and Google
 // Drive Personal Credentials connect and refresh through. Members can see
 // whether one is set; only admins change it, and the secret is never returned.
+// Refresh tokens belong to the client that issued them, so members' grants
+// end with the client: they could never be refreshed again.
+function dropTeamGrants(teamId: string) {
+  return personalCredentials().deleteMany({ teamId, provider: { $in: [...GOOGLE_PROVIDERS] } })
+}
+
 export const googleOAuthClientRoutes = new Hono<{ Variables: TeamAuthVariables }>()
 
 const clientSchema = z
@@ -40,8 +47,7 @@ googleOAuthClientRoutes.put(
   async (c) => {
     const { clientId, clientSecret } = c.req.valid('json')
     const now = new Date()
-
-    await teamByosBindings().updateOne(
+    const before = await teamByosBindings().findOneAndUpdate(
       { _id: parseObjectId(c.get('teamId'), 'teamId') },
       {
         $set: {
@@ -63,8 +69,13 @@ googleOAuthClientRoutes.put(
           zeaburProviders: [],
         },
       },
-      { upsert: true },
+      { upsert: true, returnDocument: 'before', projection: { 'googleOAuthClient.clientId': 1 } },
     )
+
+    // A new secret for the same client keeps the grants; a different client cannot refresh them.
+    if (before?.googleOAuthClient && before.googleOAuthClient.clientId !== clientId) {
+      await dropTeamGrants(c.get('teamId'))
+    }
 
     return c.json({ clientId })
   },
@@ -75,6 +86,7 @@ googleOAuthClientRoutes.delete('/', requireTeamRole('ADMINISTRATOR'), async (c) 
     { _id: parseObjectId(c.get('teamId'), 'teamId') },
     { $unset: { googleOAuthClient: '' } },
   )
+  await dropTeamGrants(c.get('teamId'))
 
   return c.body(null, 204)
 })

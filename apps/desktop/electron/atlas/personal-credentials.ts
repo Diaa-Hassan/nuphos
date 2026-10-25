@@ -46,8 +46,11 @@ export async function deleteTeamGoogleClient(teamId: string): Promise<void> {
 
 export async function deletePersonalCredential(
   provider: PersonalCredentialProvider,
+  teamId?: string,
 ): Promise<void> {
-  await call('DELETE', `/personal-credentials/${provider}`, undefined, { retry: false })
+  const query = teamId ? `?teamId=${encodeURIComponent(teamId)}` : ''
+
+  await call('DELETE', `/personal-credentials/${provider}${query}`, undefined, { retry: false })
 }
 
 export function completePersonalCredential(

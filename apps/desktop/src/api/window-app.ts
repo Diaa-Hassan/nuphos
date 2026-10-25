@@ -44,7 +44,10 @@ export type WindowAppApi = {
     provider: PersonalCredentialProvider,
     teamId?: string,
   ): Promise<{ authorizeUrl: string; state: string }>
-  atlasDeletePersonalCredential(provider: PersonalCredentialProvider): Promise<void>
+  atlasDeletePersonalCredential(
+    provider: PersonalCredentialProvider,
+    teamId?: string,
+  ): Promise<void>
   authUploadAvatar(image: Uint8Array): Promise<UserInfo>
   apiUrlSync(): string
   authRemoveAvatar(): Promise<UserInfo>

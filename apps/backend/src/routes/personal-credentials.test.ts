@@ -59,9 +59,16 @@ function collection(rows: Doc[]) {
   }
 }
 
+const fakeSeal = (plaintext: string) => ({ plaintext }) as unknown as EncryptedSecret
+
 // TEAM has its own Google OAuth client unless a test clears it; everyone but
 // 'outsider' is a member.
 const TEAM = new ObjectId().toHexString()
+const TEAM_B = new ObjectId().toHexString()
+const TEAM_B_CLIENT = {
+  clientId: 'b.apps.googleusercontent.com',
+  encryptedClientSecret: fakeSeal('b-secret'),
+}
 let teamClient: { clientId: string; encryptedClientSecret: EncryptedSecret } | null = null
 
 useModels({
@@ -69,23 +76,21 @@ useModels({
   personalCredentials: () => collection(saved) as never,
   teamByosBindings: () =>
     ({
-      findOne: (filter: { _id: ObjectId }) =>
-        Promise.resolve(
-          filter._id.toHexString() === TEAM && teamClient
-            ? { googleOAuthClient: teamClient }
-            : null,
-        ),
+      findOne: (filter: { _id: ObjectId }) => {
+        const client = { [TEAM]: teamClient, [TEAM_B]: TEAM_B_CLIENT }[filter._id.toHexString()]
+
+        return Promise.resolve(client ? { googleOAuthClient: client } : null)
+      },
     }) as never,
 })
 useIdentity({
   getTeamMembership: ((userId: string, teamId: string) =>
     Promise.resolve(
-      teamId === TEAM && userId !== 'outsider'
-        ? { role: 'MEMBER', team: { id: TEAM, name: 'Acme' } }
+      (teamId === TEAM || teamId === TEAM_B) && userId !== 'outsider'
+        ? { role: 'MEMBER', team: { id: teamId, name: teamId === TEAM ? 'Acme' : 'Beta' } }
         : null,
     )) as never,
 })
-const fakeSeal = (plaintext: string) => ({ plaintext }) as unknown as EncryptedSecret
 const fakeOpen = (envelope: EncryptedSecret) =>
   (envelope as unknown as { plaintext: string }).plaintext
 
@@ -192,8 +197,8 @@ function requestStart(provider: string, userId: string, teamId: string | null = 
   })
 }
 
-async function start(provider: string, userId: string): Promise<string> {
-  const res = await requestStart(provider, userId)
+async function start(provider: string, userId: string, teamId = TEAM): Promise<string> {
+  const res = await requestStart(provider, userId, teamId)
 
   expect(res.status).toBe(200)
   const { state, authorizeUrl } = (await res.json()) as { state: string; authorizeUrl: string }
@@ -331,6 +336,29 @@ describe('Google Personal Credentials', () => {
     expect(pending).toHaveLength(0)
   })
 
+  test('a member of two teams keeps a grant per team, each from that team’s client', async () => {
+    for (const [teamId, clientId] of [
+      [TEAM, 'team.apps.googleusercontent.com'],
+      [TEAM_B, 'b.apps.googleusercontent.com'],
+    ]) {
+      const state = await start('gmail', 'alice', teamId)
+      const link = await callback('gmail', state)
+
+      expect(googleTokenRequest?.get('client_id')).toBe(clientId)
+      expect(
+        (await complete('gmail', 'alice', state, link.searchParams.get('code') ?? '')).status,
+      ).toBe(200)
+    }
+    expect(saved).toMatchObject([
+      { provider: 'gmail', teamId: TEAM, workspaceName: 'Acme' },
+      { provider: 'gmail', teamId: TEAM_B, workspaceName: 'Beta' },
+    ])
+    expect(revoked).toHaveLength(0)
+    expect((await disconnect('gmail', TEAM)).status).toBe(204)
+    expect(saved).toMatchObject([{ teamId: TEAM_B }])
+    expect(revoked).toHaveLength(1)
+  })
+
   test('disconnecting revokes at Google only once no Google grant remains', async () => {
     saved.push(googleGrant('alice', 'gmail', 'mail'), googleGrant('alice', 'google-drive', 'drive'))
     expect((await disconnect('gmail')).status).toBe(204)
@@ -340,8 +368,8 @@ describe('Google Personal Credentials', () => {
   })
 })
 
-const disconnect = (provider: string) =>
-  app.request(`/personal-credentials/${provider}`, {
+const disconnect = (provider: string, teamId = TEAM) =>
+  app.request(`/personal-credentials/${provider}?teamId=${teamId}`, {
     method: 'DELETE',
     headers: { 'x-test-user': 'alice' },
   })
@@ -361,12 +389,12 @@ function googleGrant(userId: string, provider: string, token: string): Doc {
 }
 
 /** A turn in conv-1, owned by `owner`. */
-const turn = (actor: string, humanTurn: boolean) =>
+const turn = (actor: string, humanTurn: boolean, teamId = TEAM) =>
   mintPreviewMcpToken({
     userId: actor,
     conversationOwnerUserId: 'owner',
     sessionId: 'conv-1',
-    teamId: TEAM,
+    teamId,
     humanTurn,
   })
 
@@ -403,6 +431,13 @@ describe('Google token handout', () => {
     expect(await (await fetchToken('gmail', turn('teammate', false))).json()).toMatchObject({
       token: 'owner-mail',
     })
+  })
+
+  test('each team’s conversations get that team’s grant', async () => {
+    saved.push({ ...googleGrant('owner', 'gmail', 'owner-mail-b'), teamId: TEAM_B })
+    const res = await fetchToken('gmail', turn('owner', true, TEAM_B))
+
+    expect(await res.json()).toMatchObject({ token: 'owner-mail-b' })
   })
 
   test('a teammate’s message in someone else’s session gets no token', async () => {

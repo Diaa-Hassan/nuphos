@@ -77,6 +77,9 @@ useDb({
 
         return { matchedCount: 1 }
       },
+      find: (filter: Doc) => ({
+        toArray: async () => docs(name).filter((doc) => matches(doc, filter)),
+      }),
       deleteMany: async (filter: Doc) => {
         const kept = docs(name).filter((doc) => !matches(doc, filter))
 

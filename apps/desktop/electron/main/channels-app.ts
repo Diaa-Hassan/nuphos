@@ -42,8 +42,11 @@ export const appChannels = {
     provider: PersonalCredentialProvider,
     teamId?: string,
   ) => atlas.startPersonalCredential(provider, teamId),
-  'atlas:deletePersonalCredential': (_e: unknown, provider: PersonalCredentialProvider) =>
-    atlas.deletePersonalCredential(provider),
+  'atlas:deletePersonalCredential': (
+    _e: unknown,
+    provider: PersonalCredentialProvider,
+    teamId?: string,
+  ) => atlas.deletePersonalCredential(provider, teamId),
   'auth:uploadAvatar': (_e: unknown, image: Uint8Array) => uploadAvatar(image),
   'auth:removeAvatar': () => removeAvatar(),
   'auth:status': () => auth.status(),
