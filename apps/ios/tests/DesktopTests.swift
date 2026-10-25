@@ -71,6 +71,7 @@ struct DesktopTests {
         let raw = try RFBDecode.zrle([0, 0xFF, 0, 0, 0, 0xFF, 0], width: 2, height: 1)
         precondition(raw == [blue, green])
         precondition((try? RFBDecode.zrle([128, 0, 0, 0, 9], width: 2, height: 1)) == nil, "A run past the tile is corrupt")
+        precondition((try? ZlibStream().inflate(zrleRect, limit: 10)) == nil, "More output than the rectangle can hold is refused")
     }
 
     final class Recorder: @unchecked Sendable {

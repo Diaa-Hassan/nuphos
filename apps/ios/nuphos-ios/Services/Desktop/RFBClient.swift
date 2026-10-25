@@ -199,7 +199,10 @@ nonisolated final class RFBClient {
                 guard framebuffer.contains(x: sx, y: sy, width: w, height: h) else { throw Failure.unexpected("copy outside the screen") }
                 framebuffer.copy(fromX: sx, fromY: sy, toX: x, toY: y, width: w, height: h)
             case 16:
-                let data = try zlib.inflate(try await input.read(try await length(input)))
+                // The most one rectangle can take: a subencoding byte and a full
+                // palette per 64×64 tile, then four bytes (a pixel and a run) per pixel.
+                let tiles = ((w + 63) / 64) * ((h + 63) / 64)
+                let data = try zlib.inflate(try await input.read(try await length(input)), limit: tiles * 49 + w * h * 4)
                 framebuffer.put(x: x, y: y, width: w, height: h, try RFBDecode.zrle(data, width: w, height: h))
             default:
                 throw Failure.unexpected("encoding \(encoding)")

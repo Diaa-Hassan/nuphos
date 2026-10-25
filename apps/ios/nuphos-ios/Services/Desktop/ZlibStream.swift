@@ -10,19 +10,22 @@ nonisolated final class ZlibStream {
 
     private let stream = UnsafeMutablePointer<compression_stream>.allocate(capacity: 1)
     private var header = 2
+    private let started: Bool
     private var broken = false
 
     init() {
-        if compression_stream_init(stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB) != COMPRESSION_STATUS_OK { broken = true }
+        started = compression_stream_init(stream, COMPRESSION_STREAM_DECODE, COMPRESSION_ZLIB) == COMPRESSION_STATUS_OK
+        broken = !started
     }
 
     deinit {
-        if !broken { compression_stream_destroy(stream) }
+        if started { compression_stream_destroy(stream) }
         stream.deallocate()
     }
 
-    /// The bytes the next piece of the stream decodes to.
-    func inflate(_ piece: [UInt8]) throws -> [UInt8] {
+    /// The bytes the next piece of the stream decodes to, refusing more than
+    /// `limit`: a small piece must not unpack into unbounded memory.
+    func inflate(_ piece: [UInt8], limit: Int = .max) throws -> [UInt8] {
         guard !broken else { throw Corrupt() }
         let skipped = min(header, piece.count)
         header -= skipped
@@ -41,6 +44,7 @@ nonisolated final class ZlibStream {
                 }
                 let produced = buffer.count - stream.pointee.dst_size
                 output += buffer[0..<produced]
+                guard output.count <= limit else { broken = true; throw Corrupt() }
                 guard status == COMPRESSION_STATUS_OK else { broken = true; throw Corrupt() }
                 if stream.pointee.src_size == 0, produced < buffer.count { return }
             }
