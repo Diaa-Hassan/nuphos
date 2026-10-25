@@ -38,7 +38,6 @@ import androidx.compose.material.icons.outlined.Unarchive
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.WifiOff
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -172,10 +171,6 @@ fun AgentPage(
     }
 
     Column(Modifier.fillMaxSize().dismissRowActionsOnOutsidePress(rowInteractions)) {
-        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = !store.archivedOnly, onClick = { store.updateArchivedOnly(false) }, label = { Text("Active") })
-            FilterChip(selected = store.archivedOnly, onClick = { store.updateArchivedOnly(true) }, label = { Text("Archived") })
-        }
         if (searching) {
             SearchField(
                 value = store.search,
