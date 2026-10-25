@@ -63,6 +63,14 @@ final class DesktopSession {
         self.teamId = teamId
         self.sessionId = sessionId
         self.token = token
+        frames.show = { [weak self] image in self?.show(image) }
+    }
+
+    private func show(_ image: CGImage) {
+        let size = CGSize(width: image.width, height: image.height)
+        if screenSize != size { screenSize = size } // The remote screen changed resolution.
+        lastFrame = image
+        onFrame?(image)
     }
 
     // MARK: - Connection
@@ -150,18 +158,10 @@ final class DesktopSession {
         // The handlers hold the session until the connection ends, which stop() makes happen.
         let handlers = RFBClient.Handlers(
             credentials: { try await self.account(for: key, failed: signInFailed) },
-            ready: { width, height, _ in
+            ready: { width, height in
                 Task { @MainActor in self.began(width: width, height: height) }
             },
-            frame: { framebuffer in
-                guard let image = framebuffer.image() else { return }
-                mailbox.post(image) { image in
-                    let size = CGSize(width: image.width, height: image.height)
-                    if self.screenSize != size { self.screenSize = size } // The remote screen changed resolution.
-                    self.lastFrame = image
-                    self.onFrame?(image)
-                }
-            },
+            frame: { mailbox.post($0) },
             cursor: { cursor in
                 Task { @MainActor in
                     self.lastCursor = cursor
@@ -383,25 +383,44 @@ final class DesktopSession {
     }
 }
 
-/// Hands the newest frame to the main thread, dropping any frame still
-/// waiting there, so a slow screen shows the present rather than a queue.
+/// Hands the newest screen to the main thread as an image. While one image
+/// is on its way, a newer screen only replaces the waiting snapshot, so the
+/// pixels are copied once per picture shown rather than once per update, and
+/// a slow device shows the present instead of a queue.
 nonisolated private final class FrameMailbox: @unchecked Sendable {
     private let lock = NSLock()
-    private var waiting: CGImage?
+    private let queue = DispatchQueue(label: "ai.nuphos.desktop.frames", qos: .userInteractive)
+    private var delivering = false
+    private var waiting: RFBFramebuffer?
+    var show: (@MainActor (CGImage) -> Void)?
 
-    func post(_ image: CGImage, show: @escaping @MainActor (CGImage) -> Void) {
+    func post(_ screen: RFBFramebuffer) {
         lock.lock()
-        let scheduled = waiting != nil
-        waiting = image
-        lock.unlock()
-        guard !scheduled else { return }
-        DispatchQueue.main.async {
-            self.lock.lock()
-            let image = self.waiting
-            self.waiting = nil
-            self.lock.unlock()
-            if let image { MainActor.assumeIsolated { show(image) } }
+        if delivering {
+            waiting = screen
+            lock.unlock()
+            return
         }
+        delivering = true
+        lock.unlock()
+        deliver(screen)
+    }
+
+    private func deliver(_ screen: RFBFramebuffer) {
+        guard let image = screen.image() else { return finish() }
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { self.show?(image) }
+            self.finish()
+        }
+    }
+
+    private func finish() {
+        lock.lock()
+        let next = waiting
+        waiting = nil
+        delivering = next != nil
+        lock.unlock()
+        if let next { queue.async { self.deliver(next) } }
     }
 }
 

@@ -9,7 +9,9 @@ struct DesktopTests {
         try inflate()
         try zrle()
         try await handshake()
+        try await limits()
         power()
+        group()
         keysyms()
         print("Desktop viewer tests passed")
     }
@@ -30,7 +32,7 @@ struct DesktopTests {
         let lines = try String(contentsOfFile: "tests/fixtures/desktop-zlib.txt", encoding: .utf8).split(separator: "\n")
         let expected = lines[0].split(separator: " ")
         let stream = lines.dropFirst().flatMap(hex)
-        var inflater = Inflater()
+        let inflater = ZlibStream()
         var output: [UInt8] = []
         var offset = 0
         var size = 1
@@ -59,7 +61,7 @@ struct DesktopTests {
     }
 
     static func zrle() throws {
-        var inflater = Inflater()
+        let inflater = ZlibStream()
         let rect = try RFBDecode.zrle(try inflater.inflate(zrleRect), width: 70, height: 3)
         precondition(rect == expectedRect())
         let solid = try RFBDecode.zrle([1, 0x00, 0xFF, 0x00], width: 3, height: 2)
@@ -91,7 +93,7 @@ struct DesktopTests {
         let recorder = Recorder()
         let client = RFBClient(send: { recorder.sent += $0 }, handlers: .init(
             credentials: { throw CancellationError() },
-            ready: { w, h, _ in recorder.size = (w, h) },
+            ready: { w, h in recorder.size = (w, h) },
             frame: { recorder.frames.append($0) },
             cursor: { recorder.cursor = $0 },
             pointer: { recorder.pointer = ($0, $1) },
@@ -134,6 +136,39 @@ struct DesktopTests {
         precondition(Array(frame.pixels[240..<310]) == Array(frame.pixels[0..<70]), "CopyRect copies row 0 to row 3")
         precondition(recorder.cursor!.pixels == [0xFFFF_FFFF, 0, 0, 0xFFFF_FFFF] && recorder.cursor!.hotX == 1)
         precondition(recorder.pointer! == (40, 2))
+    }
+
+    /// A server that announces a screen larger than the cap is refused before any allocation.
+    static func limits() async throws {
+        let client = RFBClient(send: { _ in }, handlers: .init(
+            credentials: { throw CancellationError() }, ready: { _, _ in }, frame: { _ in },
+            cursor: { _ in }, pointer: { _, _ in }, clipboard: { _ in }
+        ))
+        let server = Array("RFB 003.008\n".utf8) + [1, 1] + be32(0) + be16(65535) + be16(65535)
+        let (chunks, input) = AsyncThrowingStream<[UInt8], Error>.makeStream()
+        input.yield(server)
+        input.finish()
+        do {
+            try await client.run(RFBByteStream(chunks))
+            preconditionFailure("A 65535×65535 screen must be refused")
+        } catch RFBClient.Failure.unexpected {}
+    }
+
+    /// The Diffie-Hellman group comes from the server and is checked before any arithmetic.
+    static func group() {
+        let prime = [0xC3] + [UInt8](repeating: 0x5A, count: 126) + [0x0B]
+        let key = [0x11] + [UInt8](repeating: 0x22, count: 127)
+        func valid(_ prime: [UInt8], _ key: [UInt8], generator: [UInt8] = [0, 2]) -> Bool {
+            (try? AppleRemoteDesktopAuth.validate(generator: generator, prime: prime, serverKey: key)) != nil
+        }
+        precondition(valid(prime, key))
+        precondition(!valid([], []), "An empty group")
+        precondition(!valid([0] + prime.dropFirst(), key), "A zero-padded prime")
+        precondition(!valid(prime.dropLast() + [0x0A], key), "An even prime")
+        precondition(!valid(prime + [UInt8](repeating: 1, count: 385), key + [UInt8](repeating: 1, count: 385)), "A prime over 512 bytes")
+        precondition(!valid(prime, prime), "A key that is not below the prime")
+        precondition(!valid(prime, [UInt8](repeating: 0, count: 127) + [1]), "A key of 1")
+        precondition(!valid(prime, key, generator: [0, 1]), "A generator of 1")
     }
 
     static func power() {

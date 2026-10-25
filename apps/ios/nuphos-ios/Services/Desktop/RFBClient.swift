@@ -57,7 +57,7 @@ nonisolated final class RFBClient {
         /// Asked for a Mac account when the server wants Apple Remote Desktop sign-in.
         var credentials: @Sendable () async throws -> (user: String, password: String)
         /// The handshake finished; input may be sent from now on.
-        var ready: @Sendable (_ width: Int, _ height: Int, _ name: String) -> Void
+        var ready: @Sendable (_ width: Int, _ height: Int) -> Void
         /// After each complete update. Keeping the value is a cheap snapshot:
         /// the next update copies the pixels before it writes.
         var frame: @Sendable (RFBFramebuffer) -> Void
@@ -67,13 +67,20 @@ nonisolated final class RFBClient {
         var clipboard: @Sendable (String) -> Void
     }
 
+    /// The largest screen and pointer shape accepted, and the longest text or
+    /// compressed rectangle: the server chooses these sizes, and anything
+    /// beyond them would only exhaust memory.
+    static let maxScreen = 8192
+    static let maxCursor = 256
+    static let maxLength = 64 << 20
+
     /// ZRLE, CopyRect, Raw, then the pseudo-encodings Cursor, PointerPos, DesktopSize and LastRect.
     static let encodings: [Int32] = [16, 1, 0, -239, -232, -223, -224]
 
     private let send: @Sendable ([UInt8]) -> Void
     private let handlers: Handlers
     private var framebuffer = RFBFramebuffer(width: 0, height: 0)
-    private var zlib = Inflater()
+    private let zlib = ZlibStream()
 
     init(send: @escaping @Sendable ([UInt8]) -> Void, handlers: Handlers) {
         self.send = send
@@ -94,7 +101,7 @@ nonisolated final class RFBClient {
                 break
             case 3:
                 _ = try await input.read(3)
-                let text = try await input.read(try await input.u32())
+                let text = try await input.read(try await length(input))
                 handlers.clipboard(String(decoding: text.map { UInt16($0) }, as: UTF16.self))
             case let type:
                 throw Failure.unexpected("message \(type)")
@@ -116,6 +123,10 @@ nonisolated final class RFBClient {
             let keyLength = try await input.u16()
             let prime = try await input.read(keyLength)
             let serverKey = try await input.read(keyLength)
+            // Checked before asking for the account, which a bad group could not protect.
+            guard (try? AppleRemoteDesktopAuth.validate(generator: generator, prime: prime, serverKey: serverKey)) != nil else {
+                throw Failure.unexpected("key exchange")
+            }
             let account = try await handlers.credentials()
             send(try AppleRemoteDesktopAuth.response(
                 generator: generator, prime: prime, serverKey: serverKey, user: account.user, password: account.password
@@ -127,17 +138,28 @@ nonisolated final class RFBClient {
 
         send([1]) // ClientInit: shared, so the agent and other viewers keep the screen.
         let width = try await input.u16(), height = try await input.u16()
+        try check(width: width, height: height)
         _ = try await input.read(16)
-        let name = String(decoding: try await input.read(try await input.u32()), as: UTF8.self)
+        _ = try await input.read(try await length(input)) // The desktop's name.
         framebuffer.resize(width: width, height: height)
         send(Self.pixelFormat)
         send([2, 0] + be16(Self.encodings.count) + Self.encodings.flatMap { be32(Int(UInt32(bitPattern: $0))) })
         send(Self.updateRequest(incremental: false, width: width, height: height))
-        handlers.ready(width, height, name)
+        handlers.ready(width, height)
     }
 
     private func reason(_ input: RFBByteStream) async throws -> String {
-        String(decoding: try await input.read(try await input.u32()), as: UTF8.self)
+        String(decoding: try await input.read(try await length(input)), as: UTF8.self)
+    }
+
+    private func length(_ input: RFBByteStream) async throws -> Int {
+        let length = try await input.u32()
+        guard length <= Self.maxLength else { throw Failure.unexpected("length \(length)") }
+        return length
+    }
+
+    private func check(width: Int, height: Int) throws {
+        guard width <= Self.maxScreen, height <= Self.maxScreen else { throw Failure.unexpected("a \(width)×\(height) screen") }
     }
 
     private func update(_ input: RFBByteStream) async throws {
@@ -153,12 +175,14 @@ nonisolated final class RFBClient {
             case -224:
                 break rects
             case -223:
+                try check(width: w, height: h)
                 framebuffer.resize(width: w, height: h)
                 continue
             case -232:
                 handlers.pointer(x, y)
                 continue
             case -239:
+                guard w <= Self.maxCursor, h <= Self.maxCursor else { throw Failure.unexpected("a \(w)×\(h) pointer") }
                 let colors = try await input.read(w * h * 4)
                 let mask = try await input.read((w + 7) / 8 * h)
                 if w > 0, h > 0 { handlers.cursor(RFBCursor(width: w, height: h, hotX: x, hotY: y, colors: colors, mask: mask)) }
@@ -175,7 +199,7 @@ nonisolated final class RFBClient {
                 guard framebuffer.contains(x: sx, y: sy, width: w, height: h) else { throw Failure.unexpected("copy outside the screen") }
                 framebuffer.copy(fromX: sx, fromY: sy, toX: x, toY: y, width: w, height: h)
             case 16:
-                let data = try zlib.inflate(try await input.read(try await input.u32()))
+                let data = try zlib.inflate(try await input.read(try await length(input)))
                 framebuffer.put(x: x, y: y, width: w, height: h, try RFBDecode.zrle(data, width: w, height: h))
             default:
                 throw Failure.unexpected("encoding \(encoding)")

@@ -10,9 +10,23 @@ import CryptoKit
 /// ciphertext.
 nonisolated enum AppleRemoteDesktopAuth {
     struct Unavailable: Error {}
+    struct BadGroup: Error {}
+
+    /// The server picks the group, so check it before any arithmetic: a short,
+    /// even or zero-padded prime, or a key outside it, would make the exchange
+    /// loop for as long as the server liked. Apple's groups are 128 bytes.
+    static func validate(generator: [UInt8], prime: [UInt8], serverKey: [UInt8]) throws {
+        let one = BigUInt(limbs: [1])
+        let modulus = BigUInt(bytes: prime)
+        let key = BigUInt(bytes: serverKey)
+        let base = BigUInt(bytes: generator)
+        guard (16...512).contains(prime.count), prime.first != 0, prime.last.map({ $0 & 1 == 1 }) == true,
+              serverKey.count == prime.count, one < key, key < modulus, one < base, base < modulus else { throw BadGroup() }
+    }
 
     /// The 128 encrypted account bytes followed by the client's public key.
     static func response(generator: [UInt8], prime: [UInt8], serverKey: [UInt8], user: String, password: String) throws -> [UInt8] {
+        try validate(generator: generator, prime: prime, serverKey: serverKey)
         let keyLength = prime.count
         var secret = [UInt8](repeating: 0, count: keyLength)
         for i in secret.indices { secret[i] = UInt8.random(in: 0...255) }
@@ -51,7 +65,7 @@ nonisolated enum AppleRemoteDesktopAuth {
 /// Just enough unsigned big-integer arithmetic for the exchange: modular
 /// exponentiation with Montgomery multiplication on 32-bit limbs, least
 /// significant first. The modulus must be odd, as a Diffie-Hellman prime is.
-nonisolated struct BigUInt: Equatable {
+nonisolated struct BigUInt: Comparable {
     var limbs: [UInt32]
 
     init(limbs: [UInt32]) {
@@ -80,6 +94,9 @@ nonisolated struct BigUInt: Equatable {
         }
     }
 
+    static func < (a: BigUInt, b: BigUInt) -> Bool { compare(a.limbs, b.limbs) < 0 }
+
+    /// `self` to the `exponent` mod an odd `modulus` larger than `self`.
     func power(_ exponent: BigUInt, modulus: BigUInt) -> BigUInt {
         let n = modulus.limbs, k = n.count
         // -n⁻¹ mod 2³², by Newton's iteration.
