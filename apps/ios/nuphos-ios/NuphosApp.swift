@@ -12,6 +12,9 @@ struct NuphosApp: App {
             #if DEBUG && os(iOS)
             if CommandLine.arguments.contains("-scroll-regression") {
                 TranscriptRegressionScreen()
+            } else if CommandLine.arguments.contains("-preview-desktop") {
+                // With `-apiBaseURL http://127.0.0.1:<port>` pointing at a fixture desktop server.
+                DesktopScreen(desktop: DesktopSession(teamId: "preview", sessionId: "preview", token: "preview"), title: "Demo Mac")
             } else {
                 RootView()
                     .environment(session)
