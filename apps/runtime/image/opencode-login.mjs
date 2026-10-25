@@ -34,6 +34,8 @@ const FEATURED = [
   'opencode',
 ]
 const API_KEY = { type: 'api', label: 'API key' }
+// How long a 2.x attempt is polled when OpenCode does not say when it expires.
+const ATTEMPT_MS = 10 * 60_000
 const BEDROCK = 'amazon-bedrock'
 const BEDROCK_METHODS = [
   { value: 'api-key', label: 'Bedrock API key' },
@@ -360,21 +362,23 @@ export async function runOpenCodeLoginV2({
     if (!value) throw new LoginError('Empty answer')
     return value
   }
-  // An OAuth or command attempt is finished by OpenCode itself, so it is polled.
-  const settled = async (path) => {
-    for (;;) {
+  // OpenCode finishes an OAuth or command attempt itself, so it is polled until it expires.
+  const settled = async (path, time) => {
+    const deadline = Number.isFinite(time?.expires) ? time.expires : Date.now() + ATTEMPT_MS
+    while (Date.now() < deadline) {
       const { status, message } = await api('GET', path)
       if (status === 'complete') return
       if (status !== 'pending') throw new LoginError(message ?? `Sign-in ${status}`)
       await new Promise((resolve) => setTimeout(resolve, pollMs))
     }
+    throw new LoginError('Sign-in expired')
   }
 
   // Environment variables are not a sign-in; an integration with only those is not offered.
   const all = (await api('GET', '/api/integration')).filter((integration) =>
-    integration.methods.some((method) => method.type !== 'env'),
+    (integration.methods ?? []).some((method) => method.type !== 'env'),
   )
-  const connected = all.filter(({ connections }) => connections.length).map(({ id }) => id)
+  const connected = all.filter(({ connections }) => connections?.length).map(({ id }) => id)
   const integrationID = await choose('Choose a model provider', providerOptions({ all, connected }))
   const integration = all.find(({ id }) => id === integrationID)
   const offered = integration.methods.filter((method) => method.type !== 'env')
@@ -399,8 +403,8 @@ export async function runOpenCodeLoginV2({
   } else if (method.type === 'external') {
     await api('POST', `${base}/external`, { methodID: method.id, ...filled })
   } else if (method.type === 'command') {
-    const { attemptID } = await api('POST', `${base}/command`, { methodID: method.id })
-    await settled(`${base}/command/${encodeURIComponent(attemptID)}`)
+    const { attemptID, time } = await api('POST', `${base}/command`, { methodID: method.id })
+    await settled(`${base}/command/${encodeURIComponent(attemptID)}`, time)
   } else if (method.type === 'oauth') {
     const attempt = await api('POST', `${base}/oauth`, { methodID: method.id, ...filled })
     const path = `${base}/oauth/${encodeURIComponent(attempt.attemptID)}`
@@ -408,12 +412,12 @@ export async function runOpenCodeLoginV2({
     if (attempt.mode === 'code') {
       emit({ type: 'browser', url, instructions, paste: 'code' })
       await api('POST', `${path}/complete`, { code: await answer() })
-      await settled(path)
+      await settled(path, attempt.time)
     } else {
       // As in 1.x, a loopback listener the browser cannot reach gets its address pasted back.
       const redirect = loopbackRedirect(url)
       emit({ type: 'browser', url, instructions, ...(redirect ? { paste: 'address' } : {}) })
-      const done = settled(path)
+      const done = settled(path, attempt.time)
       const pasted = redirect && (await Promise.race([answer(), done.then(() => undefined)]))
       if (pasted) {
         const address = pastedAddress(pasted, redirect)

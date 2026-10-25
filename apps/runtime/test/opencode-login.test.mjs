@@ -343,6 +343,8 @@ const INTEGRATIONS = [
     methods: [{ type: 'env', names: ['ONLY_ENV_KEY'] }],
     connections: [],
   },
+  // An older 2.x build can list an integration without methods.
+  { id: 'bare', name: 'Bare', connections: [] },
   {
     id: 'github-copilot',
     name: 'GitHub Copilot',
@@ -545,5 +547,18 @@ test('2.x: an attempt OpenCode reports failed is not a sign-in', async () => {
       statuses: ['failed'],
     }),
     /Denied/u,
+  )
+})
+
+test('2.x: an attempt still pending when it expires ends the sign-in instead of polling on', async () => {
+  await assert.rejects(
+    loginV2(['github-copilot', 'github.com'], {
+      attempt: {
+        url: 'https://github.com/login/device',
+        time: { created: 0, expires: Date.now() + 20 },
+      },
+      statuses: ['pending'],
+    }),
+    /Sign-in expired/u,
   )
 })
