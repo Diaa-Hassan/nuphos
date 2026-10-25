@@ -5,16 +5,19 @@ import {
   exchangeGoogleCode,
   getGoogleUser,
   googleAuthorizeUrl,
-  googleOAuthClient,
   isGoogleProvider,
+  teamGoogleClient,
 } from './google'
 
 import type { PersonalCredentialProvider } from '@/models'
 
 type AuthorizeArgs = { clientId: string; redirectUri: string; state: string; codeChallenge: string }
 
-/** GitHub and Google connect with PKCE; Linear does not. */
-export function pkceFlow(provider: PersonalCredentialProvider) {
+/**
+ * GitHub and Google connect with PKCE; Linear does not. Google uses the OAuth
+ * client of the team the member connects through.
+ */
+export async function pkceFlow(provider: PersonalCredentialProvider, teamId: string | undefined) {
   if (provider === 'github') {
     return {
       client: githubOAuthClient(),
@@ -27,7 +30,7 @@ export function pkceFlow(provider: PersonalCredentialProvider) {
 
   return isGoogleProvider(provider)
     ? {
-        client: googleOAuthClient(),
+        client: teamId ? await teamGoogleClient(teamId) : null,
         key: config.byos.linear.encryptionKey,
         authorizeUrl: (args: AuthorizeArgs) => googleAuthorizeUrl({ ...args, provider }),
         exchange: exchangeGoogleCode,

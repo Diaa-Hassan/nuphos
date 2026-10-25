@@ -1,7 +1,12 @@
-// Google OAuth for the Gmail and Google Drive Personal Credentials. Both use
-// the sign-in OAuth client; each provider is its own grant with one scope.
-import { config } from '@/config'
+// Google OAuth for the Gmail and Google Drive Personal Credentials. Each team
+// brings its own OAuth client (Team settings); each provider is its own grant
+// with one scope, issued by the team's client.
+import { decryptLinearSecret } from '@/lib/byos/secrets'
+import { AppError } from '@/lib/errors'
+import { getTeamMembership } from '@/lib/identity'
 import { getGoogleProfile } from '@/lib/identity/google'
+import { parseObjectId } from '@/lib/objectid'
+import { teamByosBindings } from '@/models'
 
 import type { ProviderTokens } from './github'
 
@@ -22,10 +27,35 @@ export function isGoogleProvider(provider: string): provider is GoogleProvider {
   return (GOOGLE_PROVIDERS as readonly string[]).includes(provider)
 }
 
-export function googleOAuthClient(): { clientId: string; clientSecret: string } | null {
-  const { clientId, clientSecret } = config.auth.google
+export type GoogleClient = { clientId: string; clientSecret: string }
 
-  return clientId && clientSecret ? { clientId, clientSecret } : null
+/** The team's own OAuth client, or null when its admins have not added one. */
+export async function teamGoogleClient(teamId: string): Promise<GoogleClient | null> {
+  const doc = await teamByosBindings().findOne(
+    { _id: parseObjectId(teamId, 'teamId') },
+    { projection: { googleOAuthClient: 1 } },
+  )
+  const stored = doc?.googleOAuthClient
+
+  return stored
+    ? { clientId: stored.clientId, clientSecret: decryptLinearSecret(stored.encryptedClientSecret) }
+    : null
+}
+
+/** Gmail / Google Drive connect through a team the member belongs to, with that team's client. */
+export async function googleTeamFor(userId: string, teamId: string | undefined): Promise<string> {
+  if (!teamId || !(await getTeamMembership(userId, teamId))) {
+    throw new AppError(403, 'forbidden', 'Connect Gmail or Google Drive from a team you belong to')
+  }
+  if (!(await teamGoogleClient(teamId))) {
+    throw new AppError(
+      409,
+      'google_oauth_client_not_configured',
+      'This team has not added a Google OAuth client yet. An administrator can add one in Team settings.',
+    )
+  }
+
+  return teamId
 }
 
 export function googleAuthorizeUrl(args: {
@@ -107,11 +137,10 @@ export function exchangeGoogleCode(args: {
   })
 }
 
-export function refreshGoogleToken(refreshToken: string): Promise<ProviderTokens> {
-  const client = googleOAuthClient()
-
-  if (!client) throw new Error('Google OAuth client is not configured')
-
+export function refreshGoogleToken(
+  client: GoogleClient,
+  refreshToken: string,
+): Promise<ProviderTokens> {
   return tokenRequest({
     client_id: client.clientId,
     client_secret: client.clientSecret,
@@ -128,7 +157,7 @@ export async function getGoogleUser(token: string): Promise<{ id: string; login:
 
 /**
  * Best-effort. Google revokes the member's whole grant to the client, which
- * covers both Google providers, so callers only revoke the last one.
+ * covers both Google providers of a team, so callers only revoke the last one.
  */
 export async function revokeGoogleToken(token: string): Promise<void> {
   await fetch(REVOKE_URL, {

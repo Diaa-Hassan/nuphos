@@ -1,7 +1,6 @@
 import { afterAll, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { ObjectId } from 'mongodb'
 
-import { config } from '@/config'
 import { GithubApiError } from '@/lib/byos/github-http'
 import { useByosSecrets } from '@/lib/test/doubles/byos-secrets'
 import { useModels } from '@/lib/test/doubles/models'
@@ -26,7 +25,19 @@ const matches = (row: PersonalCredential, filter: Record<string, unknown>) =>
     return actual === value
   })
 
+const TEAM = new ObjectId().toHexString()
+let teamClient: { clientId: string; encryptedClientSecret: EncryptedSecret } | null = null
+
 useModels({
+  teamByosBindings: () =>
+    ({
+      findOne: (filter: { _id: ObjectId }) =>
+        Promise.resolve(
+          filter._id.toHexString() === TEAM && teamClient
+            ? { googleOAuthClient: teamClient }
+            : null,
+        ),
+    }) as never,
   personalCredentials: () =>
     ({
       findOne: (filter: Record<string, unknown>) =>
@@ -152,30 +163,59 @@ describe('personalLinearToken', () => {
   })
 })
 
-describe('personalGoogleToken refresh', () => {
-  const saved = { ...config.auth.google }
+describe('personalGoogleToken', () => {
   const fetchSpy = spyOn(globalThis, 'fetch')
   let answer: () => Promise<Response>
+  let requested: URLSearchParams | null = null
 
-  Object.assign(config.auth.google, { clientId: 'google-client', clientSecret: 'google-secret' })
-  fetchSpy.mockImplementation((() => answer()) as unknown as typeof fetch)
-  afterAll(() => {
-    fetchSpy.mockRestore()
-    Object.assign(config.auth.google, saved)
+  fetchSpy.mockImplementation(((_url: string, init?: RequestInit) => {
+    requested = new URLSearchParams((init?.body as string | undefined) ?? '')
+
+    return answer()
+  }) as unknown as typeof fetch)
+  afterAll(() => fetchSpy.mockRestore())
+  beforeEach(() => {
+    teamClient = {
+      clientId: 'team.apps.googleusercontent.com',
+      encryptedClientSecret: sealed('team-secret'),
+    }
+    requested = null
   })
 
   const expired = (userId: string) =>
-    credential({ userId, provider: 'gmail', accessTokenExpiresAt: new Date(Date.now() - 1000) })
+    credential({
+      userId,
+      provider: 'gmail',
+      teamId: TEAM,
+      accessTokenExpiresAt: new Date(Date.now() - 1000),
+    })
+
+  test('only a grant issued through this team applies', async () => {
+    rows = [credential({ provider: 'gmail', teamId: TEAM, encryptedAccessToken: sealed('mail') })]
+
+    expect(await personalGoogleToken('user-1', 'gmail', TEAM)).toMatchObject({ token: 'mail' })
+    expect(await personalGoogleToken('user-1', 'gmail', new ObjectId().toHexString())).toBeNull()
+  })
+
+  test('refreshes with the team’s own client and keeps the stored refresh token', async () => {
+    rows = [expired('g-3')]
+    answer = () => Promise.resolve(Response.json({ access_token: 'ya29_new', expires_in: 3599 }))
+
+    expect(await personalGoogleToken('g-3', 'gmail', TEAM)).toMatchObject({ token: 'ya29_new' })
+    expect(requested?.get('client_id')).toBe('team.apps.googleusercontent.com')
+    expect(requested?.get('client_secret')).toBe('team-secret')
+    expect(rows[0]?.encryptedRefreshToken).toEqual(sealed('ghr_refresh'))
+  })
 
   test('drops the grant when Google answers invalid_grant', async () => {
     rows = [expired('g-1')]
     answer = () => Promise.resolve(Response.json({ error: 'invalid_grant' }, { status: 400 }))
 
-    expect(await personalGoogleToken('g-1', 'gmail')).toBeNull()
+    expect(await personalGoogleToken('g-1', 'gmail', TEAM)).toBeNull()
     expect(rows).toHaveLength(0)
   })
 
-  test('keeps the grant through a network error, a 5xx and a rate limit', async () => {
+  test('keeps the grant through a network error, a 5xx, a rate limit and a missing client', async () => {
     rows = [expired('g-2')]
 
     for (const next of [
@@ -184,16 +224,12 @@ describe('personalGoogleToken refresh', () => {
       () => Promise.resolve(Response.json({ error: 'rate_limit_exceeded' }, { status: 429 })),
     ]) {
       answer = next
-      expect(await personalGoogleToken('g-2', 'gmail')).toBeNull()
+      expect(await personalGoogleToken('g-2', 'gmail', TEAM)).toBeNull()
     }
+    teamClient = null
+    requested = null
+    expect(await personalGoogleToken('g-2', 'gmail', TEAM)).toBeNull()
+    expect(requested).toBeNull()
     expect(rows).toHaveLength(1)
-  })
-
-  test('a successful refresh keeps the stored refresh token', async () => {
-    rows = [expired('g-3')]
-    answer = () => Promise.resolve(Response.json({ access_token: 'ya29_new', expires_in: 3599 }))
-
-    expect(await personalGoogleToken('g-3', 'gmail')).toMatchObject({ token: 'ya29_new' })
-    expect(rows[0]?.encryptedRefreshToken).toEqual(sealed('ghr_refresh'))
   })
 })

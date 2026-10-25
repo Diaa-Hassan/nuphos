@@ -32,8 +32,11 @@ email. Never print the token. Every shell call is a fresh process, so source the
 env file in each call that uses it.
 
 A 404 `personal_credential_not_connected` means this member has not connected
-that provider: ask them to connect Gmail or Google Drive under Settings →
-Personal Credentials, then retry. There is no team fallback.
+that provider through this team: ask them to connect Gmail or Google Drive under
+Settings → Personal Credentials, then retry. A 409
+`google_oauth_client_not_configured` means the team has no Google OAuth client
+yet: a team administrator adds one in Team settings (guide:
+https://docs.nuphos.ai/connectors/google-workspace). There is no team fallback.
 
 ## Gmail
 

@@ -12,6 +12,8 @@ export const BINDING_SEALERS: Partial<Record<string, SealerName>> = {
   betterStackIntegrations: 'betterStack',
   cloudflareAccounts: 'cloudflare',
   gitlabAccounts: 'gitlab',
+  // Google OAuth client secrets share the key of the grants they issue.
+  googleOAuthClient: 'linear',
   grafanaInstances: 'grafana',
   hetznerAccounts: 'hetzner',
   jiraSites: 'jira',

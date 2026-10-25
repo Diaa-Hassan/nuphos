@@ -1,11 +1,13 @@
 import { afterAll, beforeEach, describe, expect, spyOn, test } from 'bun:test'
 import { Hono } from 'hono'
+import { ObjectId } from 'mongodb'
 
 import { config } from '@/config'
 import { mintPreviewMcpToken } from '@/lib/claude-code-preview/mcp-token'
 import { AppError } from '@/lib/errors'
 import { useAuthMiddleware } from '@/lib/test/doubles/auth-middleware'
 import { useByosSecrets } from '@/lib/test/doubles/byos-secrets'
+import { useIdentity } from '@/lib/test/doubles/identity'
 import { useModels } from '@/lib/test/doubles/models'
 
 import { personalCredentialRoutes, personalCredentialTokenRoutes } from './personal-credentials'
@@ -57,9 +59,31 @@ function collection(rows: Doc[]) {
   }
 }
 
+// TEAM has its own Google OAuth client unless a test clears it; everyone but
+// 'outsider' is a member.
+const TEAM = new ObjectId().toHexString()
+let teamClient: { clientId: string; encryptedClientSecret: EncryptedSecret } | null = null
+
 useModels({
   personalCredentialPendingOAuth: () => collection(pending) as never,
   personalCredentials: () => collection(saved) as never,
+  teamByosBindings: () =>
+    ({
+      findOne: (filter: { _id: ObjectId }) =>
+        Promise.resolve(
+          filter._id.toHexString() === TEAM && teamClient
+            ? { googleOAuthClient: teamClient }
+            : null,
+        ),
+    }) as never,
+})
+useIdentity({
+  getTeamMembership: ((userId: string, teamId: string) =>
+    Promise.resolve(
+      teamId === TEAM && userId !== 'outsider'
+        ? { role: 'MEMBER', team: { id: TEAM, name: 'Acme' } }
+        : null,
+    )) as never,
 })
 const fakeSeal = (plaintext: string) => ({ plaintext }) as unknown as EncryptedSecret
 const fakeOpen = (envelope: EncryptedSecret) =>
@@ -82,7 +106,6 @@ useAuthMiddleware({
 const saveConfig = {
   github: { ...config.byos.github },
   linear: { ...config.byos.linear },
-  google: { ...config.auth.google },
   publicBackendUrl: config.agent.publicBackendUrl,
 }
 
@@ -102,9 +125,7 @@ Object.assign(config.byos.linear, {
   setupRedirect: 'https://elsewhere.test/linear-app/setup',
   encryptionKey: 'k',
 })
-Object.assign(config.auth.google, { clientId: 'google-client', clientSecret: 'google-secret' })
 afterAll(() => {
-  Object.assign(config.auth.google, saveConfig.google)
   Object.assign(config.byos.github, saveConfig.github)
   Object.assign(config.byos.linear, saveConfig.linear)
   Object.assign(config.agent, { publicBackendUrl: saveConfig.publicBackendUrl })
@@ -113,9 +134,10 @@ afterAll(() => {
 // Each provider's token exchange and identity lookup, answered for the approver.
 const fetchSpy = spyOn(globalThis, 'fetch')
 const revoked: string[] = []
+let googleTokenRequest: URLSearchParams | null = null
 
 afterAll(() => fetchSpy.mockRestore())
-fetchSpy.mockImplementation(((input: string | URL | Request) => {
+fetchSpy.mockImplementation(((input: string | URL | Request, init?: RequestInit) => {
   const url = String(input instanceof Request ? input.url : input)
 
   if (url.includes('github.com/login/oauth/access_token'))
@@ -135,10 +157,13 @@ fetchSpy.mockImplementation(((input: string | URL | Request) => {
       }),
     )
 
-  if (url.includes('oauth2.googleapis.com/token'))
+  if (url.includes('oauth2.googleapis.com/token')) {
+    googleTokenRequest = new URLSearchParams((init?.body as string | undefined) ?? '')
+
     return Promise.resolve(
       Response.json({ access_token: 'ya29_v', refresh_token: 'g_refresh', expires_in: 3599 }),
     )
+  }
   if (url.includes('googleapis.com/oauth2/v2/userinfo'))
     return Promise.resolve(Response.json({ id: 'g9', email: 'victim' }))
   if (url.includes('oauth2.googleapis.com/revoke')) {
@@ -159,11 +184,16 @@ app.onError((error, c) =>
 )
 app.route('/personal-credentials', personalCredentialRoutes)
 
-async function start(provider: string, userId: string): Promise<string> {
-  const res = await app.request(`/personal-credentials/${provider}/start`, {
+function requestStart(provider: string, userId: string, teamId: string | null = TEAM) {
+  return app.request(`/personal-credentials/${provider}/start`, {
     method: 'POST',
-    headers: { 'x-test-user': userId },
+    headers: { 'x-test-user': userId, 'content-type': 'application/json' },
+    body: JSON.stringify(teamId ? { teamId } : {}),
   })
+}
+
+async function start(provider: string, userId: string): Promise<string> {
+  const res = await requestStart(provider, userId)
 
   expect(res.status).toBe(200)
   const { state, authorizeUrl } = (await res.json()) as { state: string; authorizeUrl: string }
@@ -198,6 +228,11 @@ beforeEach(() => {
   pending.length = 0
   saved.length = 0
   revoked.length = 0
+  googleTokenRequest = null
+  teamClient = {
+    clientId: 'team.apps.googleusercontent.com',
+    encryptedClientSecret: fakeSeal('team-secret'),
+  }
 })
 
 describe.each(['github', 'linear', 'gmail', 'google-drive'])(
@@ -259,16 +294,41 @@ describe('Google Personal Credentials', () => {
       ['gmail', 'https://www.googleapis.com/auth/gmail.modify'],
       ['google-drive', 'https://www.googleapis.com/auth/drive'],
     ] as const) {
-      const res = await app.request(`/personal-credentials/${provider}/start`, {
-        method: 'POST',
-        headers: { 'x-test-user': 'alice' },
-      })
+      const res = await requestStart(provider, 'alice')
       const url = new URL(((await res.json()) as { authorizeUrl: string }).authorizeUrl)
 
+      expect(url.searchParams.get('client_id')).toBe('team.apps.googleusercontent.com')
       expect(url.searchParams.get('scope')).toBe(`openid email ${scope}`)
       expect(url.searchParams.get('access_type')).toBe('offline')
       expect(url.searchParams.get('code_challenge_method')).toBe('S256')
     }
+  })
+
+  test('the code is exchanged with the team’s client and the grant records the team', async () => {
+    const state = await start('gmail', 'alice')
+    const link = await callback('gmail', state)
+
+    expect(googleTokenRequest?.get('client_id')).toBe('team.apps.googleusercontent.com')
+    expect(googleTokenRequest?.get('client_secret')).toBe('team-secret')
+    expect(
+      (await complete('gmail', 'alice', state, link.searchParams.get('code') ?? '')).status,
+    ).toBe(200)
+    expect(saved).toMatchObject([
+      { userId: 'alice', provider: 'gmail', teamId: TEAM, workspaceName: 'Acme' },
+    ])
+  })
+
+  test('connecting needs a team the member belongs to, with a client', async () => {
+    const code = async (res: Response) => ((await res.json()) as { code: string }).code
+
+    expect((await requestStart('gmail', 'alice', null)).status).toBe(403)
+    expect((await requestStart('gmail', 'outsider')).status).toBe(403)
+    teamClient = null
+    const res = await requestStart('google-drive', 'alice')
+
+    expect(res.status).toBe(409)
+    expect(await code(res)).toBe('google_oauth_client_not_configured')
+    expect(pending).toHaveLength(0)
   })
 
   test('disconnecting revokes at Google only once no Google grant remains', async () => {
@@ -291,6 +351,7 @@ function googleGrant(userId: string, provider: string, token: string): Doc {
     userId,
     provider,
     login: `${userId}@example.com`,
+    teamId: TEAM,
     encryptedAccessToken: fakeSeal(token),
     encryptedRefreshToken: fakeSeal(`${token}-refresh`),
     accessTokenExpiresAt: new Date(Date.now() + 60 * 60_000),
@@ -305,7 +366,7 @@ const turn = (actor: string, humanTurn: boolean) =>
     userId: actor,
     conversationOwnerUserId: 'owner',
     sessionId: 'conv-1',
-    teamId: 'team-1',
+    teamId: TEAM,
     humanTurn,
   })
 
@@ -349,6 +410,14 @@ describe('Google token handout', () => {
 
     expect(res.status).toBe(403)
     expect(await res.json()).toEqual({ code: 'personal_credential_owner_only' })
+  })
+
+  test('409 when the team has no Google OAuth client', async () => {
+    teamClient = null
+    const res = await fetchToken('gmail', turn('owner', true))
+
+    expect(res.status).toBe(409)
+    expect(await res.json()).toEqual({ code: 'google_oauth_client_not_configured' })
   })
 
   test('404 when the member has not connected the provider', async () => {

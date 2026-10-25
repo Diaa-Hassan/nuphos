@@ -13,7 +13,7 @@ import {
   stagePersonalCredentialOAuth,
   startPersonalCredentialOAuth,
 } from '@/lib/personal-credentials'
-import { isGoogleProvider } from '@/lib/personal-credentials/google'
+import { isGoogleProvider, teamGoogleClient } from '@/lib/personal-credentials/google'
 import { requireAuth } from '@/middleware/auth'
 
 import type { AuthVariables } from '@/middleware/auth'
@@ -39,11 +39,19 @@ personalCredentialRoutes.get('/', requireAuth, async (c) =>
   c.json({ credentials: await listPersonalCredentials(c.get('userId')) }),
 )
 
-personalCredentialRoutes.post('/:provider/start', requireAuth, async (c) =>
-  c.json(
-    await startPersonalCredentialOAuth(c.get('userId'), providerParam(c.req.param('provider'))),
-  ),
-)
+// Gmail / Google Drive name the team whose OAuth client to connect through.
+personalCredentialRoutes.post('/:provider/start', requireAuth, async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { teamId?: unknown } | null
+  const teamId = typeof body?.teamId === 'string' ? body.teamId : undefined
+
+  return c.json(
+    await startPersonalCredentialOAuth(
+      c.get('userId'),
+      providerParam(c.req.param('provider')),
+      teamId,
+    ),
+  )
+})
 
 // The member's own app finishes a grant the callback staged, proving with the
 // callback's one-time code that the approval reached it.
@@ -90,10 +98,10 @@ personalCredentialRoutes.get('/:provider/callback', async (c) => {
 })
 
 // Mounted under /teams/:teamId for conversation tokens: the agent's Gmail /
-// Google Drive handout. It is always the session owner's own grant, and a
-// teammate's message in that session gets none: a shared session may run on
-// someone else's runtime, so mail and files never leave their owner's sessions.
-// There is no team token to fall back to.
+// Google Drive handout. It is always the session owner's own grant, issued by
+// this team's OAuth client, and a teammate's message in that session gets none:
+// a shared session may run on someone else's runtime, so mail and files never
+// leave their owner's sessions. There is no team token to fall back to.
 export const personalCredentialTokenRoutes = new Hono()
 
 personalCredentialTokenRoutes.get('/:provider/token', async (c) => {
@@ -117,7 +125,17 @@ personalCredentialTokenRoutes.get('/:provider/token', async (c) => {
       'Gmail and Google Drive are only available in conversations you own',
     )
   }
-  const personal = await personalGoogleToken(claims.own, provider)
+  // The conversation token is only valid under its own /teams/:teamId.
+  const teamId = claims.tid
+
+  if (!(await teamGoogleClient(teamId))) {
+    throw new AppError(
+      409,
+      'google_oauth_client_not_configured',
+      'This team has not added a Google OAuth client. An administrator can add one in Team settings.',
+    )
+  }
+  const personal = await personalGoogleToken(claims.own, provider, teamId)
 
   if (!personal) {
     throw new AppError(

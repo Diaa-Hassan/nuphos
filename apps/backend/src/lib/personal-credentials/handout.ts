@@ -14,7 +14,7 @@ import { logError } from '@/lib/observability'
 import { personalCredentials } from '@/models'
 
 import { githubUserInstallationIds, refreshGithubToken } from './github'
-import { isGoogleProvider, refreshGoogleToken } from './google'
+import { isGoogleProvider, refreshGoogleToken, teamGoogleClient } from './google'
 import { open, seal } from './seal'
 
 import type { ProviderTokens } from './github'
@@ -48,7 +48,11 @@ async function refresh(doc: PersonalCredential): Promise<PersonalToken | null> {
     if (doc.provider === 'github') {
       tokens = await refreshGithubToken(refreshToken)
     } else if (isGoogleProvider(doc.provider)) {
-      tokens = await refreshGoogleToken(refreshToken)
+      const client = doc.teamId ? await teamGoogleClient(doc.teamId) : null
+
+      // Without the team's client there is nothing to refresh with yet.
+      if (!client) return null
+      tokens = await refreshGoogleToken(client, refreshToken)
     } else {
       const client = getDefaultClientCredentials()
 
@@ -146,12 +150,13 @@ export async function personalLinearToken(
   return doc ? currentToken(doc) : null
 }
 
-/** The member's own Gmail or Google Drive token, when they connected it. */
+/** The member's own Gmail or Google Drive token, when they connected it through this team. */
 export async function personalGoogleToken(
   userId: string,
   provider: GoogleProvider,
+  teamId: string,
 ): Promise<PersonalToken | null> {
-  const doc = await personalCredentials().findOne({ userId, provider })
+  const doc = await personalCredentials().findOne({ userId, provider, teamId })
 
   return doc ? currentToken(doc) : null
 }

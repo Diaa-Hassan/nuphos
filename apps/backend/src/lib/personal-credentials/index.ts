@@ -9,9 +9,10 @@ import { getDefaultClientCredentials, getViewer } from '@/lib/byos/linear'
 import { buildAuthorizeUrl, exchangeCodeForTokens } from '@/lib/byos/linear-oauth'
 import { publicBackendUrl } from '@/lib/claude-code-preview/runtime-backend-url'
 import { AppError } from '@/lib/errors'
+import { getTeamMembership } from '@/lib/identity'
 import { personalCredentialPendingOAuth, personalCredentials } from '@/models'
 
-import { GOOGLE_PROVIDERS, isGoogleProvider } from './google'
+import { GOOGLE_PROVIDERS, googleTeamFor, isGoogleProvider } from './google'
 import { pkceFlow } from './pkce'
 import { revokeQuietly } from './revoke'
 import { open, seal } from './seal'
@@ -73,12 +74,15 @@ export async function listPersonalCredentials(
 export async function startPersonalCredentialOAuth(
   userId: string,
   provider: PersonalCredentialProvider,
+  requestedTeamId?: string,
 ): Promise<{ authorizeUrl: string; state: string }> {
   const redirectUri = callbackUrl(provider)
   const state = randomBytes(24).toString('base64url')
   const expiresAt = new Date(Date.now() + PENDING_TTL_MS)
-
-  const flow = pkceFlow(provider)
+  const teamId = isGoogleProvider(provider)
+    ? await googleTeamFor(userId, requestedTeamId)
+    : undefined
+  const flow = await pkceFlow(provider, teamId)
 
   if (flow) {
     if (!flow.client || !redirectUri || !flow.key) throw notConfigured(provider)
@@ -89,6 +93,7 @@ export async function startPersonalCredentialOAuth(
       _id: state,
       userId,
       provider,
+      ...(teamId ? { teamId } : {}),
       encryptedCodeVerifier: seal(provider, verifier),
       expiresAt,
     })
@@ -122,7 +127,7 @@ export async function startPersonalCredentialOAuth(
 
 type Identity = Pick<
   PersonalCredential,
-  'providerUserId' | 'login' | 'workspaceId' | 'workspaceName'
+  'providerUserId' | 'login' | 'workspaceId' | 'workspaceName' | 'teamId'
 >
 
 /**
@@ -154,7 +159,7 @@ export async function stagePersonalCredentialOAuth(
   let tokens: ProviderTokens
   let identity: Identity
 
-  const flow = pkceFlow(provider)
+  const flow = await pkceFlow(provider, pending.teamId)
 
   if (flow) {
     if (!flow.client || !redirectUri || !pending.encryptedCodeVerifier) {
@@ -169,6 +174,11 @@ export async function stagePersonalCredentialOAuth(
     const user = await flow.user(tokens.accessToken)
 
     identity = { providerUserId: user.id, login: user.login }
+    if (pending.teamId) {
+      const membership = await getTeamMembership(pending.userId, pending.teamId)
+
+      identity = { ...identity, teamId: pending.teamId, workspaceName: membership?.team.name }
+    }
   } else {
     const client = getDefaultClientCredentials()
 
@@ -230,8 +240,11 @@ export async function claimPersonalCredential(
     { upsert: true, returnDocument: 'before' },
   )
 
-  // Revoking a replaced Google token would revoke the new grant with it.
-  if (previous && !isGoogleProvider(provider)) void revokeQuietly(previous)
+  // Google revokes a member's whole grant to one client, so a replaced grant
+  // from the same team's client is left alone: revoking it would end the new one.
+  if (previous && (!isGoogleProvider(provider) || previous.teamId !== ready.staged.teamId)) {
+    void revokeQuietly(previous)
+  }
 
   return {
     provider,
@@ -252,11 +265,12 @@ export async function deletePersonalCredential(
   const doc = await personalCredentials().findOneAndDelete({ userId, provider })
 
   if (!doc) return
-  // One Google revoke ends both Google grants, so keep it while another remains.
+  // One Google revoke ends both grants from that team's client, so keep it while another remains.
   if (
     isGoogleProvider(provider) &&
     (await personalCredentials().countDocuments({
       userId,
+      teamId: doc.teamId,
       provider: { $in: [...GOOGLE_PROVIDERS] },
     }))
   ) {

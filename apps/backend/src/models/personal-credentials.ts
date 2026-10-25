@@ -19,7 +19,10 @@ export type PersonalCredential = {
   login: string
   /** Linear only: the organization this grant belongs to. */
   workspaceId?: string
+  /** Linear: the organization's name. Gmail / Google Drive: the Nuphos team's name. */
   workspaceName?: string
+  /** Gmail / Google Drive only: the team whose OAuth client issued this grant. */
+  teamId?: string
   encryptedAccessToken: EncryptedSecret
   encryptedRefreshToken: EncryptedSecret | null
   accessTokenExpiresAt: Date | null
@@ -35,6 +38,8 @@ export type PersonalCredentialPendingOAuth = {
   _id: string
   userId: string
   provider: PersonalCredentialProvider
+  /** Gmail / Google Drive only: the team whose OAuth client this flow uses. */
+  teamId?: string
   /** GitHub / Google PKCE verifier, sealed with the provider's key. */
   encryptedCodeVerifier?: EncryptedSecret
   /** After the callback: the exchanged grant, waiting for its starter to claim it with the code. */
