@@ -25,6 +25,7 @@ struct ConversationView: View {
     @State private var renamedTitle = ""
     @State private var showRuntimes = false
     @State private var showShare = false
+    @State private var showDesktop = false
     @State private var referencedAgents = ReferencedAgents()
 
     private var rows: [ChatRow] { ChatRow.rows(for: session) }
@@ -127,6 +128,9 @@ struct ConversationView: View {
                                 Label(watching ? "Unwatch" : "Watch", systemImage: watching ? "bell.slash" : "bell")
                             }
                         }
+                        if session.canOpenDesktop {
+                            Button("Desktop", systemImage: "display") { showDesktop = true }
+                        }
                         if session.ownsChat {
                             Button("Rename", systemImage: "pencil") { renamedTitle = session.title; showRename = true }
                         }
@@ -170,6 +174,7 @@ struct ConversationView: View {
         }
         .sheet(item: $toolDetail) { ToolDetailSheet(part: $0) }
         .sheet(isPresented: $showShare) { ShareSessionSheet(session: session) }
+        .fullScreenCover(isPresented: $showDesktop) { DesktopScreen(desktop: session.makeDesktop(), title: session.title) }
         .sheet(isPresented: $showRuntimes) {
             RuntimePickerSheet(session: session) { runtime in
                 Task {
